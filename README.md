@@ -61,7 +61,7 @@ Requires Home Assistant 2026.9 or newer.
 ## Setup
 
 1. **Thermostat not on Wi-Fi yet?** A new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the [Wi-Fi setup page](https://sokolskynikita.github.io/mysa-wifi-setup/) (Chrome or Edge on a computer with Bluetooth; no Mysa app, no phone).
-2. **Pair.** Home Assistant discovers the thermostat. Click **Add** and enter the 8-digit HomeKit code from the back of the faceplate. A thermostat can only be paired to one HomeKit controller, so remove it from Apple Home first if it's there.
+2. **Pair.** Home Assistant discovers the thermostat. Click **Add** and enter the 8-digit HomeKit code from the back of the faceplate (spaces and dashes are fine). **Press a button on the thermostat first:** while a Mysa is unpaired, its HomeKit service dozes off after a while, and pairing can't reach it until it's woken. A thermostat can only be paired to one HomeKit controller, so remove it from Apple Home first if it's there.
 3. **Mysa sign-in [optional].** Sign in to add the cloud features. Your password is used once to sign in (with SRP, so it isn't even sent to Mysa in plain form) and isn't stored; Home Assistant keeps only a sign-in token. You can skip this and sign in later from the options.
 
 More thermostats: they're discovered too, or use **Add thermostat** on the integration's page. Thermostats without a local path can be added from your Mysa account (cloud control only).
@@ -117,7 +117,7 @@ These need the cloud. If you'd rather keep schedules in Home Assistant, plain au
 
 ## Troubleshooting
 
-- **Not discovered:** the thermostat must be on the same network as Home Assistant, with mDNS working between them. Check it's on Wi-Fi and not paired to Apple Home.
+- **Not discovered, or "Couldn't reach the thermostat's HomeKit service" while pairing:** press a button on the thermostat. An unpaired Mysa stops advertising and answering HomeKit after a while (seen on the Baseboard Lite, firmware 3.17.5.13) and wakes up on a button press. Otherwise check it's on the same network as Home Assistant (mDNS has to work between them), on Wi-Fi, and not paired to Apple Home.
 - **Keeps dropping to `cloud`:** give the thermostat a DHCP reservation and check its Wi-Fi signal (enable the *Wi-Fi signal* sensor).
 - **Re-pairing:** deleting a thermostat (or the integration) removes Mysa Local's HomeKit pairing from it. If the thermostat was offline at the time, reset its HomeKit pairing on the device before pairing again.
 - **Debug logs:** enable debug logging on the integration's page.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4 (2026-10-11)
+
+- Pairing: an unpaired Mysa's HomeKit service dozes off and comes back with a press of a button on the thermostat. The pair screen and the README now say so, and a connection failure keeps the form open with a "wake it and retry" hint instead of ending the flow.
+
 ## 0.1.3 (2026-10-11)
 
 - The HomeKit code field accepts any spacing or punctuation ("1234 5678", "123-45-678", ...): only the 8 digits count. The error messages are clearer.

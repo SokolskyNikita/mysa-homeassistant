@@ -18,14 +18,14 @@
       },
       "pick": {
         "title": "Pick a thermostat",
-        "description": "Unpaired Mysa thermostats found on your network. If yours isn't listed, check it's on Wi-Fi ([setup page]({url})) and that it isn't paired to Apple Home or another controller.",
+        "description": "Unpaired Mysa thermostats found on your network. If yours isn't listed, press a button on it (an unpaired Mysa's HomeKit service dozes off), check it's on Wi-Fi ([setup page]({url})) and that it isn't paired to Apple Home or another controller.",
         "data": {
           "device": "Thermostat"
         }
       },
       "pair": {
         "title": "Pair {name}",
-        "description": "Enter the 8-digit HomeKit setup code for {name} ({model}). It's printed on the back of the faceplate.\n\nA thermostat can only be paired to one HomeKit controller. If it's in Apple Home, remove it there first. {error}",
+        "description": "Enter the 8-digit HomeKit setup code for {name} ({model}). It's printed on the back of the faceplate.\n\nPress a button on the thermostat first: while it's unpaired, its HomeKit service dozes off and pairing can't reach it.\n\nA thermostat can only be paired to one HomeKit controller. If it's in Apple Home, remove it there first. {error}",
         "data": {
           "pairing_code": "HomeKit setup code"
         }
@@ -84,7 +84,7 @@
       "max_tries": "The thermostat got too many wrong codes. Restart it and try again.",
       "busy": "The thermostat is busy pairing with another controller. Try again in a minute.",
       "pairing_failed": "Pairing failed.",
-      "cannot_connect_device": "Couldn't reach the thermostat on your network.",
+      "cannot_connect_device": "Couldn't reach the thermostat's HomeKit service. An unpaired Mysa lets it doze off: press a button on the thermostat to wake it, wait a few seconds, then submit again.",
       "takeover_failed": "The thermostat refused the new pairing.",
       "invalid_auth": "Wrong email or password.",
       "mfa_unsupported": "This Mysa account asks for an extra sign-in step that isn't supported.",
@@ -97,7 +97,7 @@
       "already_configured": "This thermostat is already set up.",
       "already_in_progress": "This thermostat is already being set up.",
       "already_paired": "This thermostat is paired to another HomeKit controller (for example Apple Home). Remove it there first.",
-      "cannot_connect": "Couldn't reach the thermostat on your network.",
+      "cannot_connect": "Couldn't reach the thermostat's HomeKit service. An unpaired Mysa lets it doze off: press a button on the thermostat to wake it, wait a few seconds, then submit again.",
       "not_supported": "This device isn't a supported Mysa model.",
       "invalid_discovery": "The discovery data was incomplete.",
       "thermostat_added": "{name} was added to Mysa Local.",
@@ -130,14 +130,14 @@
         },
         "pick": {
           "title": "Pick a thermostat",
-          "description": "Unpaired Mysa thermostats found on your network. If yours isn't listed, check it's on Wi-Fi ([setup page]({url})) and that it isn't paired to Apple Home or another controller.",
+          "description": "Unpaired Mysa thermostats found on your network. If yours isn't listed, press a button on it (an unpaired Mysa's HomeKit service dozes off), check it's on Wi-Fi ([setup page]({url})) and that it isn't paired to Apple Home or another controller.",
           "data": {
             "device": "Thermostat"
           }
         },
         "pair": {
           "title": "Pair {name}",
-          "description": "Enter the 8-digit HomeKit setup code for {name} ({model}). It's printed on the back of the faceplate.\n\nA thermostat can only be paired to one HomeKit controller. If it's in Apple Home, remove it there first. {error}",
+          "description": "Enter the 8-digit HomeKit setup code for {name} ({model}). It's printed on the back of the faceplate.\n\nPress a button on the thermostat first: while it's unpaired, its HomeKit service dozes off and pairing can't reach it.\n\nA thermostat can only be paired to one HomeKit controller. If it's in Apple Home, remove it there first. {error}",
           "data": {
             "pairing_code": "HomeKit setup code"
           }
@@ -183,14 +183,14 @@
         "max_tries": "The thermostat got too many wrong codes. Restart it and try again.",
         "busy": "The thermostat is busy pairing with another controller. Try again in a minute.",
         "pairing_failed": "Pairing failed.",
-        "cannot_connect_device": "Couldn't reach the thermostat on your network.",
+        "cannot_connect_device": "Couldn't reach the thermostat's HomeKit service. An unpaired Mysa lets it doze off: press a button on the thermostat to wake it, wait a few seconds, then submit again.",
         "takeover_failed": "The thermostat refused the new pairing.",
         "insecure_code": "That isn't a valid HomeKit code. Check the back of the faceplate."
       },
       "abort": {
         "already_configured": "This thermostat is already set up.",
         "already_paired": "This thermostat is paired to another HomeKit controller (for example Apple Home). Remove it there first.",
-        "cannot_connect": "Couldn't reach the thermostat on your network.",
+        "cannot_connect": "Couldn't reach the thermostat's HomeKit service. An unpaired Mysa lets it doze off: press a button on the thermostat to wake it, wait a few seconds, then submit again.",
         "thermostat_updated": "The thermostat was updated.",
         "no_homekit_device_entries": "No Mysa thermostats were found in the HomeKit Device integration.",
         "no_cloud_devices": "Every thermostat on your Mysa account is already added (or the cloud is off).",

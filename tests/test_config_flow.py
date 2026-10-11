@@ -518,3 +518,37 @@ def test_format_pin_rejects_trivial_codes() -> None:
     """HomeKit never uses codes like 111-11-111."""
     with pytest.raises(InsecureCodeError):
         format_pin("1111 1111")
+
+
+@pytest.mark.usefixtures("unpaired_controller")
+async def test_pairing_retries_after_connection_error(hass: HomeAssistant) -> None:
+    """A dozing thermostat doesn't end the flow; the user wakes it and retries."""
+    from aiohomekit.exceptions import AccessoryDisconnectedError
+
+    from custom_components.mysa_local import config_flow
+
+    controller = await config_flow.async_get_controller(hass)
+    lite = controller.discoveries[HKID]
+    real_start = lite.async_start_pairing
+    calls = 0
+
+    async def flaky_start(alias: str) -> object:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise AccessoryDisconnectedError("HAP server restarting")
+        return await real_start(alias)
+
+    lite.async_start_pairing = flaky_start  # type: ignore[method-assign]
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_HOMEKIT}, data=discovery()
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"pairing_code": PAIRING_CODE}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect_device"}
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"pairing_code": PAIRING_CODE}
+    )
+    assert result["step_id"] == "cloud_offer"

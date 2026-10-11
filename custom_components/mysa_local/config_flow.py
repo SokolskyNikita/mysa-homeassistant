@@ -368,7 +368,10 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             aiohomekit.AccessoryNotFoundError,
             aiohomekit.AccessoryDisconnectedError,
         ) as err:
-            raise AbortFlow("cannot_connect") from err
+            # Mysa's HomeKit server sometimes restarts for a few minutes (seen
+            # right after an unpair); keep the form so the user can retry.
+            LOGGER.warning("Couldn't start pairing with %s: %s", self._name, err)
+            return "cannot_connect_device", str(err)
         except (HomeKitException, IndexError) as err:
             LOGGER.debug("Starting pairing failed: %s", err, exc_info=True)
             return "pairing_failed", str(err)
@@ -417,8 +420,10 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         except (
             aiohomekit.AccessoryNotFoundError,
             aiohomekit.AccessoryDisconnectedError,
-        ):
-            return self.async_abort(reason="cannot_connect")
+        ) as err:
+            LOGGER.warning("Pairing with %s was interrupted: %s", self._name, err)
+            errors["base"] = "cannot_connect_device"
+            detail = str(err)
         except HomeKitException as err:
             LOGGER.debug("Pairing failed: %s", err, exc_info=True)
             errors["base"] = "pairing_failed"

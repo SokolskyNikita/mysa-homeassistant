@@ -13,5 +13,5 @@
   "issue_tracker": "https://github.com/SokolskyNikita/mysa-homeassistant/issues",
   "loggers": ["custom_components.mysa_local"],
   "requirements": ["aiohomekit>=4.0.1"],
-  "version": "0.1.3"
+  "version": "0.1.4"
 }
