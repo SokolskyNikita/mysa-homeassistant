@@ -92,15 +92,34 @@ async def test_refresh_failure_is_auth_error(
 async def test_401_forces_one_refresh(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    """A 401 refreshes the token once and retries."""
+    """A 401 refreshes the token once and retries; a second 401 isn't a sign-in loss."""
     aioclient_mock.post(
         COGNITO_URL,
         json={"AuthenticationResult": {"IdToken": make_jwt(), "ExpiresIn": 3600}},
     )
     aioclient_mock.post(f"{API_BASE}/state/batch", status=401)
-    with pytest.raises(MysaAuthError):
+    with pytest.raises(MysaApiError) as err:
         await _client(hass).get_states([DEVICE_ID])
+    assert not isinstance(err.value, MysaAuthError)
+    assert err.value.status == 401
     assert [c[1].path for c in aioclient_mock.mock_calls].count("/state/batch") == 2
+
+
+async def test_403_is_not_an_auth_error(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """A 403 (unknown route, no permission) fails the request without a refresh."""
+    aioclient_mock.post(
+        COGNITO_URL,
+        json={"AuthenticationResult": {"IdToken": make_jwt(), "ExpiresIn": 3600}},
+    )
+    aioclient_mock.get(f"{API_BASE}/capabilities/{DEVICE_ID}", status=403)
+    with pytest.raises(MysaApiError) as err:
+        await _client(hass).get_capabilities(DEVICE_ID)
+    assert err.value.status == 403
+    paths = [c[1].path for c in aioclient_mock.mock_calls]
+    assert paths.count(f"/capabilities/{DEVICE_ID}") == 1
+    assert len(paths) == 2  # one token refresh for the first call, no retry
 
 
 @pytest.mark.parametrize(

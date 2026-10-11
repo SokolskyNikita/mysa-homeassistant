@@ -24,7 +24,6 @@ from .const import (
 )
 from .exceptions import (
     MysaApiError,
-    MysaAuthError,
     MysaConnectionError,
     MysaNotFoundError,
     MysaRateLimitError,
@@ -182,19 +181,24 @@ class MysaClient:
             msg = f"{method} {path} failed: {err}"
             raise MysaConnectionError(msg) from err
 
+        if status == 401 and _retry_auth:
+            # A stale ID token: renew it and retry once. A sign-in that's really
+            # gone fails in the renewal itself (MysaAuthError from Cognito).
+            await self.auth.async_get_id_token(force_refresh=True)
+            return await self._request(
+                method,
+                path,
+                body=body,
+                params=params,
+                base_url=base_url,
+                _retry_auth=False,
+            )
         if status in (401, 403):
-            if _retry_auth:
-                await self.auth.async_get_id_token(force_refresh=True)
-                return await self._request(
-                    method,
-                    path,
-                    body=body,
-                    params=params,
-                    base_url=base_url,
-                    _retry_auth=False,
-                )
-            msg = f"{method} {path} was refused ({status})"
-            raise MysaAuthError(msg)
+            # A 403, or a 401 with a fresh token, is about this request (a route
+            # the host doesn't have, a permission), not the sign-in. Mysa's app
+            # never asks to sign in again over an HTTP status either.
+            msg = f"{method} {path} was refused ({status}): {text[:200]}"
+            raise MysaApiError(msg, status)
         if status == 404:
             raise MysaNotFoundError(f"{method} {path}: {text[:200]}")
         if status == 429:

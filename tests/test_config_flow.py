@@ -446,6 +446,18 @@ async def test_reauth_keeps_password_unsaved(
 
 
 @pytest.mark.usefixtures("controller")
+@pytest.mark.parametrize("path", [f"/capabilities/{DEVICE_ID}", "/state/batch"])
+async def test_refused_request_keeps_sign_in(
+    hass: HomeAssistant, cloud: FakeCloud, path: str
+) -> None:
+    """A 403 from one of Mysa's routes doesn't ask for the password again."""
+    cloud.path_status[path] = 403
+    await setup_entry(hass, hub_entry())
+    assert not hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    assert hass.states.get("climate.living_room").state == "heat"
+
+
+@pytest.mark.usefixtures("controller")
 async def test_options_cloud_off_removes_cloud_entities(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:

@@ -226,6 +226,7 @@ class FakeCloud:
         self.settings: list[dict[str, Any]] = []
         self.posts: list[tuple[str, Any]] = []
         self.backend_status: int | None = None
+        self.path_status: dict[str, int] = {}
         self.bootstrap_status: int | None = None
         self.live_mode: list[Any] = []
         self.claims: list[dict[str, Any]] = []
@@ -355,6 +356,10 @@ class FakeCloud:
         if self.backend_status is not None and "cognito" not in str(url):
             return AiohttpClientMockResponse(
                 method, url, status=self.backend_status, text="error"
+            )
+        if url.path in self.path_status:
+            return AiohttpClientMockResponse(
+                method, url, status=self.path_status[url.path], text="refused"
             )
         if body is None:
             return AiohttpClientMockResponse(method, url, status=status, text="")
