@@ -20,6 +20,7 @@ from aiohomekit.controller.abstract import (
 from aiohomekit.exceptions import AuthenticationError, HomeKitException
 from aiohomekit.utils import domain_to_name
 from homeassistant.config_entries import (
+    SOURCE_RECONFIGURE,
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
@@ -32,6 +33,7 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import AbortFlow, FlowHandler, section
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
@@ -49,6 +51,17 @@ from homeassistant.helpers.selector import (
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 import voluptuous as vol
 
+from .account import (
+    ACCOUNT_OFF,
+    ACCOUNT_ON,
+    account_client,
+    account_status,
+    async_add_to_account,
+    async_refresh_account,
+    async_remove_from_account,
+    can_claim,
+    can_pair_locally,
+)
 from .api import (
     MODEL_NAMES,
     TESTED_MODELS,
@@ -61,6 +74,7 @@ from .api import (
     MysaInvalidCredentialsError,
     MysaUnsupportedChallengeError,
 )
+from .cloud import CloudData
 from .const import (
     CONF_CLOUD_ENABLED,
     CONF_CLOUD_RUNTIME,
@@ -83,7 +97,12 @@ from .const import (
     WIFI_SETUP_URL,
     is_mysa_model,
 )
-from .homekit import ENDPOINT_KEYS, async_copy_pairing, async_get_controller
+from .homekit import (
+    ENDPOINT_KEYS,
+    async_copy_pairing,
+    async_get_controller,
+    async_unpair,
+)
 from .local import CONNECTION_ERRORS, AccessoryInfo, parse_accessories
 from .migration import HKC_DOMAIN
 
@@ -105,6 +124,49 @@ CONF_PAIRING_CODE = "pairing_code"
 CONF_DEVICE = "device"
 CONF_ENTRY = "entry"
 CONF_DEVICES = "devices"
+CONF_ADD_TO_ACCOUNT = "add_to_account"
+CONF_HOME = "home"
+
+# Status text built in code (the integration ships English only).
+LOCAL_TEXT: dict[bool, str] = {
+    True: "paired over HomeKit",
+    False: "not paired locally (Mysa cloud only)",
+}
+
+
+def md(text: str) -> str:
+    """Escape a name or email for Markdown (lines and table cells).
+
+    "@" becomes an HTML entity: it still shows as "@", but Home Assistant's
+    Markdown no longer turns an email address into a mailto link.
+    """
+    for char in ("\\", "|", "*", "_", "`", "[", "]"):
+        text = text.replace(char, "\\" + char)
+    return text.replace("@", "&#64;")
+
+
+def names_differ(ha_name: str, cloud_name: str | None) -> bool:
+    """True if the Mysa app knows the thermostat by another name."""
+    return bool(cloud_name) and cloud_name.casefold() != ha_name.casefold()  # type: ignore[union-attr]
+
+
+def account_line(status: str | None, ha_name: str, cloud_name: str | None) -> str:
+    """Status line for the Mysa account."""
+    if status == ACCOUNT_ON:
+        line = "✅ **Mysa account:** on your account"
+        if cloud_name and names_differ(ha_name, cloud_name):
+            line += f", named “{md(cloud_name)}” in the Mysa app"
+        return line
+    if status == ACCOUNT_OFF:
+        return "⚠️ **Mysa account:** not on your account"
+    return "**Mysa account:** unknown (not signed in to Mysa, or the Mysa cloud is off)"
+
+
+def local_line(paired: bool) -> str:
+    """Status line for the local (HomeKit) connection."""
+    if paired:
+        return "✅ **Local control:** paired over HomeKit"
+    return "⚠️ **Local control:** not paired, so it relies on the Mysa cloud"
 
 
 class InsecureCodeError(ValueError):
@@ -501,6 +563,176 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             description_placeholders={"name": entry.title, "error": detail},
         )
 
+    # ---- linking local and cloud (setup, thermostat and repair flows) ---
+
+    _target_device_id: str | None = None
+    _target_name: str | None = None
+    _account_device: tuple[str, str | None, str] | None = None
+    _account_optional = False
+    _homes: dict[str, str] | None = None
+
+    def _account_client(self) -> MysaClient | None:
+        """Client for account changes; None when the cloud isn't available."""
+        return account_client(hub_entry(self.hass))
+
+    async def _async_account_done(self) -> Any:
+        """Continue after the account step (added, declined or not possible)."""
+        raise NotImplementedError
+
+    async def _async_local_skipped(self) -> Any:
+        """Continue when the user doesn't pair the thermostat locally."""
+        raise NotImplementedError
+
+    async def _async_homes(self, client: MysaClient) -> dict[str, str]:
+        if self._homes is None:
+            self._homes = (await client.bootstrap()).homes
+        return self._homes
+
+    async def async_step_account(self, user_input: dict[str, Any] | None = None) -> Any:
+        """Put the thermostat on the Mysa account (offered, or asked for)."""
+        assert self._account_device is not None
+        device_id, model, name = self._account_device
+        client = self._account_client()
+        if client is None:
+            return await self._async_account_done()
+        errors: dict[str, str] = {}
+        detail = ""
+        homes: dict[str, str] = {}
+        try:
+            homes = await self._async_homes(client)
+        except MysaError as err:
+            errors["base"] = "cannot_connect"
+            detail = str(err)
+        if not errors and not homes:
+            errors["base"] = "no_home"
+        if user_input is not None:
+            if self._account_optional and not user_input.get(CONF_ADD_TO_ACCOUNT, True):
+                return await self._async_account_done()
+            home_id = user_input.get(CONF_HOME) or (
+                next(iter(homes)) if len(homes) == 1 else None
+            )
+            if not errors and home_id is not None:
+                try:
+                    await async_add_to_account(
+                        self.hass,
+                        client,
+                        device_id=device_id,
+                        model=model,
+                        name=name,
+                        home_id=home_id,
+                    )
+                except MysaConnectionError as err:
+                    errors["base"] = "cannot_connect"
+                    detail = str(err)
+                except MysaAuthError as err:
+                    # Possibly on someone else's account; the status Mysa
+                    # returns for that is unknown.
+                    errors["base"] = "claim_refused"
+                    detail = str(err)
+                except (MysaError, ValueError) as err:
+                    errors["base"] = "claim_failed"
+                    detail = str(err)
+                else:
+                    return await self._async_account_done()
+        fields: dict[Any, Any] = {}
+        if self._account_optional:
+            fields[vol.Required(CONF_ADD_TO_ACCOUNT, default=True)] = BooleanSelector()
+        if len(homes) > 1:
+            fields[vol.Required(CONF_HOME)] = SelectSelector(
+                SelectSelectorConfig(
+                    options=[
+                        SelectOptionDict(value=k, label=v) for k, v in homes.items()
+                    ]
+                )
+            )
+        return self.async_show_form(
+            step_id="account",
+            data_schema=vol.Schema(fields),
+            errors=errors,
+            description_placeholders={"name": name, "error": detail},
+        )
+
+    async def async_step_local_offer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> Any:
+        """Offer to pair a thermostat added from the account locally too."""
+        return self.async_show_menu(
+            step_id="local_offer",
+            menu_options=["local_find", "local_skip"],
+            description_placeholders={"name": self._target_name or "Mysa"},
+        )
+
+    async def async_step_local_find(
+        self, user_input: dict[str, Any] | None = None
+    ) -> Any:
+        """Find the thermostat's HomeKit advertisement, then ask for its code."""
+        assert self._target_device_id is not None
+        discovery = await self._async_find_unpaired(self._target_device_id)
+        if discovery is None:
+            return self.async_show_menu(
+                step_id="local_not_found",
+                menu_options=["local_find", "local_skip"],
+                description_placeholders={
+                    "name": self._target_name or "Mysa",
+                    "homekit_name": f"Mysa-{self._target_device_id[-6:]}",
+                    "url": WIFI_SETUP_URL,
+                },
+            )
+        self._hkid = discovery.description.id.lower()
+        self._name = discovery.description.name
+        self._model = getattr(discovery.description, "model", None)
+        self._finish_pairing = None
+        return await self.async_step_pair()
+
+    async def async_step_local_not_found(
+        self, user_input: dict[str, Any] | None = None
+    ) -> Any:
+        """Menu shown when the thermostat wasn't found (look again)."""
+        return await self.async_step_local_find()
+
+    async def async_step_local_skip(
+        self, user_input: dict[str, Any] | None = None
+    ) -> Any:
+        """Don't pair locally (now)."""
+        self._target_device_id = None
+        return await self._async_local_skipped()
+
+    async def _async_find_unpaired(self, device_id: str) -> AbstractDiscovery | None:
+        """The unpaired HomeKit advertisement of a thermostat, by its Mysa ID.
+
+        A Mysa advertises as "Mysa-" plus the last 6 hex digits of its Wi-Fi
+        MAC, which is also its Mysa ID.
+        """
+        controller = await async_get_controller(self.hass)
+        suffix = device_id[-6:].lower()
+        async for discovery in controller.async_discover():
+            description = discovery.description
+            if discovery.paired or not is_mysa_model(
+                getattr(description, "model", None)
+            ):
+                continue
+            if str(description.name).split(".")[0].lower().endswith(suffix):
+                return discovery
+        return None
+
+    async def _async_wrong_thermostat(
+        self, info: AccessoryInfo, pairing: Mapping[str, Any]
+    ) -> Any | None:
+        """Abort (and unpair) if pairing reached a different thermostat."""
+        target = self._target_device_id
+        if target is None or not info.device_id or info.device_id == target:
+            return None
+        LOGGER.warning(
+            "Paired %s while looking for %s; removing that pairing",
+            info.device_id,
+            target,
+        )
+        await async_unpair(self.hass, pairing)
+        return self.async_abort(
+            reason="wrong_thermostat",
+            description_placeholders={"name": self._target_name or target},
+        )
+
     def _untested_form(self, step_id: str, model: str | None) -> Any:
         return self.async_show_form(
             step_id=step_id,
@@ -522,6 +754,14 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
         self._discoveries = {}
         self._pending: list[ConfigSubentryData] = []
         self._cloud: tuple[str, str, str | None, Bootstrap] | None = None
+        self._cloud_client: MysaClient | None = None
+        # Thermostats still to offer for the account / for local pairing.
+        self._account_queue: list[ConfigSubentryData] = []
+        self._local_queue: list[str] = []
+        # A thermostat waiting to be added to the existing entry.
+        self._hub_pending: (
+            tuple[AccessoryInfo, Mapping[str, Any], str | None] | None
+        ) = None
 
     @staticmethod
     @callback
@@ -615,18 +855,85 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="already_paired")
         return self._show_pair_form()
 
+    def _account_client(self) -> MysaClient | None:
+        if self._cloud is None:
+            return super()._account_client()
+        if self._cloud_client is None:
+            session = async_get_clientsession(self.hass)
+            auth = MysaAuth(session, self._cloud[1], user_agent=USER_AGENT)
+            self._cloud_client = MysaClient(session, auth, user_agent=USER_AGENT)
+        return self._cloud_client
+
     async def _async_thermostat_ready(
         self,
         info: AccessoryInfo,
         pairing: Mapping[str, Any],
         migrate_from: str | None = None,
     ) -> ConfigFlowResult:
+        if (wrong := await self._async_wrong_thermostat(info, pairing)) is not None:
+            return wrong
         hub = hub_entry(self.hass)
         title = info.name or self._name or "Mysa"
         if hub is not None:
+            device_id = info.device_id or ""
+            if (
+                not any(s.unique_id == device_id for s in hub.subentries.values())
+                and account_status(hub, device_id) == ACCOUNT_OFF
+                and can_claim(device_id, info.model)
+                and account_client(hub) is not None
+            ):
+                self._hub_pending = (info, pairing, migrate_from)
+                self._account_device = (device_id, info.model, title)
+                self._account_optional = True
+                return await self.async_step_account()
             return self._async_add_to_hub(hub, info, pairing, migrate_from)
+        if self._target_device_id is not None:
+            # A thermostat picked from the account, now paired locally too.
+            for item in self._pending:
+                if item["unique_id"] == self._target_device_id:
+                    item["data"] = {**item["data"], CONF_PAIRING: dict(pairing)}
+            self._target_device_id = None
+            return await self._async_next_local()
         self._pending = [thermostat_subentry(info, pairing, title, migrate_from)]
         return await self.async_step_cloud_offer()
+
+    async def _async_account_done(self) -> ConfigFlowResult:
+        if self._hub_pending is not None:
+            info, pairing, migrate_from = self._hub_pending
+            self._hub_pending = None
+            hub = hub_entry(self.hass)
+            if hub is None:  # pragma: no cover - removed mid-flow
+                return self.async_abort(reason="already_configured")
+            return self._async_add_to_hub(hub, info, pairing, migrate_from)
+        return await self._async_next_account()
+
+    async def _async_next_account(self) -> ConfigFlowResult:
+        """Offer the next paired thermostat that isn't on the account yet."""
+        if self._account_queue:
+            item = self._account_queue.pop(0)
+            self._account_device = (
+                item["unique_id"] or "",
+                item["data"].get(CONF_MODEL),
+                item["title"],
+            )
+            self._account_optional = True
+            return await self.async_step_account()
+        return await self.async_step_finish()
+
+    async def _async_next_local(self) -> ConfigFlowResult:
+        """Offer local pairing for the next thermostat picked from the account."""
+        while self._local_queue:
+            device_id = self._local_queue.pop(0)
+            item = next((i for i in self._pending if i["unique_id"] == device_id), None)
+            if item is None or item["data"].get(CONF_PAIRING):
+                continue
+            self._target_device_id = device_id
+            self._target_name = item["title"]
+            return await self.async_step_local_offer()
+        return await self.async_step_finish()
+
+    async def _async_local_skipped(self) -> ConfigFlowResult:
+        return await self._async_next_local()
 
     @callback
     def _async_add_to_hub(
@@ -684,13 +991,23 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
                 errors["base"] = sign_in_error(err)
             else:
                 self._cloud = (user_input[CONF_EMAIL], token, user_id, bootstrap)
+                self._homes = bootstrap.homes or None
                 # Name paired thermostats after their Mysa name.
                 for item in self._pending:
                     record = bootstrap.devices.get(item["unique_id"] or "")
                     if record and record.name:
                         item["title"] = record.name
                 if self._pending:
-                    return await self.async_step_finish()
+                    # Offer the account for paired thermostats that aren't on it.
+                    self._account_queue = [
+                        item
+                        for item in self._pending
+                        if can_claim(
+                            item["unique_id"] or "", item["data"].get(CONF_MODEL)
+                        )
+                        and item["unique_id"] not in bootstrap.devices
+                    ]
+                    return await self._async_next_account()
                 return await self.async_step_cloud_devices()
         return self.async_show_form(
             step_id="cloud_login",
@@ -709,7 +1026,8 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
         if not devices:
             return await self.async_step_finish()
         if user_input is not None:
-            for device_id in user_input.get(CONF_DEVICES, []):
+            selected = user_input.get(CONF_DEVICES, [])
+            for device_id in selected:
                 record = devices[device_id]
                 self._pending.append(
                     thermostat_subentry(
@@ -720,7 +1038,13 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
                         model=record.model,
                     )
                 )
-            return await self.async_step_finish()
+            # Offer to pair each one locally too (models with HomeKit).
+            self._local_queue = [
+                device_id
+                for device_id in selected
+                if can_pair_locally(devices[device_id].model)
+            ]
+            return await self._async_next_local()
         options = [
             SelectOptionDict(
                 value=dev,
@@ -844,14 +1168,20 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
             return self.async_abort(reason="no_cloud_devices")
         if user_input is not None:
             entry = self._get_entry()
-            record = entry.runtime_data.cloud.record(user_input[CONF_DEVICE])
+            device_id = user_input[CONF_DEVICE]
+            record = entry.runtime_data.cloud.record(device_id)
+            model = record.model if record else None
             self._pending_sub = thermostat_subentry(
                 AccessoryInfo(),
                 None,
-                (record.name if record else None) or user_input[CONF_DEVICE],
-                device_id=user_input[CONF_DEVICE],
-                model=record.model if record else None,
+                (record.name if record else None) or device_id,
+                device_id=device_id,
+                model=model,
             )
+            if can_pair_locally(model):
+                self._target_device_id = device_id
+                self._target_name = self._pending_sub["title"]
+                return await self.async_step_local_offer()
             return await self.async_step_confirm()
         return self.async_show_form(
             step_id="cloud_pick",
@@ -875,6 +1205,8 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
         pairing: Mapping[str, Any],
         migrate_from: str | None = None,
     ) -> SubentryFlowResult:
+        if (wrong := await self._async_wrong_thermostat(info, pairing)) is not None:
+            return wrong
         entry = self._get_entry()
         runtime = getattr(entry, "runtime_data", None)
         record = None
@@ -889,6 +1221,27 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
                 )
                 return self.async_abort(reason="thermostat_updated")
         self._pending_sub = new
+        device_id = new["unique_id"] or ""
+        model = new["data"].get(CONF_MODEL)
+        if (
+            account_status(entry, device_id) == ACCOUNT_OFF
+            and can_claim(device_id, model)
+            and account_client(entry) is not None
+        ):
+            self._account_device = (device_id, model, title)
+            self._account_optional = True
+            return await self.async_step_account()
+        return await self.async_step_confirm()
+
+    async def _async_account_done(self) -> SubentryFlowResult:
+        if self.source == SOURCE_RECONFIGURE:
+            await async_refresh_account(self._get_entry())
+            return self.async_abort(reason="added_to_account")
+        return await self.async_step_confirm()
+
+    async def _async_local_skipped(self) -> SubentryFlowResult:
+        if self.source == SOURCE_RECONFIGURE:
+            return self.async_abort(reason="local_skipped")
         return await self.async_step_confirm()
 
     async def async_step_confirm(
@@ -906,6 +1259,165 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
         )
 
     async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """The thermostat's status, settings, and its cloud and local setup."""
+        subentry = self._get_reconfigure_subentry()
+        entry = self._get_entry()
+        device_id = subentry.data[CONF_DEVICE_ID]
+        model = subentry.data.get(CONF_MODEL)
+        paired = bool(subentry.data.get(CONF_PAIRING))
+        status = account_status(entry, device_id)
+        has_client = account_client(entry) is not None
+        cloud_name = self._cloud_name()
+        menu = ["settings"]
+        if not paired and can_pair_locally(model):
+            menu.append("local_pair")
+        if status == ACCOUNT_OFF and has_client and can_claim(device_id, model):
+            menu.append("account_add")
+        if status == ACCOUNT_ON and names_differ(subentry.title, cloud_name):
+            menu.append("name_from_mysa")
+            if has_client:
+                menu.append("name_to_mysa")
+        if status == ACCOUNT_ON and has_client:
+            menu.append("account_remove")
+        return self.async_show_menu(
+            step_id="reconfigure",
+            menu_options=menu,
+            description_placeholders={
+                "name": subentry.title,
+                "account": account_line(status, subentry.title, cloud_name),
+                "local": local_line(paired),
+            },
+        )
+
+    def _cloud_name(self) -> str | None:
+        """The thermostat's name in the Mysa app, if known."""
+        entry = self._get_entry()
+        device_id = self._get_reconfigure_subentry().data[CONF_DEVICE_ID]
+        runtime = getattr(entry, "runtime_data", None)
+        cloud = runtime.cloud if runtime else None
+        record = cloud.record(device_id) if cloud is not None else None
+        return record.name if record else None
+
+    async def async_step_name_from_mysa(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Use the Mysa app's name for the thermostat in Home Assistant."""
+        subentry = self._get_reconfigure_subentry()
+        cloud_name = self._cloud_name()
+        if not cloud_name:
+            return self.async_abort(reason="cloud_unavailable")
+        if user_input is not None:
+            # The entry reloads; the device and its entities take the new name.
+            self.hass.config_entries.async_update_subentry(
+                self._get_entry(), subentry, title=cloud_name
+            )
+            return self.async_abort(
+                reason="renamed_here", description_placeholders={"name": cloud_name}
+            )
+        return self.async_show_form(
+            step_id="name_from_mysa",
+            data_schema=vol.Schema({}),
+            description_placeholders={"name": subentry.title, "cloud_name": cloud_name},
+        )
+
+    async def async_step_name_to_mysa(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Rename the thermostat in the Mysa app to its Home Assistant name."""
+        subentry = self._get_reconfigure_subentry()
+        entry = self._get_entry()
+        cloud_name = self._cloud_name()
+        runtime = getattr(entry, "runtime_data", None)
+        cloud = runtime.cloud if runtime else None
+        if cloud is None or not cloud_name:
+            return self.async_abort(reason="cloud_unavailable")
+        errors: dict[str, str] = {}
+        detail = ""
+        if user_input is not None:
+            try:
+                await cloud.async_update_settings(
+                    subentry.data[CONF_DEVICE_ID], {"Name": subentry.title}
+                )
+            except HomeAssistantError as err:
+                errors["base"] = "cannot_connect"
+                detail = str(err)
+            else:
+                return self.async_abort(
+                    reason="renamed_in_mysa",
+                    description_placeholders={"name": subentry.title},
+                )
+        return self.async_show_form(
+            step_id="name_to_mysa",
+            data_schema=vol.Schema({}),
+            errors=errors,
+            description_placeholders={
+                "name": subentry.title,
+                "cloud_name": cloud_name,
+                "error": detail,
+            },
+        )
+
+    async def async_step_account_add(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Put this thermostat on the Mysa account."""
+        subentry = self._get_reconfigure_subentry()
+        self._account_device = (
+            subentry.data[CONF_DEVICE_ID],
+            subentry.data.get(CONF_MODEL),
+            subentry.title,
+        )
+        self._account_optional = False
+        return await self.async_step_account()
+
+    async def async_step_account_remove(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Take this thermostat off the Mysa account."""
+        subentry = self._get_reconfigure_subentry()
+        entry = self._get_entry()
+        device_id = subentry.data[CONF_DEVICE_ID]
+        client = account_client(entry)
+        errors: dict[str, str] = {}
+        detail = ""
+        if user_input is not None and client is not None:
+            record = entry.runtime_data.cloud.record(device_id)
+            try:
+                await async_remove_from_account(
+                    client, device_id, record.home_id if record else None
+                )
+            except MysaError as err:
+                errors["base"] = "cannot_connect"
+                detail = str(err)
+            else:
+                await async_refresh_account(entry)
+                return self.async_abort(
+                    reason="removed_from_account",
+                    description_placeholders={"name": subentry.title},
+                )
+        return self.async_show_form(
+            step_id="account_remove",
+            data_schema=vol.Schema({}),
+            errors=errors,
+            description_placeholders={
+                "name": subentry.title,
+                "local": LOCAL_TEXT[bool(subentry.data.get(CONF_PAIRING))],
+                "error": detail,
+            },
+        )
+
+    async def async_step_local_pair(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Pair this cloud-only thermostat over HomeKit."""
+        subentry = self._get_reconfigure_subentry()
+        self._target_device_id = subentry.data[CONF_DEVICE_ID]
+        self._target_name = subentry.title
+        return await self.async_step_local_find()
+
+    async def async_step_settings(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Heater wattage and runtime source."""
@@ -934,7 +1446,7 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
             }
         )
         return self.async_show_form(
-            step_id="reconfigure",
+            step_id="settings",
             data_schema=self.add_suggested_values_to_schema(
                 schema,
                 {
@@ -947,16 +1459,101 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
 
 
 class MysaOptionsFlow(OptionsFlow):
-    """Cloud on/off, polling, firmware install; sign in or out."""
+    """Cloud on/off, polling, firmware install; the account; sign in or out."""
+
+    def _cloud_data(self) -> CloudData | None:
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        cloud = runtime.cloud if runtime else None
+        return cloud.data if cloud is not None else None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Choose what to change."""
         signed_in = bool(self.config_entry.data.get(CONF_REFRESH_TOKEN))
+        menu = ["settings"]
+        if signed_in and self._cloud_data() is not None:
+            menu.append("account")
+        menu.append("sign_out" if signed_in else "sign_in")
+        if not signed_in:
+            account = "Not signed in to Mysa; everything runs locally."
+        else:
+            email = self.config_entry.data.get(CONF_EMAIL)
+            account = (
+                f"Signed in to Mysa as **{md(email)}**."
+                if email
+                else ("Signed in to Mysa.")
+            )
+            if not self.config_entry.options.get(CONF_CLOUD_ENABLED, True):
+                account += " The Mysa cloud is turned off."
         return self.async_show_menu(
             step_id="init",
-            menu_options=["settings", "sign_out" if signed_in else "sign_in"],
+            menu_options=menu,
+            description_placeholders={"account": account},
+        )
+
+    async def async_step_account(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """The thermostats on the Mysa account, and which are in Home Assistant.
+
+        View only: a thermostat is removed from the account from its own
+        settings, never from this list.
+        """
+        data = self._cloud_data()
+        if data is None:
+            return self.async_abort(reason="cloud_unavailable")
+        records = data.records
+
+        in_ha = {
+            sub.data.get(CONF_DEVICE_ID): sub
+            for sub in self.config_entry.subentries.values()
+        }
+        rows = [
+            "| In Home Assistant | In the Mysa app | Model | Status |",
+            "|---|---|---|---|",
+        ]
+        not_added = 0
+        for device_id, record in records.items():
+            model = record.model or ""
+            cloud_name = record.name or device_id
+            subentry = in_ha.get(device_id)
+            if subentry is None:
+                not_added += 1
+                ha_name, where = "—", "⚪ Not added"
+            else:
+                ha_name = subentry.title
+                where = (
+                    "✅ Local and cloud"
+                    if subentry.data.get(CONF_PAIRING)
+                    else "☁️ Cloud only"
+                )
+            rows.append(
+                f"| {md(ha_name)} | {md(cloud_name)} "
+                f"| {md(MODEL_NAMES.get(model, model) or 'Mysa')} | {where} |"
+            )
+        for ha_id, ha_sub in in_ha.items():
+            if ha_id is not None and ha_id not in records:
+                sub_model = str(ha_sub.data.get(CONF_MODEL) or "")
+                rows.append(
+                    f"| {md(ha_sub.title)} | — "
+                    f"| {md(MODEL_NAMES.get(sub_model, sub_model) or 'Mysa')} "
+                    "| ⚠️ Not on the account |"
+                )
+        add_hint = (
+            "\n\nTo add the ones marked *Not added*, use **Add thermostat** "
+            "on the integration's page."
+            if not_added
+            else ""
+        )
+        # A menu with only "Back": there's nothing to submit on this page.
+        return self.async_show_menu(
+            step_id="account",
+            menu_options=["init"],
+            description_placeholders={
+                "thermostats": "\n".join(rows) if len(rows) > 2 else "No thermostats.",
+                "add_hint": add_hint,
+            },
         )
 
     async def async_step_settings(

@@ -224,6 +224,14 @@ class FakeCloud:
         self.backend_status: int | None = None
         self.bootstrap_status: int | None = None
         self.live_mode: list[Any] = []
+        self.claims: list[dict[str, Any]] = []
+        self.claim_status: int | None = None
+        self.deleted: list[str] = []
+        self.shortcut_updates: list[tuple[str, Any]] = []
+        self.scenes: list[dict[str, Any]] = [
+            {"Id": f"{HOME_ID}_{name}", "DeviceActions": {}, "AllDevices": True}
+            for name in ("home", "away", "vacation")
+        ]
         self.refresh_ok = True
         self.refresh_calls = 0
         self.password = PASSWORD
@@ -263,6 +271,63 @@ class FakeCloud:
         mock.post(
             f"{b}/telemetry/usage/{d}", side_effect=self._json(lambda: self.usage)
         )
+        mock.post(f"{b}/devices", side_effect=self._claim)
+        mock.delete(f"{b}/devices/{d}", side_effect=self._unclaim)
+        mock.get(
+            f"{b}/homes/{HOME_ID}/scenes",
+            side_effect=self._json(lambda: {"Scenes": self.scenes}),
+        )
+        mock.patch(re.compile(r".*/scene/[^/]+$"), side_effect=self._update_scene)
+
+    # -- account --
+
+    @property
+    def on_account(self) -> bool:
+        """True while the test thermostat is on the account."""
+        return DEVICE_ID in self.devices["DevicesObj"]
+
+    def remove_from_account(self) -> None:
+        """Take the test thermostat off the account (as if removed elsewhere)."""
+        self.devices["DevicesObj"].pop(DEVICE_ID, None)
+        self.bootstrap["data"]["devices"].pop(DEVICE_ID, None)
+        self.bootstrap["data"]["user"]["AllowedDevices"] = []
+
+    async def _claim(
+        self, method: str, url: URL, data: Any
+    ) -> AiohttpClientMockResponse:
+        body = json.loads(data)
+        self.claims.append(body)
+        if self.claim_status is not None:
+            return AiohttpClientMockResponse(
+                method, url, status=self.claim_status, text='{"message": "no"}'
+            )
+        if body["Id"] in self.devices["DevicesObj"]:
+            return self._resp(
+                method, url, status=409, body=self.devices["DevicesObj"][body["Id"]]
+            )
+        record = {**load_json("devices.json")["DevicesObj"][DEVICE_ID], **body}
+        self.devices["DevicesObj"][body["Id"]] = record
+        self.bootstrap["data"]["devices"][body["Id"]] = record
+        self.bootstrap["data"]["user"]["AllowedDevices"] = [body["Id"]]
+        return self._resp(method, url, status=201, body={})
+
+    async def _unclaim(
+        self, method: str, url: URL, data: Any
+    ) -> AiohttpClientMockResponse:
+        self.deleted.append(url.path.rsplit("/", 1)[-1])
+        self.remove_from_account()
+        return self._resp(method, url, status=204)
+
+    async def _update_scene(
+        self, method: str, url: URL, data: Any
+    ) -> AiohttpClientMockResponse:
+        scene_id = url.path.rsplit("/", 1)[-1]
+        body = json.loads(data)
+        self.shortcut_updates.append((scene_id, body))
+        for scene in self.scenes:
+            if scene["Id"] == scene_id:
+                scene.update(body)
+        return self._resp(method, url, status=202, body={})
 
     # -- helpers --
 
@@ -416,6 +481,12 @@ class FakeCloud:
     async def _batch(
         self, method: str, url: URL, data: Any
     ) -> AiohttpClientMockResponse:
+        if not self.on_account:
+            error = {
+                "message": "User does not have access",
+                "code": "PERMISSION_DENIED",
+            }
+            return self._resp(method, url, body={DEVICE_ID: {"error": error}})
         return self._resp(method, url, body={DEVICE_ID: {"data": self.state}})
 
     async def _update(

@@ -46,6 +46,18 @@
       },
       "heating_runtime_today": {
         "default": "mdi:timer-outline"
+      },
+      "mysa_account": {
+        "default": "mdi:cloud-check-outline",
+        "state": {
+          "not_on_account": "mdi:cloud-alert"
+        }
+      },
+      "homekit_pairing": {
+        "default": "mdi:home-automation",
+        "state": {
+          "not_paired": "mdi:home-alert"
+        }
       }
     },
     "switch": {

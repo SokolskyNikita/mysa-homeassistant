@@ -36,6 +36,8 @@ Not affiliated with or endorsed by Mysa (Empowered Homes Inc.). Mysa is a tradem
 | Identify button | Local | Makes the thermostat signal itself. |
 | Display units select | Local, cloud fallback | °C/°F on the thermostat's own screen. HA shows temperatures in your HA units either way. |
 | Connection path sensor | — | `local`, `cloud` or `offline`. |
+| HomeKit pairing sensor | — | `paired`, or `not_paired` for a thermostat that's only connected through the cloud. |
+| Mysa account sensor | Cloud | `on_account` or `not_on_account` (only while signed in). |
 | Heating runtime today | Cloud or local | The thermostat's own measured on-time (cloud), or counted from the heating state (local). Resets at midnight. |
 | Heater energy today | Derived | Runtime × the wattage you enter. Works in the Energy dashboard. |
 | Button lock switch | Cloud | |
@@ -66,6 +68,13 @@ Requires Home Assistant 2026.9 or newer.
 
 More thermostats: they're discovered too, or use **Add thermostat** on the integration's page. Thermostats without a local path can be added from your Mysa account (cloud control only).
 
+**Local and cloud, kept in step.** While you're signed in:
+- Pairing a thermostat that isn't on your Mysa account offers to add it there (optional). Mysa Local claims it with its name and your Home Assistant time zone, using the Mysa app's older, smaller claim, so a thermostat that was on the account before keeps its settings (heater type, display units).
+- Adding a thermostat from your Mysa account offers to pair it locally too. Mysa Local finds it on your network by its name (`Mysa-` plus the end of its Wi-Fi MAC) and asks for the HomeKit code.
+- A paired thermostat that isn't on the account, or one that's only connected through the cloud, shows up under **Settings → Repairs** as a warning with a fix. Ignore it if that's how you want it. Home Assistant has no warning badge on individual devices, so Repairs plus the two diagnostic sensors above is how it shows.
+
+Only the models that join with Wi-Fi details alone (Baseboard V1/V2/Lite, In-floor, AC) can be added to an account from Home Assistant. The Baseboard V3, Central HVAC and Climate Sensor also need a Bluetooth credential file; add those with the Mysa app.
+
 ### Already using the HomeKit Device integration?
 
 Choose **Move a thermostat from the HomeKit Device integration**. Mysa Local adds its own HomeKit pairing through the existing one (no setup code needed), keeps your entity IDs, names and areas, and then removes the HomeKit Device entry.
@@ -73,7 +82,14 @@ Choose **Move a thermostat from the HomeKit Device integration**. Mysa Local add
 ## Options
 
 - **Integration options:** cloud on/off, cloud poll interval (30–300 s, default 60), sign in or out, and under *Advanced*, **Allow firmware installs** (off by default; a firmware install is untested with this integration and can't be undone).
-- **Per thermostat (⋮ → Settings):** heater wattage (adds the energy sensor) and whether to use the thermostat's own measured runtime.
+- **Integration options → Thermostats on my Mysa account:** a table of every thermostat on the account, with its name in Home Assistant and in the Mysa app, and whether it's in Home Assistant (local and cloud, cloud only, or not added). View only.
+- **Per thermostat (⋮ → Settings and status):** whether it's on your Mysa account (and its name there) and paired locally, then:
+  - **Settings:** heater wattage (adds the energy sensor) and whether to use the thermostat's own measured runtime.
+  - **Pair locally** with the HomeKit code, for a thermostat added from the account.
+  - **Add to / Remove from my Mysa account.** This is the only place a thermostat is removed from the account. Removing first takes it out of the account's Home/Away/Vacation shortcuts and deletes its Mysa schedule, like the Mysa app does. Mysa keeps its settings, so adding it back restores them.
+  - **Names:** when the Mysa app calls it something else, use that name in Home Assistant, or rename it in the Mysa app to match.
+
+The device's model line shows the thermostat's Mysa ID (its Wi-Fi MAC, which Mysa's app and API use) and, when it differs, its name in the Mysa app: for example *Mysa Baseboard Lite · Mysa ID a1b2c3d4e5f6 · Mysa app: Bedroom*. Home Assistant's device lists and device page only show a device's name and model, so that's where they fit.
 
 ## Actions
 

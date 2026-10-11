@@ -11,7 +11,17 @@ from typing import Any
 import aiohttp
 
 from .auth import MysaAuth
-from .const import API_BASE, APP_VERSION, REQUEST_TIMEOUT, WRITE_SOURCE
+from .const import (
+    API_BASE,
+    APP_VERSION,
+    LEGACY_API_BASE,
+    REQUEST_TIMEOUT,
+    WIFI_ONLY_FAMILIES,
+    WRITE_SOURCE,
+    DutyCycleOpt,
+    ModelFamily,
+    model_family,
+)
 from .exceptions import (
     MysaApiError,
     MysaAuthError,
@@ -33,11 +43,89 @@ _LOGGER = logging.getLogger(__name__)
 
 HOLD_START_DELAY = timedelta(seconds=10)
 
+# What Mysa's app adds for an In-floor thermostat: a hardwood/laminate floor
+# (FloorType 1) read by Mysa's own floor sensor (Tracking 3), capped at 28 °C.
+_INFLOOR_DEFAULTS: dict[str, Any] = {
+    "DutyCycleOpt": int(DutyCycleOpt.BB1_BASEBOARD),
+    "FloorOhms": 10,
+    "FloorType": 1,
+    "IsMysaFloorSensor": True,
+    "MaxFloorTemp": 28,
+    "MaxSetpoint": 28,
+    "Tracking": 3,
+}
+
 
 def iso_utc(value: datetime) -> str:
     """Format like JavaScript's toISOString(), which Mysa's API expects."""
     value = value.astimezone(UTC)
     return value.strftime("%Y-%m-%dT%H:%M:%S.") + f"{value.microsecond // 1000:03d}Z"
+
+
+def _device_body(
+    device_id: str,
+    *,
+    home_id: str,
+    model: str,
+    time_zone: str,
+    name: str | None,
+    fahrenheit: bool,
+    heater_type: int | None,
+    extra: Mapping[str, Any] | None,
+    app_defaults: bool,
+) -> dict[str, Any]:
+    """The record Mysa's app sends when it adds a thermostat.
+
+    With app_defaults, the 4.20.1 app's body, settings defaults included.
+    Without, the 3.54.1 app's smaller body, which leaves the stored settings of
+    a thermostat that was on the account before alone.
+    """
+    family = model_family(model)
+    if family is None:
+        msg = f"Unknown Mysa model {model!r}"
+        raise ValueError(msg)
+    if family not in WIFI_ONLY_FAMILIES:
+        msg = (
+            f"{model} needs a credential file over Bluetooth to join an account; "
+            "adding it isn't supported"
+        )
+        raise ValueError(msg)
+    body: dict[str, Any] = {
+        "Id": device_id,
+        "Name": name or device_id,
+        "Model": model,
+        "Home": home_id,
+        "TimeZone": time_zone,
+        "LastPaired": int(datetime.now(UTC).timestamp()),
+    }
+    if family is ModelFamily.AC:
+        body["SetupRequired"] = True
+    if family is ModelFamily.BASEBOARD_LITE:
+        body["schedGlobalOffset"] = 0
+    if app_defaults:
+        body.update(
+            {
+                "Animation": "off",
+                "ecoMode": 1,
+                "Format": "fahrenheit" if fahrenheit else "celsius",
+            }
+        )
+        if family is not ModelFamily.BASEBOARD_LITE:
+            body["schedGlobalOffset"] = 1  # the app's value for a new V1/V2/In-floor
+        if family is ModelFamily.INFLOOR:
+            body.update(_INFLOOR_DEFAULTS)
+        if heater_type is None and family is ModelFamily.BASEBOARD_V1:
+            heater_type = DutyCycleOpt.BB1_BASEBOARD
+        elif heater_type is None and family in {
+            ModelFamily.BASEBOARD_V2,
+            ModelFamily.BASEBOARD_LITE,
+        }:
+            heater_type = DutyCycleOpt.BB2_BASEBOARD
+    if heater_type is not None:
+        body["DutyCycleOpt"] = int(heater_type)
+    if extra:
+        body.update(extra)
+    return body
 
 
 class MysaClient:
@@ -50,12 +138,14 @@ class MysaClient:
         *,
         user_agent: str,
         base_url: str = API_BASE,
+        legacy_base_url: str = LEGACY_API_BASE,
     ) -> None:
         """Use an existing aiohttp session and an authenticated MysaAuth."""
         self._session = session
         self.auth = auth
         self._user_agent = user_agent
         self._base_url = base_url
+        self._legacy_base_url = legacy_base_url
 
     async def _request(
         self,
@@ -64,6 +154,7 @@ class MysaClient:
         *,
         body: Any = None,
         params: Mapping[str, str | int] | None = None,
+        base_url: str | None = None,
         _retry_auth: bool = True,
     ) -> Any:
         token = await self.auth.async_get_id_token()
@@ -74,7 +165,7 @@ class MysaClient:
         }
         if body is not None:
             headers["content-type"] = "application/json"
-        url = f"{self._base_url}{path}"
+        url = f"{base_url or self._base_url}{path}"
         try:
             async with self._session.request(
                 method,
@@ -95,7 +186,12 @@ class MysaClient:
             if _retry_auth:
                 await self.auth.async_get_id_token(force_refresh=True)
                 return await self._request(
-                    method, path, body=body, params=params, _retry_auth=False
+                    method,
+                    path,
+                    body=body,
+                    params=params,
+                    base_url=base_url,
+                    _retry_auth=False,
                 )
             msg = f"{method} {path} was refused ({status})"
             raise MysaAuthError(msg)
@@ -145,6 +241,100 @@ class MysaClient:
             for dev_id, record in devices.items()
             if isinstance(record, dict)
         }
+
+    async def add_device(
+        self,
+        device_id: str,
+        *,
+        home_id: str,
+        model: str,
+        time_zone: str,
+        name: str | None = None,
+        fahrenheit: bool = False,
+        heater_type: int | None = None,
+        extra: Mapping[str, Any] | None = None,
+        app_defaults: bool = True,
+    ) -> bool:
+        """Put a thermostat on the account by its ID (the Wi-Fi MAC).
+
+        True when it was added, False when it was already on the account (409;
+        Mysa writes nothing then). Only models that join with Wi-Fi details
+        alone (Baseboard V1/V2/Lite, In-floor, AC) can be added; others raise
+        ValueError before anything is sent.
+
+        The fields in the body replace the stored ones when a thermostat comes
+        back to the account. With app_defaults (Mysa's 4.20.1 app), that
+        includes the settings defaults: heater type Baseboard on a V2/Lite, °C,
+        and more. app_defaults=False sends the 3.54.1 app's smaller body (ID,
+        name, model, home, time zone), so a returning thermostat keeps its
+        settings. `heater_type` (a DutyCycleOpt or HeaterType) and `extra` are
+        sent either way.
+
+        Not tested: a thermostat on another account, which Mysa's app recognizes
+        by "User is not allowed to access the specified home" in the error (the
+        status code is unknown).
+        """
+        body = _device_body(
+            device_id,
+            home_id=home_id,
+            model=model,
+            time_zone=time_zone,
+            name=name,
+            fahrenheit=fahrenheit,
+            heater_type=heater_type,
+            extra=extra,
+            app_defaults=app_defaults,
+        )
+        try:
+            await self._request("POST", "/devices", body=body)
+        except MysaApiError as err:
+            if err.status == 409:
+                return False
+            raise
+        return True
+
+    async def replace_device(
+        self,
+        device_id: str,
+        *,
+        home_id: str,
+        model: str,
+        time_zone: str,
+        name: str | None = None,
+        fahrenheit: bool = False,
+        heater_type: int | None = None,
+        extra: Mapping[str, Any] | None = None,
+        app_defaults: bool = True,
+    ) -> None:
+        """Add a thermostat, replacing the record Mysa kept for it ("purgeadd").
+
+        Mysa's older app sent this when the user picked Overwrite after a 409.
+        Settings missing from the body may be reset. Same models and body as
+        add_device.
+        """
+        body = _device_body(
+            device_id,
+            home_id=home_id,
+            model=model,
+            time_zone=time_zone,
+            name=name,
+            fahrenheit=fahrenheit,
+            heater_type=heater_type,
+            extra=extra,
+            app_defaults=app_defaults,
+        )
+        await self._request(
+            "POST", "/devices/purgeadd", body=body, base_url=self._legacy_base_url
+        )
+
+    async def delete_device(self, device_id: str) -> None:
+        """Remove a thermostat from the account.
+
+        Mysa keeps its data, and add_device brings it back. The thermostat
+        itself isn't affected. Mysa's app first takes it out of the home's
+        shortcuts and deletes its schedule; this call doesn't.
+        """
+        await self._request("DELETE", f"/devices/{device_id}")
 
     # ---- state ---------------------------------------------------------
 
@@ -371,3 +561,27 @@ class MysaClient:
     async def delete_schedule(self, schedule_id: str, device_id: str) -> None:
         """Detach a schedule from its thermostat and delete it."""
         await self._request("DELETE", f"/schedule/{schedule_id}/attach/{device_id}")
+
+    # ---- shortcuts (Home / Away / Vacation) ----------------------------
+
+    async def get_shortcuts(self, home_id: str) -> list[dict[str, Any]]:
+        """A home's shortcuts, each with Id, DeviceActions and AllDevices."""
+        data = await self._request("GET", f"/homes/{home_id}/scenes")
+        scenes = data.get("Scenes") if isinstance(data, dict) else None
+        if not isinstance(scenes, list):
+            return []
+        return [scene for scene in scenes if isinstance(scene, dict)]
+
+    async def update_shortcut(
+        self,
+        shortcut_id: str,
+        device_actions: Mapping[str, Any],
+        *,
+        all_devices: bool,
+    ) -> None:
+        """Replace a shortcut's per-thermostat actions."""
+        await self._request(
+            "PATCH",
+            f"/scene/{shortcut_id}",
+            body={"DeviceActions": dict(device_actions), "AllDevices": all_devices},
+        )

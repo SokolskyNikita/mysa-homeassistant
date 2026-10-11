@@ -14,7 +14,10 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClien
 from custom_components.mysa_local.api import (
     Capabilities,
     DeviceState,
+    HeaterType,
     Mode,
+    ModelFamily,
+    MysaApiError,
     MysaAuth,
     MysaAuthError,
     MysaClient,
@@ -24,9 +27,14 @@ from custom_components.mysa_local.api import (
     MysaRateLimitError,
     iso_utc,
     jwt_claims,
+    model_family,
     value_range,
 )
-from custom_components.mysa_local.api.const import API_BASE, COGNITO_URL
+from custom_components.mysa_local.api.const import (
+    API_BASE,
+    COGNITO_URL,
+    LEGACY_API_BASE,
+)
 from tests.common import (
     DEVICE_ID,
     EMAIL,
@@ -238,6 +246,186 @@ async def test_state_history(
     assert changes[1].source == "app"
 
 
+def _mock_cognito(aioclient_mock: AiohttpClientMocker) -> None:
+    aioclient_mock.post(
+        COGNITO_URL,
+        json={"AuthenticationResult": {"IdToken": make_jwt(), "ExpiresIn": 3600}},
+    )
+
+
+async def test_add_device(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """The claim body matches the app's; 409 means already on the account."""
+    _mock_cognito(aioclient_mock)
+    aioclient_mock.post(f"{API_BASE}/devices", status=201, json={})
+    client = _client(hass)
+    assert await client.add_device(
+        DEVICE_ID,
+        home_id="home",
+        model="BB-V2-0-L",
+        time_zone="America/Los_Angeles",
+        name="Hall",
+        heater_type=HeaterType.FAN_FORCED,
+    )
+    body = json.loads(aioclient_mock.mock_calls[-1][2])
+    assert body.pop("LastPaired") > 1_700_000_000
+    assert body == {
+        "Id": DEVICE_ID,
+        "Name": "Hall",
+        "Model": "BB-V2-0-L",
+        "Home": "home",
+        "TimeZone": "America/Los_Angeles",
+        "Animation": "off",
+        "ecoMode": 1,
+        "Format": "celsius",
+        "schedGlobalOffset": 0,
+        "DutyCycleOpt": 8,
+    }
+
+    # Defaults: named after its ID and Baseboard; `extra` is merged in last.
+    await client.add_device(
+        DEVICE_ID,
+        home_id="home",
+        model="bb-v2-0-lte",  # an alias the app also accepts
+        time_zone="UTC",
+        fahrenheit=True,
+        extra={"Animation": "on"},
+    )
+    body = json.loads(aioclient_mock.mock_calls[-1][2])
+    assert (body["Name"], body["DutyCycleOpt"], body["Format"]) == (
+        DEVICE_ID,
+        9,
+        "fahrenheit",
+    )
+    assert (body["schedGlobalOffset"], body["Animation"]) == (0, "on")
+
+
+async def test_add_device_without_app_defaults(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """app_defaults=False sends the older app's body, which keeps settings."""
+    _mock_cognito(aioclient_mock)
+    aioclient_mock.post(f"{API_BASE}/devices", status=201, json={})
+    client = _client(hass)
+    for model, extra in (("BB-V2-0-L", {"schedGlobalOffset": 0}), ("INF-V1-0", {})):
+        await client.add_device(
+            DEVICE_ID,
+            home_id="home",
+            model=model,
+            time_zone="UTC",
+            name="Hall",
+            fahrenheit=True,
+            app_defaults=False,
+        )
+        body = json.loads(aioclient_mock.mock_calls[-1][2])
+        assert body.pop("LastPaired") > 0
+        assert body == {
+            "Id": DEVICE_ID,
+            "Name": "Hall",
+            "Model": model,
+            "Home": "home",
+            "TimeZone": "UTC",
+            **extra,
+        }
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("BB-V1-1", {"DutyCycleOpt": 0, "schedGlobalOffset": 1}),
+        ("BB-V2-0", {"DutyCycleOpt": 9, "schedGlobalOffset": 1}),
+        (
+            "INF-V1-0",
+            {
+                "DutyCycleOpt": 0,
+                "FloorOhms": 10,
+                "FloorType": 1,
+                "IsMysaFloorSensor": True,
+                "MaxFloorTemp": 28,
+                "MaxSetpoint": 28,
+                "Tracking": 3,
+                "schedGlobalOffset": 1,
+            },
+        ),
+        ("AC-V1-0", {"SetupRequired": True, "schedGlobalOffset": 1}),
+    ],
+)
+async def test_add_device_defaults_per_model(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    model: str,
+    expected: dict[str, object],
+) -> None:
+    """Each Wi-Fi-only family gets the extra fields Mysa's app sends for it."""
+    _mock_cognito(aioclient_mock)
+    aioclient_mock.post(f"{API_BASE}/devices", status=201, json={})
+    await _client(hass).add_device(
+        DEVICE_ID, home_id="home", model=model, time_zone="UTC"
+    )
+    body = json.loads(aioclient_mock.mock_calls[-1][2])
+    base = {"Id", "Name", "Model", "Home", "TimeZone", "LastPaired"}
+    base |= {"Animation", "ecoMode", "Format"}
+    assert {k: v for k, v in body.items() if k not in base} == expected
+
+
+@pytest.mark.parametrize("model", ["BB-V3-0", "ST-V1-0", "LV", "CS-V1-0", "XX-V9"])
+async def test_add_device_refuses_bluetooth_models(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, model: str
+) -> None:
+    """Models that need Bluetooth credentials (or unknown ones) are refused."""
+    _mock_cognito(aioclient_mock)
+    client = _client(hass)
+    with pytest.raises(ValueError, match=model):
+        await client.add_device(DEVICE_ID, home_id="home", model=model, time_zone="UTC")
+    with pytest.raises(ValueError, match=model):
+        await client.replace_device(
+            DEVICE_ID, home_id="home", model=model, time_zone="UTC"
+        )
+    assert not aioclient_mock.mock_calls
+
+
+async def test_add_device_conflict_and_errors(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """409 means already on the account; other errors propagate."""
+    client = _client(hass)
+    _mock_cognito(aioclient_mock)
+    aioclient_mock.post(f"{API_BASE}/devices", status=409, json={"Id": DEVICE_ID})
+    assert not await client.add_device(
+        DEVICE_ID, home_id="home", model="BB-V2-0-L", time_zone="UTC"
+    )
+
+    aioclient_mock.clear_requests()
+    _mock_cognito(aioclient_mock)
+    aioclient_mock.post(f"{API_BASE}/devices", status=400, json={"message": "bad"})
+    with pytest.raises(MysaApiError) as err:
+        await client.add_device(
+            DEVICE_ID, home_id="home", model="BB-V2-0-L", time_zone="UTC"
+        )
+    assert err.value.status == 400
+
+
+async def test_replace_and_delete_device(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """Purgeadd goes to the older host, where the old app sent it; delete doesn't."""
+    _mock_cognito(aioclient_mock)
+    aioclient_mock.post(f"{LEGACY_API_BASE}/devices/purgeadd", json={})
+    aioclient_mock.delete(f"{API_BASE}/devices/{DEVICE_ID}", status=204)
+    client = _client(hass)
+    await client.replace_device(
+        DEVICE_ID, home_id="home", model="BB-V2-0-L", time_zone="UTC"
+    )
+    method, url, data, _ = aioclient_mock.mock_calls[-1]
+    assert (method, str(url)) == ("POST", f"{LEGACY_API_BASE}/devices/purgeadd")
+    assert json.loads(data)["Id"] == DEVICE_ID
+    await client.delete_device(DEVICE_ID)
+    method, url, data, _ = aioclient_mock.mock_calls[-1]
+    assert (method, str(url)) == ("DELETE", f"{API_BASE}/devices/{DEVICE_ID}")
+    assert data is None
+
+
 def test_helpers() -> None:
     """Small utilities."""
     assert (
@@ -246,6 +434,9 @@ def test_helpers() -> None:
     )
     token = make_jwt(exp=time.time() + 10)
     assert jwt_claims(token)["sub"]
+    assert model_family(" lv ") is ModelFamily.CENTRAL_HVAC
+    assert model_family("bb-v2-0-l") is ModelFamily.BASEBOARD_LITE
+    assert model_family(None) is None
     with pytest.raises(MysaAuthError):
         jwt_claims("not-a-jwt")
     assert json.loads(json.dumps({"ok": 1}))

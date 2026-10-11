@@ -24,6 +24,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.restore_state import ExtraStoredData
 
+from .account import ACCOUNT_OFF, ACCOUNT_ON
 from .const import CONNECTION_CLOUD, CONNECTION_LOCAL, CONNECTION_OFFLINE
 from .data import MysaConfigEntry
 from .entity import MysaCloudEntity, MysaEntity, async_add_when_ready
@@ -44,8 +45,11 @@ async def async_setup_entry(
         entities: list[MysaEntity] = [
             TemperatureSensor(thermostat),
             ConnectionPathSensor(thermostat),
+            HomeKitPairingSensor(thermostat),
             HeatingRuntimeSensor(thermostat),
         ]
+        if thermostat.cloud is not None:
+            entities.append(MysaAccountSensor(thermostat))
         if thermostat.heater_watts > 0:
             entities.append(EnergySensor(thermostat))
         if (
@@ -108,6 +112,52 @@ class ConnectionPathSensor(MysaEntity, SensorEntity):
         if not local.available and local.last_error:
             attrs["homekit_error"] = local.last_error
         return attrs
+
+
+class HomeKitPairingSensor(MysaEntity, SensorEntity):
+    """Whether the thermostat is paired locally, or reached only via the cloud."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_options = ["paired", "not_paired"]
+    _attr_translation_key = "homekit_pairing"
+
+    def __init__(self, thermostat: Thermostat) -> None:
+        """Create the entity."""
+        super().__init__(thermostat, "homekit_pairing")
+
+    @property
+    def available(self) -> bool:
+        """Always known."""
+        return True
+
+    @property
+    def native_value(self) -> str:
+        """Paired or not_paired."""
+        return "paired" if self.thermostat.has_local else "not_paired"
+
+
+class MysaAccountSensor(MysaEntity, SensorEntity):
+    """Whether the thermostat is on the signed-in Mysa account."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_options = [ACCOUNT_ON, ACCOUNT_OFF]
+    _attr_translation_key = "mysa_account"
+
+    def __init__(self, thermostat: Thermostat) -> None:
+        """Create the entity."""
+        super().__init__(thermostat, "mysa_account")
+
+    @property
+    def available(self) -> bool:
+        """Available while the cloud's thermostat list is known."""
+        return self.thermostat.account_status is not None
+
+    @property
+    def native_value(self) -> str | None:
+        """on_account or not_on_account."""
+        return self.thermostat.account_status
 
 
 class WifiSignalSensor(MysaCloudEntity, SensorEntity):

@@ -37,7 +37,7 @@ class MysaEntity(Entity):
             identifiers={(DOMAIN, thermostat.device_id)},
             connections={(CONNECTION_NETWORK_MAC, thermostat.mac)},
             manufacturer=MANUFACTURER,
-            model=thermostat.model_name,
+            model=thermostat.device_model,
             model_id=thermostat.model,
             name=thermostat.name,
             serial_number=serial,

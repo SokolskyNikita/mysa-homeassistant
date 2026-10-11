@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0 (2026-10-11)
+
+- Local and cloud kept in step (while signed in to Mysa):
+  - Pairing a thermostat that isn't on your Mysa account offers to add it there; adding one from the account offers to pair it locally too (found on the network by its `Mysa-xxxxxx` name).
+  - Each thermostat's **Settings and status** shows whether it's on the account and paired locally, and can add it to or remove it from the account, or pair it locally.
+  - The integration options show a table of the thermostats on the account, with their Home Assistant and Mysa app names (view only; removing happens per thermostat).
+  - The device's model line shows the thermostat's Mysa ID and, when it differs, its name in the Mysa app; its settings can sync the name either way.
+  - Repairs warnings with fixes: paired but not on the account; cloud only; added from the account but no longer on it. All can be ignored.
+  - New diagnostic sensors: **Mysa account** and **HomeKit pairing**.
+  - Adding a thermostat to the account keeps its stored settings: the cloud client's `add_device(app_defaults=False)` sends the older app's smaller claim. (The current app's claim reset a returning thermostat's heater type to Baseboard.)
+  - The options menu says which Mysa account is signed in.
+- Cloud client: `add_device` (claim a thermostat for the account; returns False on 409, already on the account), `delete_device`, `replace_device` (`purgeadd`; not used by the integration), `get_shortcuts`/`update_shortcut`, and home names in `Bootstrap.homes`. The flow is in `docs/cloud-api.md`, "Adding and removing a thermostat".
+  - The claim body carries the defaults Mysa's app sends per model (Baseboard V1/V2/Lite, In-floor, AC). Models that need a credential file over Bluetooth to join (Baseboard V3, Central HVAC, Climate Sensor) and unknown models raise `ValueError`; the client doesn't add them.
+  - New constants: `ModelFamily`, `MODEL_FAMILIES` (every model string the app accepts), `model_family()`, `WIFI_ONLY_FAMILIES`, `DutyCycleOpt`.
+
 ## 0.1.4 (2026-10-11)
 
 - Pairing: an unpaired Mysa's HomeKit service dozes off and comes back with a press of a button on the thermostat. The pair screen and the README now say so, and a connection failure keeps the form open with a "wake it and retry" hint instead of ending the flow.

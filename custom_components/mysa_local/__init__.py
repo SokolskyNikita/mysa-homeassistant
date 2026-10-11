@@ -15,6 +15,7 @@ from homeassistant.const import CONF_SCAN_INTERVAL, Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import (
     config_validation as cv,
+    device_registry as dr,
     entity_registry as er,
     issue_registry as ir,
 )
@@ -22,6 +23,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 
+from .account import async_delete_account_issues, async_update_account_issues
 from .api import MysaAuth, MysaClient
 from .cloud import MysaCloudCoordinator
 from .const import (
@@ -74,6 +76,7 @@ CLOUD_ONLY_KEYS = frozenset(
         "wifi_signal",
         "cloud_online",
         "schedule_hold",
+        "mysa_account",
     }
 )
 LOCAL_START_WAIT = 8.0
@@ -184,6 +187,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
         def _cloud_updated() -> None:
             for thermostat in runtime.thermostats.values():
                 thermostat.notify()
+            async_update_account_issues(hass, entry)
+            _async_update_device_models(hass, entry)
 
         entry.async_on_unload(cloud.async_add_listener(_cloud_updated))
         # A thermostat that is unreachable from the start goes into cloud
@@ -191,6 +196,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
         _cloud_updated()
     else:
         _async_remove_cloud_entities(hass, entry)
+        async_update_account_issues(hass, entry)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -203,6 +209,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
         )
     )
     return True
+
+
+@callback
+def _async_update_device_models(hass: HomeAssistant, entry: MysaConfigEntry) -> None:
+    """Keep each device's model line in step with its name in the Mysa app."""
+    dev_reg = dr.async_get(hass)
+    for thermostat in entry.runtime_data.thermostats.values():
+        device = dev_reg.async_get_device_by_identifier(
+            (DOMAIN, thermostat.device_id), entry.entry_id
+        )
+        model = thermostat.device_model
+        if device is not None and model and device.model != model:
+            dev_reg.async_update_device(device.id, model=model)
 
 
 @callback
@@ -256,6 +275,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: MysaConfigEntry) ->
         if subentry_id in entry.subentries:
             continue
         ir.async_delete_issue(hass, DOMAIN, f"local_unreachable_{thermostat.device_id}")
+        async_delete_account_issues(hass, thermostat.device_id)
         if thermostat.local is None:
             continue
         LOGGER.info("Removing the HomeKit pairing of %s", thermostat.name)
@@ -299,3 +319,4 @@ async def async_remove_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> Non
         ir.async_delete_issue(
             hass, DOMAIN, f"local_unreachable_{subentry.data.get(CONF_DEVICE_ID)}"
         )
+        async_delete_account_issues(hass, str(subentry.data.get(CONF_DEVICE_ID)))

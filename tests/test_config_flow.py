@@ -222,9 +222,15 @@ async def test_cloud_only_setup(hass: HomeAssistant, cloud: FakeCloud) -> None:
         result["flow_id"], {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD}
     )
     assert result["step_id"] == "cloud_devices"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"devices": [DEVICE_ID]}
+    )
+    # Offered local pairing too; skip it.
+    assert result["type"] is FlowResultType.MENU
+    assert result["step_id"] == "local_offer"
     with patch("custom_components.mysa_local.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {"devices": [DEVICE_ID]}
+            result["flow_id"], {"next_step_id": "local_skip"}
         )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     (subentry,) = result["result"].subentries.values()
@@ -247,9 +253,12 @@ async def test_sign_in_survives_bootstrap_failure(
         result["flow_id"], {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD}
     )
     assert result["step_id"] == "cloud_devices"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"devices": [DEVICE_ID]}
+    )
     with patch("custom_components.mysa_local.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {"devices": [DEVICE_ID]}
+            result["flow_id"], {"next_step_id": "local_skip"}
         )
     assert result["data"][CONF_USER_ID] == USER_ID  # from the token's claims
 
@@ -319,7 +328,7 @@ async def test_options_cloud_off_removes_cloud_entities(
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] is FlowResultType.MENU
-    assert result["menu_options"] == ["settings", "sign_out"]
+    assert result["menu_options"] == ["settings", "account", "sign_out"]
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"next_step_id": "settings"}
     )
@@ -382,7 +391,14 @@ async def test_subentry_reconfigure_wattage(hass: HomeAssistant) -> None:
     (subentry,) = entry.subentries.values()
 
     result = await entry.start_subentry_reconfigure_flow(hass, subentry.subentry_id)
+    assert result["type"] is FlowResultType.MENU
     assert result["step_id"] == "reconfigure"
+    # Signed out: nothing to do with the account; it's paired already.
+    assert result["menu_options"] == ["settings"]
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "settings"}
+    )
+    assert result["step_id"] == "settings"
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {CONF_HEATER_WATTS: 1500, CONF_CLOUD_RUNTIME: False}
     )

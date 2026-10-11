@@ -16,6 +16,7 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
+from .account import cloud_account_status
 from .api import (
     MODEL_NAMES,
     Capabilities,
@@ -238,6 +239,11 @@ class Thermostat:
         return cloud.data.holds.get(self.device_id)
 
     @property
+    def account_status(self) -> str | None:
+        """on_account, not_on_account, or None while unknown (cloud off)."""
+        return cloud_account_status(self.cloud, self.device_id)
+
+    @property
     def has_local(self) -> bool:
         """True if this thermostat is paired over HomeKit."""
         return self.local is not None
@@ -293,6 +299,26 @@ class Thermostat:
         """Friendly model name."""
         model = self.model
         return MODEL_NAMES.get(model, model) if model else None
+
+    @property
+    def cloud_name(self) -> str | None:
+        """The thermostat's name in the Mysa app, if it's on the account."""
+        record = self.cloud_record
+        return record.name if record else None
+
+    @property
+    def device_model(self) -> str:
+        """Model line for the device registry: model, Mysa ID, Mysa app name.
+
+        Home Assistant's device lists and the device page show only a device's
+        name and model, so the thermostat's Mysa ID (and its name in the Mysa
+        app, when that differs) go here to be seen at a glance.
+        """
+        parts = [self.model_name or "Mysa", f"Mysa ID {self.device_id}"]
+        cloud_name = self.cloud_name
+        if cloud_name and cloud_name.casefold() != self.name.casefold():
+            parts.append(f"Mysa app: {cloud_name}")
+        return " · ".join(parts)
 
     @property
     def firmware(self) -> str | None:

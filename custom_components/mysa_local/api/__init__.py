@@ -7,12 +7,17 @@ package later.
 from .auth import MysaAuth, Tokens, jwt_claims
 from .client import MysaClient, iso_utc
 from .const import (
+    MODEL_FAMILIES,
     MODEL_NAMES,
     TESTED_MODELS,
+    WIFI_ONLY_FAMILIES,
     ButtonLock,
     ChangeSource,
+    DutyCycleOpt,
     HeaterType,
     Mode,
+    ModelFamily,
+    model_family,
 )
 from .exceptions import (
     MysaApiError,
@@ -37,17 +42,21 @@ from .models import (
 )
 
 __all__ = [
+    "MODEL_FAMILIES",
     "MODEL_NAMES",
     "TESTED_MODELS",
+    "WIFI_ONLY_FAMILIES",
     "Bootstrap",
     "ButtonLock",
     "Capabilities",
     "ChangeSource",
     "DeviceRecord",
     "DeviceState",
+    "DutyCycleOpt",
     "FirmwareInfo",
     "HeaterType",
     "Mode",
+    "ModelFamily",
     "MysaApiError",
     "MysaAuth",
     "MysaAuthError",
@@ -64,5 +73,6 @@ __all__ = [
     "UsageDay",
     "iso_utc",
     "jwt_claims",
+    "model_family",
     "value_range",
 ]

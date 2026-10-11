@@ -351,6 +351,8 @@ class Bootstrap:
     user_id: str | None
     home_ids: tuple[str, ...]
     devices: dict[str, DeviceRecord]
+    # Home ID -> name ("DefaultHome" unless the user renamed it).
+    homes: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_api(cls, data: Mapping[str, Any]) -> Bootstrap:
@@ -362,10 +364,22 @@ class Bootstrap:
             dev_id: DeviceRecord.from_api(dev_id, _dict(record))
             for dev_id, record in _dict(body.get("devices")).items()
         }
+        home_ids = (
+            tuple(h for h in homes if isinstance(h, str))
+            if isinstance(homes, list)
+            else ()
+        )
+        names: dict[str, str] = {}
+        raw_homes = body.get("homes")
+        for home in raw_homes if isinstance(raw_homes, list) else []:
+            home_id = _str(_dict(home).get("Id"))
+            if home_id:
+                names[home_id] = _str(_dict(home).get("Name")) or home_id
+        for home_id in home_ids:
+            names.setdefault(home_id, home_id)
         return cls(
             user_id=_str(user.get("Id")),
-            home_ids=tuple(h for h in homes if isinstance(h, str))
-            if isinstance(homes, list)
-            else (),
+            home_ids=home_ids,
             devices=devices,
+            homes=names,
         )
