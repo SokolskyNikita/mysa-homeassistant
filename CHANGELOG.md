@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-10-11)
 
 - The Baseboard V3, Central HVAC and Climate Sensor are unsupported: to join, they need a credential file from Mysa's servers. HomeKit discovery no longer claims them (the manifest now lists `BB-V1-*`, `BB-V2-*`, `INF-V?-*` and `AC-V?-*`), adding from the Mysa account skips them and the options' account table marks them **Not supported**. The README's model table shows which models are supported.
 - **Save my password** (optional, off by default) on the Mysa sign-in. Mysa's sign-in token seems to last about a month and isn't renewed. With the password saved, Mysa Local signs in again by itself when the token stops working; without it, Home Assistant asks you to sign in again as before. The password is stored unencrypted in Home Assistant's configuration. The options page shows whether it's saved; to change that, sign out and sign in again. Re-authentication keeps the choice and replaces a saved password with the new one. Signing out deletes it, and diagnostics redact it.
