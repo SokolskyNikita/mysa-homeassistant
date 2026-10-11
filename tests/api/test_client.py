@@ -227,6 +227,13 @@ def test_state_model() -> None:
     assert weird.mode is None
     assert weird.heating is None
 
+    # Asked for but never confirmed: not the thermostat's state.
+    data["tracking"] = {"desired": {"ambientOffset": 1.5}, "reported": {}}
+    data["physicalInterface"] = {"desired": {"lockout": 3}}
+    unconfirmed = DeviceState.from_api(DEVICE_ID, data)
+    assert unconfirmed.temperature_offset is None
+    assert unconfirmed.button_lock is None
+
 
 def test_capabilities_model() -> None:
     """Ranges come from validValues."""

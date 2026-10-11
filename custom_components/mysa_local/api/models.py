@@ -43,14 +43,17 @@ def _time(value: Any) -> datetime | None:
 
 
 def _section(data: Mapping[str, Any], name: str) -> dict[str, Any]:
-    """Return a state section, with confirmed (reported) values over desired ones."""
+    """Return a state section's confirmed (reported) values.
+
+    A value only in `desired` was asked for but never confirmed: a field the
+    model doesn't support, or a thermostat that has been offline since. It
+    isn't the thermostat's state.
+    """
     section = _dict(data.get(name))
-    merged = dict(_dict(section.get("desired")))
-    merged.update(_dict(section.get("reported")))
-    if not merged:
-        # Sections such as drState aren't split into desired/reported.
-        merged = {k: v for k, v in section.items() if k not in ("desired", "reported")}
-    return merged
+    if "desired" in section or "reported" in section:
+        return dict(_dict(section.get("reported")))
+    # Sections such as drState aren't split into desired/reported.
+    return dict(section)
 
 
 def value_range(values: Iterable[Any]) -> tuple[float, float, float] | None:
