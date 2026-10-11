@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-10-11)
 
 - **Mini-Split AC fan speed and swing** on the climate entity, over the cloud (HomeKit doesn't have them). Fan speed, vertical swing and horizontal swing each appear when the AC's remote has them in the current mode, with only the options it has (auto/low/medium/high or auto/1–7/sleep; off, on, auto and fixed positions), and are hidden while the AC is off because a change would switch it on. Remotes that only have a swing toggle button aren't driven. Built from Mysa's app 4.20.1 code and not yet tested on an AC.
 
