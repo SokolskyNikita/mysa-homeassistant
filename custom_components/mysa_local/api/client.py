@@ -298,6 +298,20 @@ class MysaClient:
             body["endTime"] = iso_utc(until)
         await self._request("POST", "/schedule/hold", body=body)
 
+    async def start_live_mode(self, home_id: str, seconds: int = 300) -> list[str]:
+        """Have a home's thermostats report every few seconds for `seconds` s.
+
+        Mysa's app sends this while it's open and renews it about every 4 min.
+        Returns the IDs of the thermostats that switched to live mode.
+        """
+        data = await self._request(
+            "POST", f"/mysa-legacy/stream/home/{home_id}", body={"timeout": seconds}
+        )
+        ids = data.get("streamedDeviceIds") if isinstance(data, dict) else None
+        if not isinstance(ids, list):
+            return []
+        return [i for i in ids if isinstance(i, str)]
+
     async def resume_schedule(self, device_id: str) -> None:
         """End any hold so the thermostat follows its schedule again."""
         try:

@@ -29,7 +29,7 @@ Everything below was actually observed unless marked *not captured*. Account dat
   - `power.reported`: `voltage`, `current`, `wattage`, `dutyCycle` (all 0 on the Lite: it has no current sensor).
   - `bbConfig.reported.controlType` (heater type: 8 = Fan Forced, 9 = Baseboard; this unit is set to 8).
   - `diagnostics.reported.freeHeap`, `drState` {inEvent, state}.
-- Live mode: `POST /mysa-legacy/stream/home/{home}` `{"timeout":300}` → `streamedDeviceIds`. Sent on open and then every ~4.2 min. Presumably it makes the thermostats report more often; the app still polls `/state/batch` for the data.
+- Live mode: `POST /mysa-legacy/stream/home/{home}` `{"timeout":300}` → `{"message", "streamedDeviceIds", "skippedDeviceIds", "failedDeviceIds"}`. Sent on open and then every ~4.2 min. It makes the thermostats report every ~5 s; the app still polls `/state/batch` for the data. Without it the reading slows to ~40 s and then can stop for minutes (measured 2026-10-10: 2.5+ min without a new reading).
 
 ## Writing state: `POST /state/{dev}/update`
 Body is `{"source":3, <section>: {<fields>}}`; the reply is `{"message":"Successfully updated state for device {dev}"}`. Each change below showed up in `reported` within about a second.
@@ -115,7 +115,7 @@ Some settings still go through the older device record. The reply echoes the bod
 - Firmware install (`/devices/{dev}/firmware-update`), Delete Device, Shared Access invites: irreversible or they email people.
 
 ## Other endpoints seen (all GET unless noted)
-- `/mobile/bootstrap?versionNumber=4.20.1`: user record (`AllowedDevices`, `AllowedHomes`, Cognito attributes), `primaryHomeId`, `activeHomeId`, `regionApiBaseUrl`.
+- `/mobile/bootstrap?versionNumber=4.20.1`: `versionNumber` is required (without it: 400 `FST_ERR_VALIDATION`, "querystring must have required property 'versionNumber'"). User record (`AllowedDevices`, `AllowedHomes`, Cognito attributes), `primaryHomeId`, `activeHomeId`, `regionApiBaseUrl`.
 - `/homes/{home}/scenes`: Home/Away/Vacation shortcuts (`Id` = `{home}_home|_away|_vacation`, `DeviceActions` empty here). Editing and applying are in the Shortcuts section above.
 - `/homes/{home}/savedSchedule` → `{"SavedSchedules":[]}`; `/schedule/compatibility/{dev}` → `[]`. Schedules are covered in the section above.
 - `/homes/{home}/geofences`, `/homes/reminders/{home}`, `/homes/{home}/users`, `/invite/users/{user}`, `/devices/{dev}/drstate`, `/communication-preferences/`, `/preferences/User_{user}_Home_{home}…`.

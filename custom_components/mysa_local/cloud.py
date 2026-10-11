@@ -31,8 +31,11 @@ from .api import (
 )
 from .const import (
     CLOUD_CAPABILITIES_INTERVAL,
+    CLOUD_FALLBACK_INTERVAL,
     CLOUD_FIRMWARE_INTERVAL,
     CLOUD_HOLD_INTERVAL,
+    CLOUD_LIVE_MODE_RENEW,
+    CLOUD_LIVE_MODE_TIMEOUT,
     CLOUD_MAX_BACKOFF,
     CLOUD_RECORDS_INTERVAL,
     CLOUD_REFRESH_AFTER_WRITE,
@@ -108,6 +111,8 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         self._last_write = 0.0
         self._due: dict[str, float] = {}
         self._refresh_after_write: CALLBACK_TYPE | None = None
+        # Thermostats whose LAN path is down while the cloud stands in.
+        self.fallback: set[str] = set()
 
     # ---- polling -------------------------------------------------------
 
@@ -122,9 +127,47 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         """Make the next refresh re-read `what` (records, holds, firmware...)."""
         self._due.pop(what, None)
 
+    def _normal_interval(self) -> timedelta:
+        return CLOUD_FALLBACK_INTERVAL if self.fallback else self._base_interval
+
     def _backoff(self) -> None:
-        current = self.update_interval or self._base_interval
+        current = self.update_interval or self._normal_interval()
         self.update_interval = min(current * 2, CLOUD_MAX_BACKOFF)
+
+    @callback
+    def set_fallback(self, device_id: str, active: bool) -> None:
+        """Track whether a thermostat currently relies on the cloud.
+
+        While any does, its home gets live mode and the poll speeds up; both
+        stop as soon as every LAN path is back.
+        """
+        if active == (device_id in self.fallback) or device_id not in self.device_ids:
+            return
+        if active:
+            self.fallback.add(device_id)
+        else:
+            self.fallback.discard(device_id)
+            homes = self._fallback_homes(self.data.records if self.data else {})
+            for key in [k for k in self._due if k.startswith("live:")]:
+                if key.removeprefix("live:") not in homes:
+                    self._due.pop(key)
+        LOGGER.debug(
+            "Cloud fallback %s for %s; polling every %s",
+            "on" if active else "off",
+            device_id,
+            self._normal_interval(),
+        )
+        self.update_interval = self._normal_interval()
+        if active:
+            self.hass.async_create_task(self.async_request_refresh())
+
+    def _fallback_homes(self, records: Mapping[str, DeviceRecord]) -> set[str]:
+        homes = set()
+        for dev in self.fallback:
+            record = records.get(dev)
+            if record is not None and record.home_id:
+                homes.add(record.home_id)
+        return homes
 
     async def _async_update_data(self) -> CloudData:
         async with self._refresh_lock:
@@ -148,7 +191,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
                     translation_key="cloud_unavailable",
                     translation_placeholders={"error": str(err)},
                 ) from err
-            self.update_interval = self._base_interval
+            self.update_interval = self._normal_interval()
             return data
 
     async def _async_fetch(self) -> CloudData:
@@ -167,6 +210,10 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         if self._is_due("records") or any(dev not in data.records for dev in ids):
             data.records = await self.client.get_devices()
             self._mark_done("records", CLOUD_RECORDS_INTERVAL)
+
+        for home in self._fallback_homes(data.records):
+            if self._is_due(f"live:{home}"):
+                await self._best_effort(self._start_live_mode, data, home)
 
         data.states = await self.client.get_states(ids)
 
@@ -191,6 +238,11 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             raise
         except MysaError as err:
             LOGGER.debug("Optional cloud read for %s failed: %s", dev, err)
+
+    async def _start_live_mode(self, data: CloudData, home: str) -> None:
+        streamed = await self.client.start_live_mode(home, CLOUD_LIVE_MODE_TIMEOUT)
+        LOGGER.debug("Live mode for home %s: %s", home, streamed)
+        self._mark_done(f"live:{home}", CLOUD_LIVE_MODE_RENEW)
 
     async def _fetch_capabilities(self, data: CloudData, dev: str) -> None:
         data.capabilities[dev] = await self.client.get_capabilities(dev)

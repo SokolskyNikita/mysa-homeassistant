@@ -223,3 +223,36 @@ async def test_cloud_backoff(
     await coordinator.async_refresh()
     assert coordinator.update_interval == base
     assert coordinator.last_update_success
+
+
+async def test_live_mode_only_during_fallback(
+    hass: HomeAssistant, controller: FakeController, cloud: FakeCloud
+) -> None:
+    """Live mode and fast polling run only while the LAN path is down."""
+    await setup_entry(hass, hub_entry())
+    thermostat = _thermostat(hass)
+    coordinator = thermostat.cloud
+    await coordinator.async_refresh()
+    assert cloud.live_mode == []
+    assert coordinator.update_interval.total_seconds() == 60
+
+    controller.aliases[HKID].available = False
+    await thermostat.local.async_poll()
+    await hass.async_block_till_done()
+    assert cloud.live_mode == [{"timeout": 300}]
+    assert coordinator.update_interval.total_seconds() == 10
+    await coordinator.async_refresh()  # renewed only every 4 minutes
+    assert len(cloud.live_mode) == 1
+
+    controller.aliases[HKID].available = True
+    await thermostat.local.async_poll()
+    await hass.async_block_till_done()
+    assert coordinator.update_interval.total_seconds() == 60
+    await coordinator.async_refresh()
+    assert len(cloud.live_mode) == 1
+
+    # A new outage starts live mode again right away.
+    controller.aliases[HKID].available = False
+    await thermostat.local.async_poll()
+    await hass.async_block_till_done()
+    assert len(cloud.live_mode) == 2

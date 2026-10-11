@@ -105,6 +105,7 @@ These need the cloud. If you'd rather keep schedules in Home Assistant, plain au
 - HomeKit pushes every change, so there's no local polling beyond a light health check every 30 s.
 - The cloud is read with **one request for all thermostats** every 60 s (configurable). While the local connection is healthy, cloud values for the same fields are ignored, so the two never fight.
 - A change goes to HomeKit first, with a 5 s timeout. If HomeKit is down or fails, the same change goes through the cloud. If a local write times out with an unknown outcome, the integration reads the current value back (locally, then from the cloud) before trying anywhere else, so a change is never applied twice.
+- While a thermostat runs on the cloud, the integration asks Mysa for "live mode" (a fresh reading every ~5 s instead of every few minutes) and polls every 10 s. Both stop as soon as the local connection is back, and never run while it's healthy.
 - The **Connection path** sensor shows which path is active. If the local connection stays down for 15 minutes, a repair issue explains what to check (Wi-Fi, a DHCP reservation, power). It clears itself.
 - Being a good API citizen: polling stays gentle, it backs off on rate limits and server errors, writes are spaced out, and the User-Agent names this integration.
 

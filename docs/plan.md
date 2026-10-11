@@ -63,6 +63,19 @@ For models whose local protocol is Matter (Baseboard V3 and newer; the capabilit
 - Cloud: one `POST /state/batch` for all of the account's thermostats every 60 s (configurable 30–300 s), plus a re-read right after a cloud write.
 - While local is healthy, cloud values for the locally available fields are ignored, so two sources can't fight. While local is down, the cloud feeds those fields too.
 
+### Live mode during fallback (added 2026-10-10)
+Measured on a Baseboard Lite, 10 setpoint changes per path, times from send:
+
+| | Local (HomeKit) | Cloud (`POST /state/{dev}/update`) |
+|---|---|---|
+| Write acknowledged | 0.10 s (median) | 0.45 s (HTTP) |
+| Thermostat applied it | 0.16 s | 0.57 s |
+| Cloud `reported` shows it | ~2.1 s | 1.2 s |
+
+- Room temperature: HomeKit pushes it the moment it changes. The cloud's `latestTelemetry.reading` updates about every 5 s only while "live mode" is on (after the app opens or after commands), then slows to ~40 s and then stops: one test went 2.5+ minutes without a new reading, and the cloud still said 21.5 °C while HomeKit already showed 21.4 °C. So a polled cloud temperature can be minutes old.
+- Rule: while a paired thermostat's local connection is down and the cloud is on, request live mode for its home (`POST /mysa-legacy/stream/home/{home}` `{"timeout":300}`), renew it every 4 minutes (the app renews about every 4.2 min) and poll `/state/batch` every 10 s. Stop both as soon as local is back: the poll returns to the normal interval and live mode lapses on its own after 300 s.
+- Never request live mode while local is healthy, for thermostats without a local path (cloud-only), or with the cloud off.
+
 ### Writes and fallback
 1. Send the change over HomeKit with a short timeout (about 5 s).
 2. If HomeKit isn't connected or the write fails, and the cloud is enabled, send the same change through `POST /state/{dev}/update`. Then confirm it from the cloud state.

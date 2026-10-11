@@ -132,6 +132,7 @@ class Thermostat:
         self._model: str | None = subentry.data.get(CONF_MODEL)
         self._listeners: set[CALLBACK_TYPE] = set()
         self.runtime = RuntimeTracker()
+        self._in_fallback = False
         if local is not None:
             local.add_listener(self.notify)
 
@@ -146,9 +147,21 @@ class Thermostat:
     @callback
     def notify(self) -> None:
         """Tell entities something changed."""
+        self._update_fallback()
         self.runtime.update(self.heating if self.available else None)
         for listener in list(self._listeners):
             listener()
+
+    @callback
+    def _update_fallback(self) -> None:
+        """Let the cloud know when this thermostat starts or stops relying on it."""
+        cloud = self.cloud
+        if cloud is None or self.local is None:
+            return
+        in_fallback = not self.local_ok
+        if in_fallback != self._in_fallback:
+            self._in_fallback = in_fallback
+            cloud.set_fallback(self.device_id, in_fallback)
 
     # ---- heating runtime ----------------------------------------------
 

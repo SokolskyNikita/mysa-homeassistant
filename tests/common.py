@@ -223,6 +223,7 @@ class FakeCloud:
         self.posts: list[tuple[str, Any]] = []
         self.backend_status: int | None = None
         self.bootstrap_status: int | None = None
+        self.live_mode: list[Any] = []
         self.refresh_ok = True
         self.refresh_calls = 0
         self.password = PASSWORD
@@ -238,6 +239,7 @@ class FakeCloud:
         )
         mock.get(f"{b}/devices", side_effect=self._json(lambda: self.devices))
         mock.post(f"{b}/state/batch", side_effect=self._batch)
+        mock.post(f"{b}/mysa-legacy/stream/home/{HOME_ID}", side_effect=self._live_mode)
         mock.get(f"{b}/state/{d}", side_effect=self._json(lambda: self.state))
         mock.post(f"{b}/state/{d}/update", side_effect=self._update)
         mock.post(f"{b}/devices/{d}/", side_effect=self._settings)
@@ -393,6 +395,14 @@ class FakeCloud:
         )
 
     # -- backend --
+
+    async def _live_mode(
+        self, method: str, url: URL, data: Any
+    ) -> AiohttpClientMockResponse:
+        self.live_mode.append(json.loads(data))
+        return self._resp(
+            method, url, body={"streamedDeviceIds": [DEVICE_ID], "skippedDeviceIds": []}
+        )
 
     async def _bootstrap(
         self, method: str, url: URL, data: Any

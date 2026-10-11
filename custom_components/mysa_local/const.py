@@ -55,6 +55,13 @@ CLOUD_REFRESH_AFTER_WRITE: Final = 2.0
 CLOUD_WRITE_SPACING: Final = 0.5
 CLOUD_MAX_BACKOFF: Final = timedelta(minutes=10)
 
+# While a paired thermostat's LAN path is down and the cloud stands in, ask Mysa
+# for "live mode" (a reading every ~5 s instead of every few minutes) and poll
+# faster. Never while the LAN path is healthy or the cloud is off.
+CLOUD_FALLBACK_INTERVAL: Final = timedelta(seconds=10)
+CLOUD_LIVE_MODE_TIMEOUT: Final = 300
+CLOUD_LIVE_MODE_RENEW: Final = timedelta(seconds=240)
+
 # Mysa models that ship HomeKit, as glob patterns (mirrors manifest.json, where
 # discovery of these goes to this integration): BB-V1-0, BB-V2-0-L, INF-V1-0, ...
 HOMEKIT_MODEL_PATTERNS: Final = ("BB-V?-*", "INF-V?-*", "AC-V?-*", "ST-V?-*", "CS-V?-*")
