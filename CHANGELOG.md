@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 (2026-10-11)
+
+- **Live mode during local outages** is now an option, off by default (integration options → **Cloud and polling**). On: while a thermostat can't be reached on your network, Mysa is asked to have it report every ~5 s and the cloud is read every 10 s, as before. Off: no live mode requests, and a thermostat on the cloud is read at the normal poll interval, so its readings can be a few minutes old.
+
 ## 0.3.0 (2026-10-11)
 
 - The Baseboard V3, Central HVAC and Climate Sensor are unsupported: to join, they need a credential file from Mysa's servers. HomeKit discovery no longer claims them (the manifest now lists `BB-V1-*`, `BB-V2-*`, `INF-V?-*` and `AC-V?-*`), adding from the Mysa account skips them and the options' account table marks them **Not supported**. The README's model table shows which models are supported.
