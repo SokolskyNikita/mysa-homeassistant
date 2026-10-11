@@ -67,6 +67,7 @@ from .api import (
     MODEL_NAMES,
     TESTED_MODELS,
     Bootstrap,
+    MysaApiError,
     MysaAuth,
     MysaAuthError,
     MysaClient,
@@ -647,10 +648,13 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
                 except MysaConnectionError as err:
                     errors["base"] = "cannot_connect"
                     detail = str(err)
-                except MysaAuthError as err:
-                    # Possibly on someone else's account; the status Mysa
-                    # returns for that is unknown.
-                    errors["base"] = "claim_refused"
+                except MysaApiError as err:
+                    # Possibly on someone else's account. The status Mysa
+                    # returns for that is unknown; its app goes by the message.
+                    refused = err.status in (401, 403) or "not allowed" in str(
+                        err
+                    ).lower()
+                    errors["base"] = "claim_refused" if refused else "claim_failed"
                     detail = str(err)
                 except (MysaError, ValueError) as err:
                     errors["base"] = "claim_failed"
