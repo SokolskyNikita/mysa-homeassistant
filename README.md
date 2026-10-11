@@ -79,7 +79,7 @@ Choose **Move a thermostat from the HomeKit Device integration**. Mysa Local add
 
 | Action | What it does |
 |---|---|
-| `mysa_local.hold` | Holds a setpoint (and optionally a mode) over the Mysa schedule, permanently or `until` a time. |
+| `mysa_local.hold` | Holds a setpoint (and optionally a mode) over the Mysa schedule, permanently or `until` a time. Applied right away. Needs a Mysa schedule on the thermostat (Mysa has nothing to hold over otherwise). |
 | `mysa_local.resume_schedule` | Ends the hold. |
 | `mysa_local.set_schedule` | Replaces the weekly schedule stored by Mysa. It keeps running even when Home Assistant or the internet is down. |
 | `mysa_local.clear_schedule` | Deletes it. |
