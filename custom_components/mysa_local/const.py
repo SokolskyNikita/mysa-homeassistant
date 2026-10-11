@@ -10,7 +10,7 @@ from typing import Final
 DOMAIN: Final = "mysa_local"
 LOGGER = logging.getLogger(__package__)
 
-VERSION: Final = "0.4.2"
+VERSION: Final = "0.4.3"
 USER_AGENT: Final = (
     f"mysa-homeassistant/{VERSION} "
     "(+https://github.com/SokolskyNikita/mysa-homeassistant)"

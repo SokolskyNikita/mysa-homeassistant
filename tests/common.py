@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 import hmac
+from ipaddress import ip_address
 import json
 from pathlib import Path
 import re
@@ -18,6 +19,7 @@ from aiohomekit.controller.abstract import FinishPairing
 from aiohomekit.model import Accessories
 from aiohomekit.model.status_flags import StatusFlags
 from aiohomekit.testing import FakeController, FakeDiscovery, FakePairing
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import (
     AiohttpClientMocker,
@@ -53,6 +55,8 @@ EMAIL = "user@example.com"
 PASSWORD = "hunter2-but-longer"
 REFRESH_TOKEN = "refresh-token-1"
 PAIRING_CODE = "111-22-333"
+ACCOUNT_ISSUE = f"not_on_account_{DEVICE_ID}"
+LOCAL_ISSUE = f"cloud_only_{DEVICE_ID}"
 
 PAIRING_DATA = {
     "AccessoryPairingID": HKID,
@@ -65,6 +69,27 @@ PAIRING_DATA = {
     "AccessoryPort": 57959,
     "Connection": "IP",
 }
+
+
+def discovery(
+    *, paired: bool = False, host: str = "192.0.2.10", model: str = "BB-V2-0-L"
+) -> ZeroconfServiceInfo:
+    """HomeKit advertisement of the Lite (or another model)."""
+    return ZeroconfServiceInfo(
+        ip_address=ip_address(host),
+        ip_addresses=[ip_address(host)],
+        hostname="Mysa-d4e5f6.local.",
+        name="Mysa-d4e5f6._hap._tcp.local.",
+        port=57959,
+        type="_hap._tcp.local.",
+        properties={
+            "md": model,
+            "id": HKID,
+            "sf": "0" if paired else "1",
+            "c#": "1",
+            "ci": "9",
+        },
+    )
 
 
 def load_json(name: str) -> Any:
@@ -101,6 +126,14 @@ def thermostat_subentry(
         "title": "Living Room",
         "unique_id": DEVICE_ID,
     }
+
+
+def cloud_only_subentry(device_id: str = DEVICE_ID) -> dict[str, Any]:
+    """A thermostat added from the account, not paired locally."""
+    sub = thermostat_subentry(pairing=None)
+    sub["data"][CONF_DEVICE_ID] = device_id
+    sub["unique_id"] = device_id
+    return sub
 
 
 def hub_entry(

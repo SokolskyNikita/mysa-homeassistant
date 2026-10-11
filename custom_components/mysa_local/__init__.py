@@ -103,7 +103,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     async def _prune_pairing_backups_after_start(_event: Event) -> None:
         """Prune backups only when persisted config entries have been loaded."""
-        from .config_flow import configured_hkids
+        from .flows.shared import configured_hkids
         from .pairing_store import async_clear_configured_pairing_backups
 
         configured: set[str] = set()

@@ -1,46 +1,19 @@
-"""Config, subentry, reauth and options flows."""
+"""Initial Mysa setup and discovery flows."""
 
 from __future__ import annotations
 
-from datetime import timedelta
-from ipaddress import ip_address
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from freezegun.api import FrozenDateTimeFactory
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import (
-    CONF_EMAIL,
-    CONF_PASSWORD,
-    CONF_SCAN_INTERVAL,
-    EVENT_HOMEASSISTANT_STARTED,
-)
+from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-from homeassistant.helpers import device_registry as dr, entity_registry as er
-from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 import pytest
-from pytest_homeassistant_custom_component.common import (
-    MockConfigEntry,
-    async_fire_time_changed,
-)
 
-from custom_components.mysa_local import async_setup
-from custom_components.mysa_local.config_flow import (
-    InsecureCodeError,
-    configured_hkids,
-    format_pin,
-)
 from custom_components.mysa_local.const import (
-    CONF_CLOUD_ENABLED,
-    CONF_CLOUD_RUNTIME,
     CONF_DEVICE_ID,
-    CONF_FIRMWARE_INSTALL,
-    CONF_HEATER_WATTS,
-    CONF_LIVE_MODE,
-    CONF_MIGRATE_FROM,
     CONF_PAIRING,
     CONF_REFRESH_TOKEN,
     CONF_SAVE_PASSWORD,
@@ -49,57 +22,21 @@ from custom_components.mysa_local.const import (
     HOMEKIT_MODEL_PATTERNS,
     SUBENTRY_THERMOSTAT,
 )
-from custom_components.mysa_local.pairing_store import (
-    _PAIRING_SESSION,
-    _PENDING_PAIRINGS_STORE,
-    async_clear_configured_pairing_backups,
-    async_load_pending_pairings,
-    pairing_session_id,
-    pairing_store,
-)
-from custom_components.mysa_local.protocols.homekit import (
-    AccessoryInfo,
-    HomeKitConnectionError,
-    HomeKitMalformedPinError,
-)
-from custom_components.mysa_local.protocols.homekit.device import HomeKitDevice
-from custom_components.mysa_local.protocols.homekit.models import HomeKitDiscovery
 
 from .common import (
     DEVICE_ID,
     EMAIL,
     HKID,
+    HOME_ID,
     PAIRING_CODE,
-    PAIRING_DATA,
     PASSWORD,
     REFRESH_TOKEN,
     USER_ID,
     FakeCloud,
+    discovery,
     hub_entry,
-    thermostat_subentry,
 )
 from .conftest import setup_entry
-
-
-def discovery(
-    *, paired: bool = False, host: str = "192.0.2.10", model: str = "BB-V2-0-L"
-) -> ZeroconfServiceInfo:
-    """HomeKit advertisement of the Lite (or another model)."""
-    return ZeroconfServiceInfo(
-        ip_address=ip_address(host),
-        ip_addresses=[ip_address(host)],
-        hostname="Mysa-d4e5f6.local.",
-        name="Mysa-d4e5f6._hap._tcp.local.",
-        port=57959,
-        type="_hap._tcp.local.",
-        properties={
-            "md": model,
-            "id": HKID,
-            "sf": "0" if paired else "1",
-            "c#": "1",
-            "ci": "9",
-        },
-    )
 
 
 @pytest.mark.usefixtures("unpaired_controller")
@@ -194,113 +131,6 @@ async def test_discovery_pair_and_sign_in(
     (subentry,) = result["result"].subentries.values()
     # Named after the thermostat's Mysa name.
     assert subentry.title == "Living Room"
-
-
-@pytest.mark.usefixtures("unpaired_controller")
-async def test_pairing_recovers_after_flow_cancellation_and_store_reload(
-    hass: HomeAssistant,
-) -> None:
-    """A completed HomeKit pairing survives canceling optional cloud setup."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_HOMEKIT}, data=discovery()
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"pairing_code": PAIRING_CODE}
-    )
-    assert result["step_id"] == "cloud_offer"
-    assert (await async_load_pending_pairings(hass))[HKID.lower()][
-        "pairing"
-    ] == PAIRING_DATA
-
-    hass.config_entries.flow.async_abort(result["flow_id"])
-    # A new Store and session ID simulate HA restarting after flow cancellation.
-    hass.data.pop(_PENDING_PAIRINGS_STORE)
-    old_session = (await async_load_pending_pairings(hass))[HKID.lower()]["session"]
-    hass.data.pop(_PAIRING_SESSION)
-    assert pairing_session_id(hass) != old_session
-    assert (await async_load_pending_pairings(hass))[HKID.lower()][
-        "pairing"
-    ] == PAIRING_DATA
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": config_entries.SOURCE_HOMEKIT},
-        data=discovery(paired=True),
-    )
-    assert result["step_id"] == "cloud_offer", result
-
-    # Resume completed without asking for the HomeKit code again.
-    hass.config_entries.flow.async_abort(result["flow_id"])
-    assert (await async_load_pending_pairings(hass))[HKID.lower()][
-        "pairing"
-    ] == PAIRING_DATA
-
-
-@pytest.mark.usefixtures("unpaired_controller")
-async def test_pairing_recovers_after_accessory_discovery_failure(
-    hass: HomeAssistant,
-) -> None:
-    """Persist credentials before the post-pair accessory read can fail."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_HOMEKIT}, data=discovery()
-    )
-    with patch.object(
-        HomeKitDevice,
-        "async_get_info",
-        new_callable=AsyncMock,
-        side_effect=HomeKitConnectionError("device restarted"),
-    ):
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {"pairing_code": PAIRING_CODE}
-        )
-    assert result["errors"] == {"base": "cannot_connect_device"}
-    assert (await async_load_pending_pairings(hass))[HKID.lower()][
-        "pairing"
-    ] == PAIRING_DATA
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"pairing_code": PAIRING_CODE}
-    )
-    assert result["step_id"] == "cloud_offer"
-
-    hass.config_entries.flow.async_abort(result["flow_id"])
-
-
-@pytest.mark.usefixtures("unpaired_controller")
-async def test_pairing_backup_is_pruned_after_startup_loads_entry(
-    hass: HomeAssistant,
-) -> None:
-    """Prune only old backups for pairings in entries loaded from storage."""
-    await pairing_store(hass).async_save(
-        HKID.lower(),
-        PAIRING_DATA,
-        name="Living Room",
-        model="BB-V2-0-L",
-    )
-    other_hkid = "11:11:11:11:11:11"
-    await pairing_store(hass).async_save(
-        other_hkid,
-        {**PAIRING_DATA, "AccessoryPairingID": other_hkid},
-        name="Other Room",
-        model="BB-V2-0-L",
-    )
-    entry = hub_entry(subentries=[thermostat_subentry()])
-    # Represent the entry as it was loaded from HA's already persisted storage.
-    entry.add_to_hass(hass)
-    assert configured_hkids(entry) == {HKID.lower(): next(iter(entry.subentries))}
-    pending = await async_load_pending_pairings(hass)
-    old_session = pending[HKID.lower()]["session"]
-    await async_clear_configured_pairing_backups(hass, set(configured_hkids(entry)))
-    assert set(await async_load_pending_pairings(hass)) == {HKID.lower(), other_hkid}
-
-    hass.data.pop(_PAIRING_SESSION)
-    assert pairing_session_id(hass) != old_session
-
-    assert await async_setup(hass, {})
-    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
-    await hass.async_block_till_done()
-
-    assert set(await async_load_pending_pairings(hass)) == {other_hkid}
 
 
 @pytest.mark.usefixtures("unpaired_controller")
@@ -478,25 +308,6 @@ async def test_sign_in_errors(hass: HomeAssistant, error: str, key: str) -> None
     assert result["errors"] == {"base": key}
 
 
-@pytest.mark.usefixtures("controller")
-async def test_reauth(hass: HomeAssistant, cloud: FakeCloud) -> None:
-    """An expired sign-in asks for the password again."""
-    cloud.refresh_ok = False
-    entry = hub_entry()
-    await setup_entry(hass, entry)
-    flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
-    assert [f["context"]["source"] for f in flows] == ["reauth"]
-    # Local control keeps working meanwhile.
-    assert hass.states.get("climate.living_room").state == "heat"
-
-    cloud.refresh_ok = True
-    result = await hass.config_entries.flow.async_configure(
-        flows[0]["flow_id"], {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD}
-    )
-    assert result["reason"] == "reauth_successful"
-    assert entry.data[CONF_REFRESH_TOKEN] == REFRESH_TOKEN
-
-
 async def test_sign_in_saves_password_when_asked(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
@@ -532,419 +343,106 @@ async def test_sign_in_saves_password_when_asked(
     }
 
 
-@pytest.mark.usefixtures("controller")
-async def test_saved_password_renews_expired_sign_in(
-    hass: HomeAssistant, cloud: FakeCloud
-) -> None:
-    """With the password saved, an expired refresh token is replaced silently."""
-    cloud.refresh_ok = False
-    entry = hub_entry(password=PASSWORD, refresh_token="expired-token")
-    await setup_entry(hass, entry)
-    assert hass.config_entries.flow.async_progress_by_handler(DOMAIN) == []
-    assert entry.data[CONF_REFRESH_TOKEN] == REFRESH_TOKEN  # from the new sign-in
-    assert entry.data[CONF_PASSWORD] == PASSWORD
-    assert hass.states.get("switch.living_room_button_lock").state == "off"
-
-
-@pytest.mark.usefixtures("controller")
-async def test_saved_password_that_stopped_working(
-    hass: HomeAssistant, cloud: FakeCloud
-) -> None:
-    """A changed password still ends in reauth, which saves the new one."""
-    cloud.refresh_ok = False
-    cloud.password = "changed-in-the-app"
-    entry = hub_entry(password=PASSWORD, refresh_token="expired-token")
-    await setup_entry(hass, entry)
-    (flow,) = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
-    assert flow["context"]["source"] == "reauth"
-
-    result = await hass.config_entries.flow.async_configure(
-        flow["flow_id"], {CONF_EMAIL: EMAIL, CONF_PASSWORD: "changed-in-the-app"}
-    )
-    assert result["reason"] == "reauth_successful"
-    assert entry.data[CONF_PASSWORD] == "changed-in-the-app"
-    assert entry.data[CONF_REFRESH_TOKEN] == REFRESH_TOKEN
-
-
-@pytest.mark.usefixtures("controller")
-async def test_reauth_keeps_password_unsaved(
-    hass: HomeAssistant, cloud: FakeCloud
-) -> None:
-    """Without a saved password, reauth doesn't start saving one."""
-    cloud.refresh_ok = False
-    entry = hub_entry()
-    await setup_entry(hass, entry)
-    (flow,) = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
-    cloud.refresh_ok = True
-    await hass.config_entries.flow.async_configure(
-        flow["flow_id"], {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD}
-    )
-    assert CONF_PASSWORD not in entry.data
-
-
-@pytest.mark.usefixtures("controller")
-@pytest.mark.parametrize("path", [f"/capabilities/{DEVICE_ID}", "/state/batch"])
-async def test_refused_request_keeps_sign_in(
-    hass: HomeAssistant, cloud: FakeCloud, path: str
-) -> None:
-    """A 403 from one of Mysa's routes doesn't ask for the password again."""
-    cloud.path_status[path] = 403
-    await setup_entry(hass, hub_entry())
-    assert not hass.config_entries.flow.async_progress_by_handler(DOMAIN)
-    assert hass.states.get("climate.living_room").state == "heat"
-
-
-@pytest.mark.usefixtures("controller")
-async def test_options_cloud_off_hides_cloud_entities(
-    hass: HomeAssistant, cloud: FakeCloud, freezer: FrozenDateTimeFactory
-) -> None:
-    """Cloud off: no cloud calls, cloud-only entities disabled with their settings.
-
-    Turning the cloud back on re-enables exactly those, not one the user
-    disabled.
-    """
-    entry = hub_entry()
-    await setup_entry(hass, entry)
-    assert hass.states.get("switch.living_room_button_lock") is not None
-    ent_reg = er.async_get(hass)
-    ent_reg.async_update_entity("switch.living_room_button_lock", name="Kid lock")
-    ent_reg.async_update_entity(
-        "number.living_room_wake_brightness",
-        disabled_by=er.RegistryEntryDisabler.USER,
-    )
-
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] is FlowResultType.MENU
-    assert result["menu_options"] == ["settings", "account", "sign_out"]
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"next_step_id": "settings"}
-    )
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {
-            CONF_CLOUD_ENABLED: False,
-            CONF_SCAN_INTERVAL: 120,
-            CONF_LIVE_MODE: False,
-            "advanced": {CONF_FIRMWARE_INSTALL: False},
-        },
-    )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    await hass.async_block_till_done()
-    assert entry.options[CONF_CLOUD_ENABLED] is False
-    assert entry.state is ConfigEntryState.LOADED
-
-    lock = ent_reg.async_get("switch.living_room_button_lock")
-    assert lock is not None
-    assert lock.disabled_by is er.RegistryEntryDisabler.INTEGRATION
-    assert lock.name == "Kid lock"
-    assert hass.states.get("switch.living_room_button_lock") is None
-    assert entry.data[CONF_REFRESH_TOKEN] == REFRESH_TOKEN  # sign-in kept
-
-    calls = cloud.mock.call_count
-    async_fire = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
-    assert async_fire.cloud is None
-    await hass.async_block_till_done()
-    assert cloud.mock.call_count == calls
-
-    hass.config_entries.async_update_entry(
-        entry, options={**entry.options, CONF_CLOUD_ENABLED: True}
-    )
-    await hass.async_block_till_done()
-    freezer.tick(timedelta(seconds=31))  # Home Assistant's reload after re-enabling
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
-    lock = ent_reg.async_get("switch.living_room_button_lock")
-    assert lock is not None
-    assert lock.disabled_by is None
-    assert lock.name == "Kid lock"
-    assert lock.options.get(DOMAIN) is None
-    assert hass.states.get("switch.living_room_button_lock") is not None
-    wake = ent_reg.async_get("number.living_room_wake_brightness")
-    assert wake is not None
-    assert wake.disabled_by is er.RegistryEntryDisabler.USER
-    wifi = ent_reg.async_get("sensor.living_room_wi_fi_signal")
-    assert wifi is not None
-    assert wifi.disabled_by is er.RegistryEntryDisabler.INTEGRATION  # still default
-
-
-@pytest.mark.usefixtures("controller", "cloud")
-async def test_options_live_mode(hass: HomeAssistant) -> None:
-    """Live mode is off by default and is switched on in the settings form."""
-    entry = hub_entry()
-    await setup_entry(hass, entry)
-    assert entry.runtime_data.cloud is not None
-    assert entry.runtime_data.cloud.live_mode is False
-
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"next_step_id": "settings"}
-    )
-    schema = result["data_schema"].schema
-    field = next(key for key in schema if key == CONF_LIVE_MODE)
-    assert field.description == {"suggested_value": False}
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {
-            CONF_CLOUD_ENABLED: True,
-            CONF_SCAN_INTERVAL: 60,
-            CONF_LIVE_MODE: True,
-            "advanced": {CONF_FIRMWARE_INSTALL: False},
-        },
-    )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    await hass.async_block_till_done()
-    assert entry.options[CONF_LIVE_MODE] is True
-    assert entry.state is ConfigEntryState.LOADED
-    assert entry.runtime_data.cloud is not None
-    assert entry.runtime_data.cloud.live_mode is True
-
-
-@pytest.mark.usefixtures("controller")
-async def test_options_live_mode_needs_sign_in(hass: HomeAssistant) -> None:
-    """Without a Mysa sign-in, the settings form leaves out the cloud switches."""
-    entry = hub_entry(signed_in=False)
-    await setup_entry(hass, entry)
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"next_step_id": "settings"}
-    )
-    schema = result["data_schema"].schema
-    assert CONF_LIVE_MODE not in schema
-    assert CONF_CLOUD_ENABLED not in schema
-
-
-@pytest.mark.usefixtures("controller")
-async def test_options_sign_out_and_in(hass: HomeAssistant, cloud: FakeCloud) -> None:
-    """Sign out deletes the token; sign in brings it back."""
-    entry = hub_entry()
-    await setup_entry(hass, entry)
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"next_step_id": "sign_out"}
-    )
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {})
-    await hass.async_block_till_done()
-    assert CONF_REFRESH_TOKEN not in entry.data
-
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["menu_options"] == ["settings", "sign_in"]
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"next_step_id": "sign_in"}
-    )
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD, CONF_SAVE_PASSWORD: True},
-    )
-    await hass.async_block_till_done()
-    assert entry.data[CONF_REFRESH_TOKEN] == REFRESH_TOKEN
-    assert entry.data[CONF_PASSWORD] == PASSWORD
-    assert hass.states.get("switch.living_room_button_lock") is not None
-
-    # The options page shows the choice; signing out forgets the password too.
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert "☑ **Password saved.**" in result["description_placeholders"]["account"]
-    assert "sign out and sign in again" in result["description_placeholders"]["account"]
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"next_step_id": "sign_out"}
-    )
-    await hass.config_entries.options.async_configure(result["flow_id"], {})
-    await hass.async_block_till_done()
-    assert CONF_PASSWORD not in entry.data
-
-
-@pytest.mark.usefixtures("controller")
-async def test_subentry_reconfigure_wattage(hass: HomeAssistant) -> None:
-    """Setting a wattage adds the energy sensor."""
-    entry = hub_entry(signed_in=False)
-    await setup_entry(hass, entry)
-    assert hass.states.get("sensor.living_room_heater_energy_today") is None
-    (subentry,) = entry.subentries.values()
-
-    result = await entry.start_subentry_reconfigure_flow(hass, subentry.subentry_id)
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "reconfigure"
-    # Signed out: nothing to do with the account; it's paired already.
-    assert result["menu_options"] == ["settings"]
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"next_step_id": "settings"}
-    )
-    assert result["step_id"] == "settings"
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {CONF_HEATER_WATTS: 1500, CONF_CLOUD_RUNTIME: False}
-    )
-    assert result["reason"] == "reconfigure_successful"
-    await hass.async_block_till_done()
-    assert subentry.data[CONF_HEATER_WATTS] == 1500
-    assert hass.states.get("sensor.living_room_heater_energy_today").state == "0.0"
-    power = hass.states.get("sensor.living_room_heater_power")
-    assert power.attributes["unit_of_measurement"] == "W"
-    assert power.state in ("0.0", "1500.0")  # follows the relay; see test_features
-
-
 @pytest.mark.usefixtures("unpaired_controller")
-async def test_subentry_add_by_pairing(hass: HomeAssistant) -> None:
-    """Add thermostat from the integration page."""
-    entry = hub_entry(signed_in=False, subentries=[])
-    entry.add_to_hass(hass)
-    result = await hass.config_entries.subentries.async_init(
-        (entry.entry_id, SUBENTRY_THERMOSTAT),
-        context={"source": config_entries.SOURCE_USER},
-    )
-    assert result["type"] is FlowResultType.MENU
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"next_step_id": "pick"}
-    )
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"device": HKID.lower()}
-    )
-    result = await hass.config_entries.subentries.async_configure(
-        result["flow_id"], {"pairing_code": PAIRING_CODE}
-    )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    (subentry,) = entry.subentries.values()
-    assert subentry.unique_id == DEVICE_ID
-
-
-async def test_takeover_from_homekit_device(
-    hass: HomeAssistant, controller: object
+@pytest.mark.parametrize("add", [True, False])
+async def test_setup_offers_account_after_sign_in(
+    hass: HomeAssistant, cloud: FakeCloud, add: bool
 ) -> None:
-    """Move a Lite from HomeKit Device, keeping its entity IDs."""
-    hkc = MockConfigEntry(
-        domain="homekit_controller",
-        title="Mysa-d4e5f6",
-        data=dict(PAIRING_DATA),
-        unique_id=HKID.lower(),
-    )
-    hkc.add_to_hass(hass)
-    dev_reg = dr.async_get(hass)
-    ent_reg = er.async_get(hass)
-    device = dev_reg.async_get_or_create(
-        config_entry_id=hkc.entry_id,
-        identifiers={("homekit_controller", "x")},
-        manufacturer="Empowered Homes Inc.",
-        model="BB-V2-0-L",
-        name="Mysa-d4e5f6",
-    )
-    old_climate = ent_reg.async_get_or_create(
-        "climate",
-        "homekit_controller",
-        "x_1_256",
-        config_entry=hkc,
-        device_id=device.id,
-        suggested_object_id="mysa_d4e5f6_thermostat",
-    )
-    old_temp = ent_reg.async_get_or_create(
-        "sensor",
-        "homekit_controller",
-        "x_1_261",
-        config_entry=hkc,
-        device_id=device.id,
-        original_device_class="temperature",
-        suggested_object_id="mysa_d4e5f6_current_temperature",
-    )
-
+    """Paired locally, then signed in: offered to put it on the account."""
+    cloud.remove_from_account()
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert "takeover" in result["menu_options"]
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"next_step_id": "takeover"}
+        result["flow_id"], {"next_step_id": "pick"}
     )
-    assert result["step_id"] == "takeover_confirm"
-    info = AccessoryInfo(name="Mysa-d4e5f6", model="BB-V2-0-L", mac=DEVICE_ID)
-
-    async def _copy_pairing_with_backup(
-        _hass: HomeAssistant,
-        _source: dict[str, object],
-        *,
-        on_pairing_saved: object,
-    ) -> tuple[dict[str, object], AccessoryInfo]:
-        await on_pairing_saved(PAIRING_DATA)  # type: ignore[operator]
-        return dict(PAIRING_DATA), info
-
-    with patch(
-        "custom_components.mysa_local.config_flow.async_copy_pairing",
-        AsyncMock(side_effect=_copy_pairing_with_backup),
-    ):
-        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-    assert result["step_id"] == "cloud_offer"
-
-    # Stands in for HomeKit Device's own cleanup (it unpairs its controller).
-    with patch.object(hkc, "async_remove", AsyncMock()):
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"device": HKID.lower()}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"pairing_code": PAIRING_CODE}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "cloud_login"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD}
+    )
+    assert result["step_id"] == "account"
+    assert result["errors"] == {}
+    with patch("custom_components.mysa_local.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {"next_step_id": "finish"}
+            result["flow_id"], {"add_to_account": add}
         )
-        await hass.async_block_till_done()
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert (await async_load_pending_pairings(hass))[HKID.lower()][
-        "pairing"
-    ] == PAIRING_DATA
-    entry = result["result"]
-    (subentry,) = entry.subentries.values()
-    assert CONF_MIGRATE_FROM not in subentry.data
-
-    # Same entity IDs, now ours; the HomeKit Device entry is gone.
-    assert hass.config_entries.async_get_entry(hkc.entry_id) is None
-    climate = ent_reg.async_get(old_climate.entity_id)
-    assert climate is not None
-    assert climate.platform == DOMAIN
-    assert climate.unique_id == f"{DEVICE_ID}_climate"
-    assert ent_reg.async_get(old_temp.entity_id).unique_id == f"{DEVICE_ID}_temperature"
-    assert hass.states.get(old_climate.entity_id).state == "heat"
-
-
-@pytest.mark.parametrize(
-    ("typed", "expected"),
-    [
-        ("24680135", "246-80-135"),
-        ("246-80-135", "246-80-135"),
-        ("2468 0135", "246-80-135"),
-        (" 246 80 135 ", "246-80-135"),
-        ("246.80.135", "246-80-135"),
-        ("2468-0135", "246-80-135"),
-    ],
-)
-def test_format_pin_accepts_any_separators(typed: str, expected: str) -> None:
-    """Only the digits matter."""
-    assert format_pin(typed) == expected
-
-
-@pytest.mark.parametrize("typed", ["", "1234567", "123456789", "abc-de-fgh"])
-def test_format_pin_needs_eight_digits(typed: str) -> None:
-    """Anything other than 8 digits is rejected."""
-    with pytest.raises(HomeKitMalformedPinError):
-        format_pin(typed)
-
-
-def test_format_pin_rejects_trivial_codes() -> None:
-    """HomeKit never uses codes like 111-11-111."""
-    with pytest.raises(InsecureCodeError):
-        format_pin("1111 1111")
+    if not add:
+        assert cloud.claims == []
+        return
+    (claim,) = cloud.claims
+    # The smaller claim: a thermostat that was on the account before keeps its
+    # heater type, display units and other settings.
+    assert claim.pop("LastPaired") > 0
+    assert claim == {
+        "Id": DEVICE_ID,
+        "Name": "Mysa-d4e5f6",
+        "Model": "BB-V2-0-L",
+        "Home": HOME_ID,
+        "TimeZone": str(hass.config.time_zone),
+        "schedGlobalOffset": 0,
+    }
+    assert cloud.on_account
 
 
 @pytest.mark.usefixtures("unpaired_controller")
-async def test_pairing_retries_after_connection_error(hass: HomeAssistant) -> None:
-    """A dozing thermostat doesn't end the flow; the user wakes it and retries."""
-    real_start = HomeKitDiscovery.async_start_pairing
-    calls = 0
-
-    async def flaky_start(discovery: HomeKitDiscovery) -> object:
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            raise HomeKitConnectionError("HAP server restarting")
-        return await real_start(discovery)
-
-    with patch.object(HomeKitDiscovery, "async_start_pairing", flaky_start):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": config_entries.SOURCE_HOMEKIT}, data=discovery()
-        )
+async def test_setup_from_account_then_pair_locally(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """Picked from the account, then paired with the code as well."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "cloud_login"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"devices": [DEVICE_ID]}
+    )
+    assert result["step_id"] == "local_offer"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "local_find"}
+    )
+    assert result["step_id"] == "pair"
+    with patch("custom_components.mysa_local.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"pairing_code": PAIRING_CODE}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {"base": "cannot_connect_device"}
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {"pairing_code": PAIRING_CODE}
-        )
-    assert result["step_id"] == "cloud_offer"
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    (subentry,) = result["result"].subentries.values()
+    assert subentry.title == "Living Room"
+    assert subentry.data[CONF_PAIRING]["AccessoryPairingID"] == HKID
+
+
+@pytest.mark.usefixtures("unpaired_controller")
+async def test_discovered_thermostat_offered_the_account(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """A Mysa discovered after setup is offered the account too."""
+    cloud.remove_from_account()
+    entry = hub_entry(subentries=[])
+    await setup_entry(hass, entry)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_HOMEKIT}, data=discovery()
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"pairing_code": PAIRING_CODE}
+    )
+    assert result["step_id"] == "account"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"add_to_account": True}
+    )
+    assert result["reason"] == "thermostat_added"
+    assert cloud.on_account
+    assert len(entry.subentries) == 1

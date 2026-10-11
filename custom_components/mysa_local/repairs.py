@@ -11,8 +11,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 
 from .account import ISSUE_CLOUD_ONLY, account_client, async_refresh_account
-from .config_flow import ThermostatSteps
 from .const import CONF_DEVICE_ID, CONF_MODEL, CONF_PAIRING
+from .flows.thermostat import ThermostatSteps
 from .protocols.cloud import MysaClient
 from .protocols.homekit import AccessoryInfo
 
@@ -22,8 +22,8 @@ class _ThermostatRepairFlow(ThermostatSteps, RepairsFlow):
 
     def __init__(self, data: Mapping[str, Any]) -> None:
         """Remember which thermostat the issue is about."""
+        super().__init__()
         self._data = dict(data)
-        self._discoveries = {}
 
     def _entry(self) -> ConfigEntry | None:
         return self.hass.config_entries.async_get_entry(str(self._data["entry_id"]))
@@ -48,12 +48,12 @@ class AccountRepairFlow(_ThermostatRepairFlow):
         subentry = self._subentry()
         if subentry is None or self._account_client() is None:
             return self.async_abort(reason="not_available")
-        self._account_device = (
+        self._thermostat.account_device = (
             subentry.data[CONF_DEVICE_ID],
             subentry.data.get(CONF_MODEL),
             subentry.title,
         )
-        self._account_optional = False
+        self._thermostat.account_optional = False
         return await self.async_step_account()  # type: ignore[no-any-return]
 
     async def _async_account_done(self) -> FlowResult:
@@ -72,8 +72,8 @@ class LocalPairRepairFlow(_ThermostatRepairFlow):
         subentry = self._subentry()
         if subentry is None:
             return self.async_abort(reason="not_available")
-        self._target_device_id = subentry.data[CONF_DEVICE_ID]
-        self._target_name = subentry.title
+        self._thermostat.target_device_id = subentry.data[CONF_DEVICE_ID]
+        self._thermostat.target_name = subentry.title
         return await self.async_step_local_find()  # type: ignore[no-any-return]
 
     async def _async_thermostat_ready(

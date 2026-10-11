@@ -74,8 +74,10 @@ The integration layer owns lifecycle, policy, persistence, and presentation:
   storage. The HomeKit pairing flow receives pairing data and calls the HA
   persistence callback as soon as the accessory accepts a pairing, before any
   further network read.
-- `config_flow.py`, `schedule.py`, and platform entities implement setup,
-  schedule workflows, and the Home Assistant user interface.
+- `config_flow.py` owns initial setup and HomeKit discovery, and registers the
+  options and thermostat subentry handlers from `flows/`.
+- `schedule.py` and platform entities implement schedule workflows and the
+  Home Assistant user interface.
 
 Entities should ask the thermostat layer to set brightness, a temperature
 limit, a button lock, or another device setting. They should not construct
@@ -88,6 +90,34 @@ Cloud response models and enums are currently public types from
 display. They describe the cloud's data shape. A future domain-model layer
 could make the integration independent of those response models, but that is a
 separate refactor from separating the two transports.
+
+### Setup and management flows
+
+The flow modules separate the three entry points while sharing thermostat
+operations:
+
+- `config_flow.py` assembles the initial entry, including optional cloud
+  sign-in and the queues of thermostats to pair or add to the account.
+- `flows/subentry.py` adds and reconfigures individual thermostats, including
+  names, account membership, local pairing, and heater settings.
+- `flows/options.py` manages integration settings, the account overview, and
+  sign-in/sign-out. `flows/account.py` owns shared sign-in schemas, credential
+  handling, and the reauthentication steps inherited by the initial flow.
+- `flows/thermostat.py` provides discovery, pairing recovery, HomeKit Device
+  takeover, and account-linking steps reused by setup, subentries, and repairs.
+- `flows/state.py` defines `ThermostatFlowState`. Each flow initializes its own
+  instance through `ThermostatSteps.__init__`, so selections, pairing sessions,
+  discovery maps, pending recoveries, and account choices have explicit defaults
+  and cannot leak between flows. Initial-setup queues and pending subentries
+  remain on the flow that owns them.
+- `flows/shared.py` contains presentation, PIN validation, and entry helpers.
+  Runtime startup imports its pairing-ID helper directly without loading the
+  config-flow registration module.
+
+Tests follow the same boundaries: initial setup in `test_config_flow.py`,
+thermostat management in `test_subentry_flow.py`, options and authentication in
+`test_options_flow.py`, and shared thermostat steps in `test_thermostat_flow.py`.
+Account issues and their repair flows are covered by `test_repairs.py`.
 
 ## Testing the boundaries
 

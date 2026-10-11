@@ -1,6 +1,6 @@
 [project]
 name = "mysa-homeassistant"
-version = "0.4.2"
+version = "0.4.3"
 description = "Local-first Home Assistant integration for Mysa smart thermostats"
 readme = "README.md"
 license = "MIT"
@@ -36,6 +36,7 @@ source = ["custom_components.mysa_local"]
 
 [tool.mypy]
 python_version = "3.14"
+explicit_package_bases = true
 strict = true
 warn_unreachable = true
 disallow_any_generics = true
@@ -45,7 +46,10 @@ files = ["custom_components/mysa_local"]
 untyped_calls_exclude = ["aiohomekit"]
 
 [[tool.mypy.overrides]]
-module = ["mysa_local.config_flow", "custom_components.mysa_local.config_flow"]
+module = [
+    "custom_components.mysa_local.config_flow",
+    "custom_components.mysa_local.flows.subentry",
+]
 warn_return_any = false
 
 [tool.ruff]

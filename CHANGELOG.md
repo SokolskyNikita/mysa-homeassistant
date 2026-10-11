@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3 (2026-10-11)
+
+- Separated initial setup, thermostat subentry management, and integration options/account management into focused flow modules. Existing setup steps, settings, and credential formats are preserved.
+- Made shared thermostat state explicit and local to each setup, subentry, or repair flow, including discovery, pairing recovery, and account-linking choices.
+- Split flow tests along the same boundaries, added a state-isolation regression test, and documented flow ownership.
+
+Validated with 218 automated tests (90% coverage), Ruff, and mypy. Live sanity checks on Home Assistant 2026.10.1 covered the setup guard, integration options/account menus, thermostat add/reconfigure forms, both Baseboard Lite local connections, and cloud updates. All 42 active entities were available; stored configuration, entity IDs, and thermostat setpoints were unchanged.
+
 ## 0.4.2 (2026-10-11)
 
 - Separated cloud HTTPS/authentication and HomeKit communications into independent protocol packages. HomeKit continues to use aiohomekit. Protocol code has no Home Assistant imports or dependency on the other protocol.

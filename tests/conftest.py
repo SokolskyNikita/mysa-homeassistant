@@ -43,7 +43,7 @@ async def controller() -> AsyncGenerator[FakeController]:
             AsyncMock(return_value=protocol),
         ),
         patch(
-            "custom_components.mysa_local.config_flow.async_get_controller",
+            "custom_components.mysa_local.flows.thermostat.async_get_controller",
             AsyncMock(return_value=protocol),
         ),
         patch(
@@ -67,7 +67,9 @@ def unpaired_controller() -> Generator[None]:
 
     with (
         patch("custom_components.mysa_local.async_get_controller", _get),
-        patch("custom_components.mysa_local.config_flow.async_get_controller", _get),
+        patch(
+            "custom_components.mysa_local.flows.thermostat.async_get_controller", _get
+        ),
         patch(
             "custom_components.mysa_local.homekit_adapter.async_get_controller", _get
         ),
