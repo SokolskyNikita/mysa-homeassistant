@@ -368,6 +368,56 @@
         "name": "Schedule hold"
       }
     },
+    "climate": {
+      "thermostat": {
+        "state_attributes": {
+          "fan_mode": {
+            "state": {
+              "auto": "Auto",
+              "low": "Low",
+              "medium": "Medium",
+              "high": "High",
+              "speed_1": "Speed 1",
+              "speed_2": "Speed 2",
+              "speed_3": "Speed 3",
+              "speed_4": "Speed 4",
+              "speed_5": "Speed 5",
+              "speed_6": "Speed 6",
+              "speed_7": "Speed 7",
+              "sleep": "Sleep"
+            }
+          },
+          "swing_mode": {
+            "state": {
+              "off": "Off",
+              "on": "On",
+              "auto": "Auto",
+              "position_1": "Position 1",
+              "position_2": "Position 2",
+              "position_3": "Position 3",
+              "position_4": "Position 4",
+              "position_5": "Position 5",
+              "position_6": "Position 6",
+              "position_7": "Position 7"
+            }
+          },
+          "swing_horizontal_mode": {
+            "state": {
+              "off": "Off",
+              "on": "On",
+              "auto": "Auto",
+              "position_1": "Position 1",
+              "position_2": "Position 2",
+              "position_3": "Position 3",
+              "position_4": "Position 4",
+              "position_5": "Position 5",
+              "position_6": "Position 6",
+              "position_7": "Position 7"
+            }
+          }
+        }
+      }
+    },
     "number": {
       "brightness_active": {
         "name": "Wake brightness"

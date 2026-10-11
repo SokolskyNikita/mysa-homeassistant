@@ -50,7 +50,7 @@ Choose **Move a thermostat from the HomeKit Device integration**. Mysa Local add
 | Mysa Baseboard Lite | `BB-V2-0-L` | ✅ | ✅ | Tested (firmware 3.17.5.13) |
 | Mysa Baseboard V1 / V2 | `BB-V1-x`, `BB-V2-0` | ✅ | ✅ | Untested |
 | Mysa In-Floor | `INF-V1-0` | ✅ | ✅ | Untested |
-| Mysa for Mini-Split AC | `AC-V1-0` | ✅ | ✅ (no fan speed or swing yet) | Untested |
+| Mysa for Mini-Split AC | `AC-V1-0` | ✅ | ✅ | Untested |
 | Mysa for Central HVAC | `ST-V1-0` | ❌ | ❌ | Not supported |
 | Mysa Baseboard V3 | `BB-V3-0` | ❌ | ❌ | Not supported |
 | Mysa Climate Sensor | `CS-V1-0` | ❌ | ❌ | Not supported |
@@ -61,7 +61,7 @@ To finish setup, the Baseboard V3, Central HVAC and Climate Sensor need a creden
 
 | Entity | Source | Notes |
 |---|---|---|
-| Climate | Local, cloud fallback | Setpoint, mode, room temperature and the real heating state. |
+| Climate | Local, cloud fallback | Setpoint, mode, room temperature and the real heating state. On a Mini-Split AC, also fan speed and vertical and horizontal swing (cloud), with the options its remote has in the current mode. |
 | Temperature | Local, cloud fallback | |
 | Humidity | Cloud | |
 | Heating runtime today | Local or cloud | Resets at midnight. |
@@ -172,7 +172,7 @@ The cloud client in `custom_components/mysa_local/api/` has no Home Assistant im
 | Power and energy | Estimated from the heater wattage you enter | ❌ | Measured on the Baseboard V1, estimated on others | Measured on the Baseboard V1, estimated on others |
 | Identify | ✅ | ✅ | ❌ | ❌ |
 | Add or remove a thermostat on the Mysa account | ✅ | ❌ | ❌ | ❌ |
-| Mini-split AC fan speed and swing | ❌ | ❌ | ✅ | Fan speed only |
+| Mini-split AC fan speed and swing | ✅ | ❌ | ✅ | Fan speed only |
 | In-Floor floor sensor | ❌ | ❌ | ✅ | ✅ |
 | Models tested | Baseboard Lite | Any Mysa with HomeKit | Baseboard V1/V2/Lite, In-Floor, AC; Central HVAC needs testing | Baseboard V1/V2/Lite, In-Floor, AC |
 | Oldest Home Assistant supported | 2026.9 | — | 2024.1 | — |

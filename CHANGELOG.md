@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Mini-Split AC fan speed and swing** on the climate entity, over the cloud (HomeKit doesn't have them). Fan speed, vertical swing and horizontal swing each appear when the AC's remote has them in the current mode, with only the options it has (auto/low/medium/high or auto/1–7/sleep; off, on, auto and fixed positions), and are hidden while the AC is off because a change would switch it on. Remotes that only have a swing toggle button aren't driven. Built from Mysa's app 4.20.1 code and not yet tested on an AC.
+
 ## 0.3.1 (2026-10-11)
 
 - **Live mode during local outages** is now an option, off by default (integration options → **Cloud and polling**). On: while a thermostat can't be reached on your network, Mysa is asked to have it report every ~5 s and the cloud is read every 10 s, as before. Off: no live mode requests, and a thermostat on the cloud is read at the normal poll interval, so its readings can be a few minutes old.

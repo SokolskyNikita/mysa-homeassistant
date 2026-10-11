@@ -8,6 +8,12 @@ from typing import Any
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     ATTR_HVAC_MODE,
+    FAN_AUTO,
+    FAN_HIGH,
+    FAN_LOW,
+    FAN_MEDIUM,
+    SWING_OFF,
+    SWING_ON,
     ClimateEntityFeature,
     HVACAction,
     HVACMode,
@@ -16,7 +22,7 @@ from homeassistant.const import ATTR_TEMPERATURE, PRECISION_TENTHS, UnitOfTemper
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .api import Mode
+from .api import SWING_HORIZONTAL, SWING_VERTICAL, AcFan, Mode, Swing
 from .data import MysaConfigEntry
 from .entity import MysaEntity, async_add_when_ready
 from .schedule import (
@@ -43,6 +49,23 @@ MODE_TO_HVAC: dict[Mode, HVACMode] = {
     Mode.DRY: HVACMode.DRY,
 }
 HVAC_TO_MODE = {v: k for k, v in MODE_TO_HVAC.items()}
+# Fan and swing names; the integration's translations label the custom ones.
+FAN_NAMES: dict[AcFan, str] = {
+    AcFan.AUTO: FAN_AUTO,
+    AcFan.LOW: FAN_LOW,
+    AcFan.MEDIUM: FAN_MEDIUM,
+    AcFan.HIGH: FAN_HIGH,
+    **{AcFan[f"SPEED_{n}"]: f"speed_{n}" for n in range(1, 8)},
+    AcFan.SLEEP: "sleep",
+}
+FAN_BY_NAME = {v: k for k, v in FAN_NAMES.items()}
+SWING_NAMES: dict[Swing, str] = {
+    Swing.OFF: SWING_OFF,
+    Swing.ON: SWING_ON,
+    Swing.AUTO: "auto",
+    **{Swing[f"POSITION_{n}"]: f"position_{n}" for n in range(1, 8)},
+}
+SWING_BY_NAME = {v: k for k, v in SWING_NAMES.items()}
 ACTION_TO_HVAC = {
     ACTION_OFF: HVACAction.OFF,
     ACTION_IDLE: HVACAction.IDLE,
@@ -64,6 +87,7 @@ class MysaClimate(MysaEntity, ClimateEntity):
     """A Mysa thermostat."""
 
     _attr_name = None
+    _attr_translation_key = "thermostat"
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_precision = PRECISION_TENTHS
 
@@ -73,10 +97,17 @@ class MysaClimate(MysaEntity, ClimateEntity):
 
     @property
     def supported_features(self) -> ClimateEntityFeature:
-        """Setpoint plus on/off."""
+        """Setpoint and on/off, plus fan and swing on a Mini-Split AC."""
         features = ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
         if self.thermostat.mode not in (Mode.FAN_ONLY, Mode.DRY):
             features |= ClimateEntityFeature.TARGET_TEMPERATURE
+        # Mini-Split AC only, in modes where its remote has them.
+        if self.thermostat.fan_speeds:
+            features |= ClimateEntityFeature.FAN_MODE
+        if self.thermostat.swing_options(SWING_VERTICAL):
+            features |= ClimateEntityFeature.SWING_MODE
+        if self.thermostat.swing_options(SWING_HORIZONTAL):
+            features |= ClimateEntityFeature.SWING_HORIZONTAL_MODE
         return features
 
     @property
@@ -117,6 +148,40 @@ class MysaClimate(MysaEntity, ClimateEntity):
         return self.thermostat.target_temperature
 
     @property
+    def fan_modes(self) -> list[str]:
+        """The AC's fan speeds in the current mode."""
+        return [FAN_NAMES[s] for s in self.thermostat.fan_speeds]
+
+    @property
+    def fan_mode(self) -> str | None:
+        """The AC's fan speed."""
+        speed = self.thermostat.fan_speed
+        return FAN_NAMES[speed] if speed is not None else None
+
+    @property
+    def swing_modes(self) -> list[str]:
+        """The AC's vertical swing settings in the current mode."""
+        return [SWING_NAMES[s] for s in self.thermostat.swing_options(SWING_VERTICAL)]
+
+    @property
+    def swing_mode(self) -> str | None:
+        """The AC's vertical swing."""
+        value = self.thermostat.swing(SWING_VERTICAL)
+        return SWING_NAMES[value] if value is not None else None
+
+    @property
+    def swing_horizontal_modes(self) -> list[str]:
+        """The AC's horizontal swing settings in the current mode."""
+        options = self.thermostat.swing_options(SWING_HORIZONTAL)
+        return [SWING_NAMES[s] for s in options]
+
+    @property
+    def swing_horizontal_mode(self) -> str | None:
+        """The AC's horizontal swing."""
+        value = self.thermostat.swing(SWING_HORIZONTAL)
+        return SWING_NAMES[value] if value is not None else None
+
+    @property
     def min_temp(self) -> float:
         """Lowest setpoint (the hardware limit when the cloud knows it)."""
         return self.thermostat.setpoint_range[0]
@@ -141,6 +206,20 @@ class MysaClimate(MysaEntity, ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Change the mode."""
         await self.thermostat.async_set_mode(HVAC_TO_MODE[hvac_mode])
+
+    async def async_set_fan_mode(self, fan_mode: str) -> None:
+        """Change the AC's fan speed."""
+        await self.thermostat.async_set_fan_speed(FAN_BY_NAME[fan_mode])
+
+    async def async_set_swing_mode(self, swing_mode: str) -> None:
+        """Change the AC's vertical swing."""
+        await self.thermostat.async_set_swing(SWING_VERTICAL, SWING_BY_NAME[swing_mode])
+
+    async def async_set_swing_horizontal_mode(self, swing_horizontal_mode: str) -> None:
+        """Change the AC's horizontal swing."""
+        await self.thermostat.async_set_swing(
+            SWING_HORIZONTAL, SWING_BY_NAME[swing_horizontal_mode]
+        )
 
     async def async_turn_on(self) -> None:
         """Turn on in the first non-off mode (heat on heaters)."""

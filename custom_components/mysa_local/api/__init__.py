@@ -9,14 +9,18 @@ from .client import MysaClient, iso_utc
 from .const import (
     MODEL_FAMILIES,
     MODEL_NAMES,
+    SWING_HORIZONTAL,
+    SWING_VERTICAL,
     TESTED_MODELS,
     WIFI_ONLY_FAMILIES,
+    AcFan,
     ButtonLock,
     ChangeSource,
     DutyCycleOpt,
     HeaterType,
     Mode,
     ModelFamily,
+    Swing,
     model_family,
 )
 from .exceptions import (
@@ -44,8 +48,11 @@ from .models import (
 __all__ = [
     "MODEL_FAMILIES",
     "MODEL_NAMES",
+    "SWING_HORIZONTAL",
+    "SWING_VERTICAL",
     "TESTED_MODELS",
     "WIFI_ONLY_FAMILIES",
+    "AcFan",
     "Bootstrap",
     "ButtonLock",
     "Capabilities",
@@ -68,6 +75,7 @@ __all__ = [
     "MysaRateLimitError",
     "MysaUnsupportedChallengeError",
     "StateChange",
+    "Swing",
     "Tokens",
     "UsageBucket",
     "UsageDay",

@@ -69,6 +69,107 @@ SETPOINT_SECTION_BY_MODE: Final[dict[Mode, str]] = {
 }
 
 
+class AcFan(IntEnum):
+    """A Mini-Split AC's fan speeds, as listed in its settings record.
+
+    The app's `Fan` enum: what SupportedModes.<mode>.fanSpeeds holds. Older
+    remotes have auto/low/medium/high; newer ones (SupportedCapsVersion "1.2")
+    have auto, speeds 1-7 and sleep.
+    """
+
+    AUTO = 1
+    LOW = 2
+    SPEED_1 = 3
+    MEDIUM = 4
+    SPEED_2 = 5
+    HIGH = 6
+    SPEED_3 = 7
+    SPEED_4 = 8
+    SPEED_5 = 9
+    SPEED_6 = 10
+    SPEED_7 = 11
+    SLEEP = 12
+
+
+# modes.fan_mode on a Mini-Split AC. The app converts with this table before
+# writing (AC_NATIVE_FAN_TO_SHADOW_FAN_MODE) and back when reading. Other models
+# number modes.fan_mode differently (the app's CONTROL_FAN_SPEED).
+AC_FAN_TO_STATE: Final[dict[AcFan, int]] = {
+    AcFan.AUTO: 0,
+    AcFan.LOW: 1,
+    AcFan.MEDIUM: 2,
+    AcFan.HIGH: 3,
+    AcFan.SPEED_1: 4,
+    AcFan.SPEED_2: 5,
+    AcFan.SPEED_3: 6,
+    AcFan.SPEED_4: 7,
+    AcFan.SPEED_5: 8,
+    AcFan.SPEED_6: 9,
+    AcFan.SPEED_7: 10,
+    AcFan.SLEEP: 11,
+}
+STATE_TO_AC_FAN: Final[dict[int, AcFan]] = {v: k for k, v in AC_FAN_TO_STATE.items()}
+
+# The remote's IR key for each fan speed (the app's FAN_SPEEDS_TO_AC_KEYS).
+# A remote with modifiedKeys only offers the speeds whose key is in that list.
+AC_FAN_KEYS: Final[dict[AcFan, int]] = {
+    AcFan.AUTO: 8,
+    AcFan.LOW: 9,
+    AcFan.SPEED_1: 9,
+    AcFan.MEDIUM: 10,
+    AcFan.SPEED_2: 10,
+    AcFan.HIGH: 11,
+    AcFan.SPEED_3: 11,
+    AcFan.SPEED_4: 16,
+    AcFan.SPEED_5: 17,
+    AcFan.SPEED_6: 18,
+    AcFan.SPEED_7: 19,
+    AcFan.SLEEP: 20,
+}
+
+
+class Swing(IntEnum):
+    """modes.verticalSwingState / horizontalSwingState (the app's CONTROL_SWING).
+
+    SupportedModes.<mode>.verticalSwing / horizontalSwing use the same values.
+    11 (toggle) and 12 (not available) also exist; this client doesn't drive
+    toggle-only remotes.
+    """
+
+    OFF = 1
+    ON = 2
+    AUTO = 3
+    POSITION_1 = 4
+    POSITION_2 = 5
+    POSITION_3 = 6
+    POSITION_4 = 7
+    POSITION_5 = 8
+    POSITION_6 = 9
+    POSITION_7 = 10
+
+
+# Swing directions: the SupportedModes list name; the state field adds "State".
+SWING_VERTICAL: Final = "verticalSwing"
+SWING_HORIZONTAL: Final = "horizontalSwing"
+
+# IR keys that make a direction's swing usable, for remotes with modifiedKeys
+# (the app's SWING_V_KEYS / SWING_H_KEYS: toggle, on, off, plus SwingK).
+AC_SWING_KEYS: Final[dict[str, frozenset[int]]] = {
+    SWING_VERTICAL: frozenset({12, 39, 40, 47}),
+    SWING_HORIZONTAL: frozenset({15, 41, 42}),
+}
+
+# Keys of the settings record's SupportedModes (the app's DEVICE_MODE_TYPES).
+AC_MODE_KEYS: Final[dict[Mode, int]] = {
+    Mode.OFF: 1,
+    Mode.AUTO: 2,
+    Mode.HEAT: 3,
+    Mode.COOL: 4,
+    Mode.FAN_ONLY: 5,
+    Mode.DRY: 6,
+}
+
+
 class ButtonLock(IntEnum):
     """Values of physicalInterface.lockout."""
 

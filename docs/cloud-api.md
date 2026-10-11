@@ -186,10 +186,23 @@ On a Baseboard Lite that was on the account, online and paired to HA over HomeKi
 ## Enumerations (from the app bundle, 4.20.1)
 - `modes.mode` (`CONTROL_MODE_TYPE`): 0 off, 1 auto, 3 cool, 4 heat, 5 emergency heat, 6 pre-cool, 7 fan only, 8 dry, 9 sleep. The capability document names them `off`, `auto`, `cool`, `heat`, `emergencyHeat`, `preCool`, `fanOnly`, `dry`, `sleep`.
 - Which section holds a mode's setpoint (`controlModeSetpointMapping`): cool → `targetCool`, heat and emergency heat → `targetHeat`, auto → `targetAuto`.
-- Fan speeds (`CONTROL_FAN_SPEED`): 0 off, 1–7 speed 1–7, 8 sleep, 9 auto. Swing (`CONTROL_SWING`): 0 invalid, 1 off, 2 on, 3 auto, 4–10 positions 1–7, 11 toggle, 12 n/a.
+- Fan speeds (`CONTROL_FAN_SPEED`): 0 off, 1–7 speed 1–7, 8 sleep, 9 auto. **Not what a Mini-Split AC uses**; see below. Swing (`CONTROL_SWING`): 0 invalid, 1 off, 2 on, 3 auto, 4–10 positions 1–7, 11 toggle, 12 n/a.
 - State sections (`CONTROL_SHADOW_TYPE`): `latestTelemetry`, `targetHeat`, `targetCool`, `targetAuto`, `modes`, `tracking`, `physicalInterface`, `hvacConfig`, `identity`, `telemetry`.
 - `latestTelemetry.reading.mode` uses a different numbering (3 while the Lite heats).
 - `latestTelemetry.reading.dutyCycle` is the heater relay share for the last reading (0 = off). The legacy `/devices/state` has the same as `Duty` 0/1.
+
+## Mini-Split AC fan speed and swing (from the app code, 4.20.1; not tested on an AC)
+- 4.20.1 hard-codes `legacyAcMigration` on (`selectHasLegacyAcMigration` returns true), so an AC uses `/state` and `/capabilities` like the Lite. The app reads capabilities with `includeLegacyAc=true`.
+- **Fan speed** is `modes.fan_mode`. The app shows the AC remote's own values (its `Fan` enum: 1 auto, 2 low, 3 speed 1, 4 medium, 5 speed 2, 6 high, 7 speed 3, 8–11 speeds 4–7, 12 sleep) and converts them before writing (`AC_NATIVE_FAN_TO_SHADOW_FAN_MODE`): **0 auto, 1 low, 2 medium, 3 high, 4–10 speeds 1–7, 11 sleep**. It converts back when reading.
+  - Write (`setControlFanSpeed`, AC branch of `useFanService`): `{"source":3,"modes":{"fan_mode":<0–11>,"mode":<current mode>}}`. Other models with capabilities send `fan_mode` alone, in `CONTROL_FAN_SPEED` numbers.
+  - The table was read from register values in the decompiled module, so it's worth a live check. Mysa_HA's MQTT `fn` values (auto 1, low 2, medium 3, high 4, sleep 12) are exactly these plus one, which agrees.
+- **Swing** is `modes.verticalSwingState` / `modes.horizontalSwingState`, with the `CONTROL_SWING` values above (1 off, 2 on, 3 auto, 4–10 positions). Write (`setControlSwing`): `{"source":3,"modes":{"verticalSwingState":<v>}}` (or `horizontalSwingState`). No conversion and no mode.
+  - Remotes with only a toggle button use `verticalSwingToggle` / `horizontalSwingToggle` instead (the app's `vst`/`hst`, with `SWING_TOGGLE_MODES` 1 off, 2 on, and its own guess of the current state). Mysa Local doesn't drive these.
+- **What the remote can do** is in the settings record (`GET /devices`), not in `/capabilities`:
+  - `SupportedModes`: keyed by the app's `DEVICE_MODE_TYPES` (`"1"` off, `"2"` auto, `"3"` heat, `"4"` cool, `"5"` fan, `"6"` dry). Each entry has `temperatures`, `fanSpeeds` (`Fan` values), `verticalSwing` and `horizontalSwing` (`CONTROL_SWING` values; 11 = toggle, 12 = n/a).
+  - `SupportedKeys` / `modifiedKeys`: the remote's IR key IDs. When `modifiedKeys` is non-empty (the user customized the remote), the app keeps only the fan speeds whose key is in it (auto 8, low/speed 1 9, medium/speed 2 10, high/speed 3 11, speeds 4–7 16–19, sleep 20) and drops a swing direction with none of its keys (vertical 12, 39, 40, 47; horizontal 15, 41, 42).
+  - `SupportedCapsVersion` `"1.2"` marks a newer remote (numbered speeds).
+- The app hides fan speed while the AC is off.
 
 ## Newer models: Baseboard V3, Central HVAC, Climate Sensor (not supported)
 Decided 2026-10-11: this integration doesn't add these models for now, and the cloud client refuses them (`ValueError`). Everything below comes from the app's code (4.20.1); none of these thermostats was available to test.

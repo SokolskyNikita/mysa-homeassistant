@@ -19,14 +19,23 @@ from homeassistant.util import dt as dt_util
 from .account import cloud_account_status
 from .api import (
     MODEL_NAMES,
+    AcFan,
     Capabilities,
     DeviceRecord,
     DeviceState,
     FirmwareInfo,
     Mode,
+    ModelFamily,
     MysaError,
+    Swing,
+    model_family,
 )
-from .api.const import SETPOINT_SECTION_BY_MODE
+from .api.const import (
+    AC_FAN_TO_STATE,
+    SETPOINT_SECTION_BY_MODE,
+    STATE_TO_AC_FAN,
+    SWING_VERTICAL,
+)
 from .cloud import MysaCloudCoordinator, translated_error
 from .const import (
     CONF_CLOUD_RUNTIME,
@@ -473,6 +482,56 @@ class Thermostat:
             high = low + 0.5
         return low, high, float(step or 0.5)
 
+    # ---- Mini-Split AC fan and swing (cloud only) ------------------------
+
+    @property
+    def _ac_record(self) -> DeviceRecord | None:
+        """The cloud record when this is a Mini-Split AC."""
+        record = self.cloud_record
+        if record is None:
+            return None
+        family = model_family(record.model or self.model)
+        return record if family is ModelFamily.AC else None
+
+    @property
+    def fan_speeds(self) -> tuple[AcFan, ...]:
+        """Fan speeds the AC's remote offers in the current mode.
+
+        None while off: Mysa sends the AC a full IR command, so changing the
+        fan of an AC that's off could switch it on. Mysa's app hides it too.
+        """
+        record, mode = self._ac_record, self.mode
+        if record is None or mode in (None, Mode.OFF):
+            return ()
+        return record.ac_fan_speeds(mode)
+
+    @property
+    def fan_speed(self) -> AcFan | None:
+        """The AC's fan speed, as last confirmed by the cloud."""
+        state = self.cloud_state
+        if self._ac_record is None or state is None or state.fan_mode is None:
+            return None
+        return STATE_TO_AC_FAN.get(state.fan_mode)
+
+    def swing_options(self, direction: str) -> tuple[Swing, ...]:
+        """Swing settings the AC's remote offers in the current mode."""
+        record, mode = self._ac_record, self.mode
+        if record is None or mode in (None, Mode.OFF):
+            return ()
+        return record.ac_swing(mode, direction)
+
+    def swing(self, direction: str) -> Swing | None:
+        """The AC's swing setting in one direction, as last confirmed."""
+        state = self.cloud_state
+        if self._ac_record is None or state is None:
+            return None
+        value = (
+            state.vertical_swing
+            if direction == SWING_VERTICAL
+            else state.horizontal_swing
+        )
+        return Swing(value) if value is not None and value in Swing else None
+
     # ---- writes --------------------------------------------------------
 
     async def _async_route(
@@ -568,6 +627,20 @@ class Thermostat:
             cloud_write=_cloud,
             cloud_applied=_applied,
         )
+
+    async def async_set_fan_speed(self, speed: AcFan) -> None:
+        """Change the AC's fan speed (cloud only).
+
+        Like Mysa's app, send the current mode along with an AC's fan speed.
+        """
+        fields: dict[str, int] = {"fan_mode": AC_FAN_TO_STATE[speed]}
+        if (mode := self.mode) is not None:
+            fields["mode"] = int(mode)
+        await self.async_cloud_update({"modes": fields})
+
+    async def async_set_swing(self, direction: str, value: Swing) -> None:
+        """Change the AC's vertical or horizontal swing (cloud only)."""
+        await self.async_cloud_update({"modes": {f"{direction}State": int(value)}})
 
     async def async_set_display_unit(self, unit: str) -> None:
         """Switch the thermostat's own screen between °C and °F."""

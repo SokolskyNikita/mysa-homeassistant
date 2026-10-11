@@ -12,7 +12,18 @@ from datetime import UTC, datetime
 import itertools
 from typing import Any
 
-from .const import MODE_BY_NAME, SETPOINT_SECTION_BY_MODE, ChangeSource, Mode
+from .const import (
+    AC_FAN_KEYS,
+    AC_FAN_TO_STATE,
+    AC_MODE_KEYS,
+    AC_SWING_KEYS,
+    MODE_BY_NAME,
+    SETPOINT_SECTION_BY_MODE,
+    AcFan,
+    ChangeSource,
+    Mode,
+    Swing,
+)
 
 
 def _dict(value: Any) -> dict[str, Any]:
@@ -33,6 +44,19 @@ def _int(value: Any) -> int | None:
 
 def _str(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _ints(value: Any) -> list[int]:
+    """Whole numbers from a JSON list (numeric strings count too)."""
+    if not isinstance(value, list):
+        return []
+    numbers = []
+    for item in value:
+        if isinstance(item, str) and item.strip().isdigit():
+            numbers.append(int(item))
+        elif (number := _int(item)) is not None:
+            numbers.append(number)
+    return numbers
 
 
 def _time(value: Any) -> datetime | None:
@@ -80,6 +104,10 @@ class DeviceState:
     rssi: int | None
     duty_cycle: float | None
     mode: Mode | None
+    # modes.fan_mode as stored; a Mini-Split AC numbers it as in AC_FAN_TO_STATE.
+    fan_mode: int | None
+    vertical_swing: int | None
+    horizontal_swing: int | None
     heat_setpoint: float | None
     cool_setpoint: float | None
     setpoint_min: float | None
@@ -123,6 +151,9 @@ class DeviceState:
             rssi=_int(reading.get("rssi")),
             duty_cycle=_float(reading.get("dutyCycle")),
             mode=mode,
+            fan_mode=_int(modes.get("fan_mode")),
+            vertical_swing=_int(modes.get("verticalSwingState")),
+            horizontal_swing=_int(modes.get("horizontalSwingState")),
             heat_setpoint=_float(heat.get("setpoint")),
             cool_setpoint=_float(cool.get("setpoint")),
             setpoint_min=_float(heat.get("lockoutMin")),
@@ -265,6 +296,42 @@ class DeviceRecord:
         if self.display_format is None:
             return None
         return "F" if self.display_format.lower().startswith("f") else "C"
+
+    # A Mini-Split AC's record describes its remote: SupportedModes maps each
+    # mode (AC_MODE_KEYS) to the fan speeds and swing settings it can send, and
+    # modifiedKeys, when present, lists the IR keys the user kept after
+    # customizing the remote in Mysa's app.
+
+    @property
+    def modified_keys(self) -> frozenset[int] | None:
+        """The remote's customized key list, or None if it wasn't customized."""
+        keys = _ints(self.raw.get("modifiedKeys"))
+        return frozenset(keys) if keys else None
+
+    def _ac_mode(self, mode: Mode) -> dict[str, Any]:
+        key = AC_MODE_KEYS.get(mode)
+        if key is None:
+            return {}
+        return _dict(_dict(self.raw.get("SupportedModes")).get(str(key)))
+
+    def ac_fan_speeds(self, mode: Mode) -> tuple[AcFan, ...]:
+        """Fan speeds the AC's remote offers in a mode, slowest first."""
+        keys = self.modified_keys
+        speeds = {
+            AcFan(v) for v in _ints(self._ac_mode(mode).get("fanSpeeds")) if v in AcFan
+        }
+        if keys is not None:
+            speeds = {s for s in speeds if AC_FAN_KEYS[s] in keys}
+        # AC_FAN_TO_STATE numbers them auto, low, medium, high, 1-7, sleep.
+        return tuple(sorted(speeds, key=AC_FAN_TO_STATE.__getitem__))
+
+    def ac_swing(self, mode: Mode, direction: str) -> tuple[Swing, ...]:
+        """Swing settings the AC's remote offers in a mode (vertical or horizontal)."""
+        keys = self.modified_keys
+        if keys is not None and not keys & AC_SWING_KEYS[direction]:
+            return ()
+        values = _ints(self._ac_mode(mode).get(direction))
+        return tuple(sorted({Swing(v) for v in values if v in Swing}))
 
 
 @dataclass(frozen=True, slots=True)
