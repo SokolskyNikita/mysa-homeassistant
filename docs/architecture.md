@@ -38,9 +38,15 @@ Home Assistant or HomeKit dependency.
 `custom_components/mysa_local/protocols/homekit/` implements Mysa's HomeKit
 thermostat behavior on top of `aiohomekit`. It owns HomeKit characteristic
 identifiers, accessory parsing, value encoding, and protocol errors. Callers
-use semantic fields such as `target_temperature` and `display_unit`; AIDs,
-IIDs, characteristic UUIDs, and HAP status codes stay inside this package. It
-has no Home Assistant dependency.
+use semantic fields such as `target_temperature` and `display_unit`; the
+package interprets AIDs, IIDs, characteristic UUIDs, and HAP status codes.
+Diagnostic error text may include a status code. The package has no Home
+Assistant dependency.
+
+The focused [cloud protocol guide](../custom_components/mysa_local/protocols/cloud/README.md)
+and [HomeKit protocol guide](../custom_components/mysa_local/protocols/homekit/README.md)
+explain each transport's request flow, module responsibilities, public API, and
+failure handling.
 
 These packages are bundled with the integration and installed together by
 HACS; they are not separate PyPI distributions. The protocol modules do not
