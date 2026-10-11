@@ -224,6 +224,28 @@ async def test_cloud_only_setup(hass: HomeAssistant, cloud: FakeCloud) -> None:
     assert subentry.title == "Living Room"
 
 
+async def test_sign_in_survives_bootstrap_failure(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """If /mobile/bootstrap fails, sign-in still works from the device list."""
+    cloud.bootstrap_status = 400
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "cloud_login"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD}
+    )
+    assert result["step_id"] == "cloud_devices"
+    with patch("custom_components.mysa_local.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"devices": [DEVICE_ID]}
+        )
+    assert result["data"][CONF_USER_ID] == USER_ID  # from the token's claims
+
+
 @pytest.mark.parametrize(
     ("error", "key"),
     [

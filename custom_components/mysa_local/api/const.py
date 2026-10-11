@@ -20,6 +20,10 @@ API_BASE: Final = "https://mysa-backend.mysa.cloud"
 # own app sends; the change log reports such changes as "app".
 WRITE_SOURCE: Final = 3
 
+# /mobile/bootstrap refuses requests without the app version it serves (400,
+# FST_ERR_VALIDATION). This is the app version whose API this client mirrors.
+APP_VERSION: Final = "4.20.1"
+
 # Refresh the ID token this many seconds before it expires.
 TOKEN_REFRESH_MARGIN: Final = 300
 

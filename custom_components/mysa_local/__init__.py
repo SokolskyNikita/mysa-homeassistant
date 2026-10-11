@@ -268,6 +268,9 @@ async def _async_update_listener(hass: HomeAssistant, entry: MysaConfigEntry) ->
                 thermostat.name,
                 err,
             )
+    # The reload reads the latest data and options, so one is enough even when
+    # an options flow changes data and options back to back.
+    runtime.fingerprint = _fingerprint(entry)
     hass.config_entries.async_schedule_reload(entry.entry_id)
 
 

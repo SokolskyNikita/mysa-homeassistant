@@ -222,6 +222,7 @@ class FakeCloud:
         self.settings: list[dict[str, Any]] = []
         self.posts: list[tuple[str, Any]] = []
         self.backend_status: int | None = None
+        self.bootstrap_status: int | None = None
         self.refresh_ok = True
         self.refresh_calls = 0
         self.password = PASSWORD
@@ -232,7 +233,8 @@ class FakeCloud:
         d = DEVICE_ID
         mock.post(COGNITO_URL, side_effect=self._cognito)
         mock.get(
-            f"{b}/mobile/bootstrap", side_effect=self._json(lambda: self.bootstrap)
+            f"{b}/mobile/bootstrap?versionNumber=4.20.1",
+            side_effect=self._bootstrap,
         )
         mock.get(f"{b}/devices", side_effect=self._json(lambda: self.devices))
         mock.post(f"{b}/state/batch", side_effect=self._batch)
@@ -391,6 +393,15 @@ class FakeCloud:
         )
 
     # -- backend --
+
+    async def _bootstrap(
+        self, method: str, url: URL, data: Any
+    ) -> AiohttpClientMockResponse:
+        if self.bootstrap_status is not None:
+            return self._resp(
+                method, url, status=self.bootstrap_status, body={"error": "x"}
+            )
+        return self._resp(method, url, body=self.bootstrap)
 
     async def _batch(
         self, method: str, url: URL, data: Any

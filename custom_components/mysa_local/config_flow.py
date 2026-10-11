@@ -54,6 +54,7 @@ from .api import (
     TESTED_MODELS,
     Bootstrap,
     MysaAuth,
+    MysaAuthError,
     MysaClient,
     MysaConnectionError,
     MysaError,
@@ -189,7 +190,17 @@ async def async_sign_in(
     auth = MysaAuth(session, user_agent=USER_AGENT)
     await auth.sign_in(email, password)
     client = MysaClient(session, auth, user_agent=USER_AGENT)
-    bootstrap = await client.bootstrap()
+    try:
+        bootstrap = await client.bootstrap()
+    except MysaAuthError:
+        raise
+    except MysaError as err:
+        # Signed in fine; only the account overview failed. The device list
+        # has what setup needs.
+        LOGGER.warning("Mysa bootstrap failed (%s); using the device list", err)
+        bootstrap = Bootstrap(
+            user_id=None, home_ids=(), devices=await client.get_devices()
+        )
     token = auth.refresh_token
     if token is None:  # pragma: no cover - sign_in always stores one
         raise MysaError("No refresh token")
@@ -198,13 +209,16 @@ async def async_sign_in(
 
 
 def sign_in_error(err: Exception) -> str:
-    """Map a sign-in exception to a form error key."""
+    """Map a sign-in exception to a form error key (and log the odd ones)."""
     if isinstance(err, MysaInvalidCredentialsError):
         return "invalid_auth"
     if isinstance(err, MysaUnsupportedChallengeError):
+        LOGGER.warning("Mysa sign-in needs an unsupported step: %s", err)
         return "mfa_unsupported"
     if isinstance(err, MysaConnectionError):
+        LOGGER.warning("Couldn't reach Mysa to sign in: %s", err)
         return "cannot_connect"
+    LOGGER.error("Mysa sign-in failed: %s", err)
     return "unknown"
 
 

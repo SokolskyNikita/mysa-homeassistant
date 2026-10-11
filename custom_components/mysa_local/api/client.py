@@ -11,7 +11,7 @@ from typing import Any
 import aiohttp
 
 from .auth import MysaAuth
-from .const import API_BASE, REQUEST_TIMEOUT, WRITE_SOURCE
+from .const import API_BASE, APP_VERSION, REQUEST_TIMEOUT, WRITE_SOURCE
 from .exceptions import (
     MysaApiError,
     MysaAuthError,
@@ -123,7 +123,9 @@ class MysaClient:
 
     async def bootstrap(self) -> Bootstrap:
         """Who's signed in, their homes and their thermostats."""
-        data = await self._request("GET", "/mobile/bootstrap")
+        data = await self._request(
+            "GET", "/mobile/bootstrap", params={"versionNumber": APP_VERSION}
+        )
         if not isinstance(data, dict):
             msg = "Unexpected bootstrap response"
             raise MysaApiError(msg)
