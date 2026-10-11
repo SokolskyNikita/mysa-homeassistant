@@ -145,7 +145,7 @@ scripts/lint     # ruff format, ruff check, mypy --strict
 scripts/develop  # run a development Home Assistant with the integration
 ```
 
-The cloud client in `custom_components/mysa_local/api/` has no Home Assistant imports, so it can become its own library. The API notes are in [`docs/cloud-api.md`](docs/cloud-api.md) and the design in [`docs/plan.md`](docs/plan.md).
+The cloud client in `custom_components/mysa_local/api/` has no Home Assistant imports, so it can become its own library. The API notes are in [`docs/cloud-api.md`](docs/cloud-api.md).
 
 ## Compared with other options
 
