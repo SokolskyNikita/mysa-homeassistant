@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from ipaddress import ip_address
+import json
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from aiohomekit.exceptions import MalformedPinError
@@ -29,6 +31,7 @@ from custom_components.mysa_local.const import (
     CONF_SAVE_PASSWORD,
     CONF_USER_ID,
     DOMAIN,
+    HOMEKIT_MODEL_PATTERNS,
     SUBENTRY_THERMOSTAT,
 )
 from custom_components.mysa_local.local import AccessoryInfo
@@ -48,8 +51,10 @@ from .common import (
 from .conftest import setup_entry
 
 
-def discovery(*, paired: bool = False, host: str = "192.0.2.10") -> ZeroconfServiceInfo:
-    """HomeKit advertisement of the Lite."""
+def discovery(
+    *, paired: bool = False, host: str = "192.0.2.10", model: str = "BB-V2-0-L"
+) -> ZeroconfServiceInfo:
+    """HomeKit advertisement of the Lite (or another model)."""
     return ZeroconfServiceInfo(
         ip_address=ip_address(host),
         ip_addresses=[ip_address(host)],
@@ -58,7 +63,7 @@ def discovery(*, paired: bool = False, host: str = "192.0.2.10") -> ZeroconfServ
         port=57959,
         type="_hap._tcp.local.",
         properties={
-            "md": "BB-V2-0-L",
+            "md": model,
             "id": HKID,
             "sf": "0" if paired else "1",
             "c#": "1",
@@ -202,6 +207,24 @@ async def test_discovery_paired_elsewhere(hass: HomeAssistant) -> None:
     assert result["reason"] == "already_paired"
 
 
+@pytest.mark.parametrize("model", ["BB-V3-0", "ST-V1-0", "CS-V1-0"])
+async def test_discovery_of_unsupported_model(hass: HomeAssistant, model: str) -> None:
+    """The Baseboard V3, Central HVAC and Climate Sensor aren't supported."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_HOMEKIT},
+        data=discovery(model=model),
+    )
+    assert result["reason"] == "not_supported"
+
+
+def test_manifest_homekit_models_match() -> None:
+    """The manifest claims exactly the HomeKit models the flows accept."""
+    manifest = Path(__file__).parents[1] / "custom_components/mysa_local/manifest.json"
+    models = json.loads(manifest.read_text())["homekit"]["models"]
+    assert tuple(models) == HOMEKIT_MODEL_PATTERNS
+
+
 async def test_user_when_configured(hass: HomeAssistant) -> None:
     """Only one entry; more thermostats are subentries."""
     hub_entry(signed_in=False).add_to_hass(hass)
@@ -237,6 +260,25 @@ async def test_cloud_only_setup(hass: HomeAssistant, cloud: FakeCloud) -> None:
     (subentry,) = result["result"].subentries.values()
     assert CONF_PAIRING not in subentry.data
     assert subentry.title == "Living Room"
+
+
+async def test_cloud_only_setup_skips_unsupported(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """An unsupported model on the account isn't offered."""
+    cloud.add_unsupported()
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "cloud_login"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD}
+    )
+    assert result["step_id"] == "cloud_devices"
+    (key,) = result["data_schema"].schema
+    assert key.default() == [DEVICE_ID]
 
 
 async def test_sign_in_survives_bootstrap_failure(

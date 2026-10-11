@@ -12,7 +12,7 @@ Control **Mysa smart thermostats** from Home Assistant **over your own network**
 - Install it from HACS and set it up in the UI; there's no YAML. New thermostats are discovered automatically, and there's a link to a [browser-based Wi-Fi setup page](https://sokolskynikita.github.io/mysa-wifi-setup/) for thermostats that aren't on Wi-Fi yet.
 
 > [!IMPORTANT]
-> **Tested on the Mysa Baseboard Lite (BB-V2-0-L), firmware 3.17.5.13.** Other Mysa models are supported through Mysa's own capability data but haven't been tested yet. If you try one, please [send a model report](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=model_report.yml) with your diagnostics.
+> **Tested on the Mysa Baseboard Lite (BB-V2-0-L), firmware 3.17.5.13.** The other models marked ✅ below are supported through Mysa's own capability data but haven't been tested yet. If you try one, please [send a model report](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=model_report.yml) with your diagnostics.
 
 Not affiliated with or endorsed by Mysa (Empowered Homes Inc.). Mysa is a trademark of its owner.
 
@@ -21,11 +21,12 @@ Not affiliated with or endorsed by Mysa (Empowered Homes Inc.). Mysa is a tradem
 | Model | Code | Local (HomeKit) | Cloud | Status |
 |---|---|---|---|---|
 | Mysa Baseboard Lite | `BB-V2-0-L` | ✅ | ✅ | Tested (firmware 3.17.5.13) |
-| Mysa Baseboard V1 / V2 | `BB-V1-x`, `BB-V2-0` | expected | expected | Untested |
-| Mysa In-Floor | `INF-V1-0` | expected | expected | Untested |
-| Mysa for Mini-Split AC | `AC-V1-0` | expected | partial (no fan speed or swing yet) | Untested |
-| Mysa for Central HVAC | `ST-V1-0` | expected | partial | Untested |
-| Mysa Baseboard V3 | `BB-V3-0` | via Matter later | expected | Untested |
+| Mysa Baseboard V1 / V2 | `BB-V1-x`, `BB-V2-0` | ✅ | ✅ | Untested |
+| Mysa In-Floor | `INF-V1-0` | ✅ | ✅ | Untested |
+| Mysa for Mini-Split AC | `AC-V1-0` | ✅ | ✅ (no fan speed or swing yet) | Untested |
+| Mysa for Central HVAC | `ST-V1-0` | ❌ | ❌ | Unsupported (needs a credential file from Mysa's servers) |
+| Mysa Baseboard V3 | `BB-V3-0` | ❌ | ❌ | Unsupported (needs a credential file from Mysa's servers) |
+| Mysa Climate Sensor | `CS-V1-0` | ❌ | ❌ | Unsupported (needs a credential file from Mysa's servers) |
 
 ## What you get
 
@@ -75,7 +76,7 @@ More thermostats: they're discovered too, or use **Add thermostat** on the integ
 - Adding a thermostat from your Mysa account offers to pair it locally too. Mysa Local finds it on your network by its name (`Mysa-` plus the end of its Wi-Fi MAC) and asks for the HomeKit code.
 - A paired thermostat that isn't on the account, or one that's only connected through the cloud, shows up under **Settings → Repairs** as a warning with a fix. Ignore it if that's how you want it. Home Assistant has no warning badge on individual devices, so Repairs plus the two diagnostic sensors above is how it shows.
 
-Only the models that join with Wi-Fi details alone (Baseboard V1/V2/Lite, In-floor, AC) can be added to an account from Home Assistant. The Baseboard V3, Central HVAC and Climate Sensor also need a Bluetooth credential file; add those with the Mysa app.
+Mysa Local doesn't support the Baseboard V3, Central HVAC or Climate Sensor. To join, they need a credential file from Mysa's servers sent over Bluetooth, which Home Assistant can't do. Discovery leaves them alone, and adding from your Mysa account doesn't list them.
 
 ### Already using the HomeKit Device integration?
 

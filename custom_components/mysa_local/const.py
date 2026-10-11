@@ -65,9 +65,11 @@ CLOUD_FALLBACK_INTERVAL: Final = timedelta(seconds=10)
 CLOUD_LIVE_MODE_TIMEOUT: Final = 300
 CLOUD_LIVE_MODE_RENEW: Final = timedelta(seconds=240)
 
-# Mysa models that ship HomeKit, as glob patterns (mirrors manifest.json, where
-# discovery of these goes to this integration): BB-V1-0, BB-V2-0-L, INF-V1-0, ...
-HOMEKIT_MODEL_PATTERNS: Final = ("BB-V?-*", "INF-V?-*", "AC-V?-*", "ST-V?-*", "CS-V?-*")
+# Supported Mysa models that ship HomeKit, as glob patterns (mirrors
+# manifest.json, where discovery of these goes to this integration): BB-V1-0,
+# BB-V2-0-L, INF-V1-0, ... The Baseboard V3 (BB-V3), Central HVAC (ST) and
+# Climate Sensor (CS) aren't supported, so their discovery is left alone.
+HOMEKIT_MODEL_PATTERNS: Final = ("BB-V1-*", "BB-V2-*", "INF-V?-*", "AC-V?-*")
 
 
 def is_mysa_model(model: str | None) -> bool:

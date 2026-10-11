@@ -296,6 +296,20 @@ class FakeCloud:
         self.bootstrap["data"]["devices"].pop(DEVICE_ID, None)
         self.bootstrap["data"]["user"]["AllowedDevices"] = []
 
+    def add_unsupported(self) -> str:
+        """Put a Baseboard V3 (not supported) on the account; return its ID."""
+        device_id = "0a0b0c0d0e0f"
+        record = {
+            **self.devices["DevicesObj"][DEVICE_ID],
+            "Id": device_id,
+            "Model": "BB-V3-0",
+            "Name": "Hallway",
+        }
+        self.devices["DevicesObj"][device_id] = record
+        self.bootstrap["data"]["devices"][device_id] = dict(record)
+        self.bootstrap["data"]["user"]["AllowedDevices"].append(device_id)
+        return device_id
+
     async def _claim(
         self, method: str, url: URL, data: Any
     ) -> AiohttpClientMockResponse:

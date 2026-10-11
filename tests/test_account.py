@@ -372,6 +372,40 @@ async def test_options_account_page_not_added(
 
 
 @pytest.mark.usefixtures("controller")
+async def test_options_account_page_unsupported(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """An unsupported model is marked as such, with no hint to add it."""
+    cloud.add_unsupported()
+    entry = hub_entry()
+    await setup_entry(hass, entry)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "account"}
+    )
+    placeholders = result["description_placeholders"]
+    assert (
+        "| — | Hallway | Mysa Baseboard V3 | ❌ Not supported |"
+        in placeholders["thermostats"]
+    )
+    assert placeholders["add_hint"] == ""
+
+
+@pytest.mark.usefixtures("controller")
+async def test_add_from_account_skips_unsupported(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """With only an unsupported model left on the account, there's nothing to add."""
+    cloud.add_unsupported()
+    entry = hub_entry()
+    await setup_entry(hass, entry)
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, "thermostat"), context={"source": config_entries.SOURCE_USER}
+    )
+    assert "cloud_pick" not in result["menu_options"]
+
+
+@pytest.mark.usefixtures("controller")
 async def test_names_shown_and_synced_both_ways(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:

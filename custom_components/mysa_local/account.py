@@ -46,6 +46,17 @@ def can_pair_locally(model: str | None) -> bool:
     return model_family(model) in WIFI_ONLY_FAMILIES
 
 
+def is_supported_model(model: str | None) -> bool:
+    """False for the Baseboard V3, Central HVAC and Climate Sensor.
+
+    To join, those need a credential file from Mysa's servers sent over
+    Bluetooth, which Mysa Local can't do. A model Mysa's app doesn't know yet
+    is let through, with the untested-model notice.
+    """
+    family = model_family(model)
+    return family is None or family in WIFI_ONLY_FAMILIES
+
+
 def cloud_account_status(
     cloud: MysaCloudCoordinator | None, device_id: str
 ) -> str | None:

@@ -61,6 +61,7 @@ from .account import (
     async_remove_from_account,
     can_claim,
     can_pair_locally,
+    is_supported_model,
 )
 from .api import (
     MODEL_NAMES,
@@ -215,9 +216,10 @@ def homekit_device_candidates(hass: HomeAssistant) -> dict[str, str]:
         if not entry.data.get("AccessoryPairingID"):
             continue
         for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
-            if device.manufacturer == HOMEKIT_MANUFACTURER or is_mysa_model(
-                device.model
-            ):
+            if (
+                device.manufacturer == HOMEKIT_MANUFACTURER
+                or is_mysa_model(device.model)
+            ) and is_supported_model(device.model):
                 candidates[entry.entry_id] = entry.title
                 break
     return candidates
@@ -1049,7 +1051,11 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Pick thermostats from the account (no local path)."""
         assert self._cloud is not None
-        devices = self._cloud[3].devices
+        devices = {
+            dev: rec
+            for dev, rec in self._cloud[3].devices.items()
+            if is_supported_model(rec.model)
+        }
         if not devices:
             return await self.async_step_finish()
         if user_input is not None:
@@ -1183,7 +1189,7 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
         return {
             dev: f"{rec.name or dev} ({MODEL_NAMES.get(rec.model or '', rec.model or '?')})"
             for dev, rec in runtime.cloud.data.records.items()
-            if dev not in known
+            if dev not in known and is_supported_model(rec.model)
         }
 
     async def async_step_cloud_pick(
@@ -1558,7 +1564,9 @@ class MysaOptionsFlow(OptionsFlow):
             model = record.model or ""
             cloud_name = record.name or device_id
             subentry = in_ha.get(device_id)
-            if subentry is None:
+            if subentry is None and not is_supported_model(model):
+                ha_name, where = "—", "❌ Not supported"
+            elif subentry is None:
                 not_added += 1
                 ha_name, where = "—", "⚪ Not added"
             else:

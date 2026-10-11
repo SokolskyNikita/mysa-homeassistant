@@ -277,7 +277,7 @@
         "cannot_connect": "Couldn't reach the thermostat's HomeKit service. An unpaired Mysa lets it doze off: press a button on the thermostat to wake it, wait a few seconds, then submit again.",
         "thermostat_updated": "The thermostat was updated.",
         "no_homekit_device_entries": "No Mysa thermostats were found in the HomeKit Device integration.",
-        "no_cloud_devices": "Every thermostat on your Mysa account is already added (or the cloud is off).",
+        "no_cloud_devices": "Every supported thermostat on your Mysa account is already added (or the cloud is off).",
         "reconfigure_successful": "Saved.",
         "added_to_account": "Added to your Mysa account.",
         "removed_from_account": "{name} was removed from your Mysa account.",

@@ -12,7 +12,7 @@ Written 2026-10-10. Background research: the feature map in `README.md`, request
 ## Non-goals (for now)
 - MQTT. Mysa's broker refused a connection made with regular app credentials (2026-10-10), and HomeKit already pushes changes locally.
 - Features HA already does better: Home/Away/Vacation shortcuts, geofencing, Smart Alerts, sharing, voice assistants. See the "Likely redundant" table in `README.md`.
-- Adding Baseboard V3, Central HVAC and Climate Sensor thermostats (decided 2026-10-11). To join, they need a credential file from Mysa's cloud sent over Bluetooth, plus fleet registration and a finalize step. A web page can't call Mysa's API (no CORS), so the Wi-Fi setup page can't do it alone either; it now says so. The cloud client refuses these models. The flow and the options for later are in `cloud-api.md`, "Newer models".
+- Baseboard V3, Central HVAC and Climate Sensor thermostats (decided 2026-10-11). To join, they need a credential file from Mysa's cloud sent over Bluetooth, plus fleet registration and a finalize step. A web page can't call Mysa's API (no CORS), so the Wi-Fi setup page can't do it alone either; it now says so. The cloud client refuses to add these models, HomeKit discovery doesn't claim them, adding from the account skips them and the README's model table marks them unsupported. The flow and the options for later are in `cloud-api.md`, "Newer models".
 
 ## Stack
 - Python, async (HA requires both).
