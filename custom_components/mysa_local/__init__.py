@@ -12,6 +12,7 @@ from functools import partial
 import json
 
 from homeassistant.const import (
+    ATTR_RESTORED,
     CONF_EMAIL,
     CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
@@ -85,6 +86,9 @@ CLOUD_ONLY_KEYS = frozenset(
         "mysa_account",
     }
 )
+# Entity registry option (under our domain) on cloud-only entities that were
+# disabled because the cloud was turned off.
+DISABLED_WITH_CLOUD = "disabled_with_cloud"
 LOCAL_START_WAIT = 8.0
 
 
@@ -192,6 +196,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
         await asyncio.wait(starts, timeout=LOCAL_START_WAIT)
 
     if cloud is not None:
+        _async_restore_cloud_entities(hass, entry)
         await cloud.async_refresh()
 
         @callback
@@ -206,7 +211,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
         # fallback (live mode, faster polling) now, not at the next poll.
         _cloud_updated()
     else:
-        _async_remove_cloud_entities(hass, entry)
+        _async_disable_cloud_entities(hass, entry)
         async_update_account_issues(hass, entry)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -255,13 +260,46 @@ def _async_update_devices(hass: HomeAssistant, entry: MysaConfigEntry) -> None:
 
 
 @callback
-def _async_remove_cloud_entities(hass: HomeAssistant, entry: MysaConfigEntry) -> None:
-    """With the cloud off, drop the entities only the cloud can feed."""
+def _async_disable_cloud_entities(hass: HomeAssistant, entry: MysaConfigEntry) -> None:
+    """With the cloud off, hide the entities only the cloud can feed.
+
+    They're disabled, not deleted, so their names, entity IDs, areas and
+    history survive. Each is marked, so turning the cloud back on re-enables
+    exactly these and not one the user had disabled.
+    """
     ent_reg = er.async_get(hass)
     for reg_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
         key = reg_entry.unique_id.split("_", 1)[-1]
-        if key in CLOUD_ONLY_KEYS:
-            ent_reg.async_remove(reg_entry.entity_id)
+        if key not in CLOUD_ONLY_KEYS or reg_entry.disabled_by is not None:
+            continue
+        ent_reg.async_update_entity_options(
+            reg_entry.entity_id, DOMAIN, {DISABLED_WITH_CLOUD: True}
+        )
+        ent_reg.async_update_entity(
+            reg_entry.entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION
+        )
+        # The reload that turned the cloud off left an "unavailable" placeholder;
+        # Home Assistant drops it for entities disabled in the UI, so do the same.
+        state = hass.states.get(reg_entry.entity_id)
+        if state is not None and state.attributes.get(ATTR_RESTORED):
+            hass.states.async_remove(reg_entry.entity_id)
+
+
+@callback
+def _async_restore_cloud_entities(hass: HomeAssistant, entry: MysaConfigEntry) -> None:
+    """With the cloud back on, re-enable what turning it off disabled.
+
+    This runs before the platforms add their entities, so they come back in
+    this setup. Home Assistant still reloads the entry once ~30 s later, as it
+    does whenever an entity is re-enabled.
+    """
+    ent_reg = er.async_get(hass)
+    for reg_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        if not reg_entry.options.get(DOMAIN, {}).get(DISABLED_WITH_CLOUD):
+            continue
+        ent_reg.async_update_entity_options(reg_entry.entity_id, DOMAIN, None)
+        if reg_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION:
+            ent_reg.async_update_entity(reg_entry.entity_id, disabled_by=None)
 
 
 @callback

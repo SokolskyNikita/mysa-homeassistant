@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from ipaddress import ip_address
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from aiohomekit.exceptions import MalformedPinError
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, CONF_SCAN_INTERVAL
@@ -16,7 +18,10 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
 from custom_components.mysa_local.config_flow import InsecureCodeError, format_pin
 from custom_components.mysa_local.const import (
@@ -458,13 +463,23 @@ async def test_refused_request_keeps_sign_in(
 
 
 @pytest.mark.usefixtures("controller")
-async def test_options_cloud_off_removes_cloud_entities(
-    hass: HomeAssistant, cloud: FakeCloud
+async def test_options_cloud_off_hides_cloud_entities(
+    hass: HomeAssistant, cloud: FakeCloud, freezer: FrozenDateTimeFactory
 ) -> None:
-    """Cloud off: no cloud calls and no cloud-only entities."""
+    """Cloud off: no cloud calls, cloud-only entities disabled with their settings.
+
+    Turning the cloud back on re-enables exactly those, not one the user
+    disabled.
+    """
     entry = hub_entry()
     await setup_entry(hass, entry)
     assert hass.states.get("switch.living_room_button_lock") is not None
+    ent_reg = er.async_get(hass)
+    ent_reg.async_update_entity("switch.living_room_button_lock", name="Kid lock")
+    ent_reg.async_update_entity(
+        "number.living_room_wake_brightness",
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] is FlowResultType.MENU
@@ -485,8 +500,11 @@ async def test_options_cloud_off_removes_cloud_entities(
     assert entry.options[CONF_CLOUD_ENABLED] is False
     assert entry.state is ConfigEntryState.LOADED
 
-    ent_reg = er.async_get(hass)
-    assert ent_reg.async_get("switch.living_room_button_lock") is None
+    lock = ent_reg.async_get("switch.living_room_button_lock")
+    assert lock is not None
+    assert lock.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert lock.name == "Kid lock"
+    assert hass.states.get("switch.living_room_button_lock") is None
     assert entry.data[CONF_REFRESH_TOKEN] == REFRESH_TOKEN  # sign-in kept
 
     calls = cloud.mock.call_count
@@ -494,6 +512,26 @@ async def test_options_cloud_off_removes_cloud_entities(
     assert async_fire.cloud is None
     await hass.async_block_till_done()
     assert cloud.mock.call_count == calls
+
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_CLOUD_ENABLED: True}
+    )
+    await hass.async_block_till_done()
+    freezer.tick(timedelta(seconds=31))  # Home Assistant's reload after re-enabling
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    lock = ent_reg.async_get("switch.living_room_button_lock")
+    assert lock is not None
+    assert lock.disabled_by is None
+    assert lock.name == "Kid lock"
+    assert lock.options.get(DOMAIN) is None
+    assert hass.states.get("switch.living_room_button_lock") is not None
+    wake = ent_reg.async_get("number.living_room_wake_brightness")
+    assert wake is not None
+    assert wake.disabled_by is er.RegistryEntryDisabler.USER
+    wifi = ent_reg.async_get("sensor.living_room_wi_fi_signal")
+    assert wifi is not None
+    assert wifi.disabled_by is er.RegistryEntryDisabler.INTEGRATION  # still default
 
 
 @pytest.mark.usefixtures("controller")
