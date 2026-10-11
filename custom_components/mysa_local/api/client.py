@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import json
 import logging
 from typing import Any
@@ -30,6 +30,8 @@ from .models import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+HOLD_START_DELAY = timedelta(seconds=10)
 
 
 def iso_utc(value: datetime) -> str:
@@ -291,7 +293,9 @@ class MysaClient:
         body: dict[str, Any] = {
             "deviceId": device_id,
             "holdType": "temporary" if until else "permanent",
-            "startTime": iso_utc(datetime.now(UTC)),
+            # Mysa refuses a start time that isn't in the future by the time
+            # the request arrives ("Start time must be greater than current time").
+            "startTime": iso_utc(datetime.now(UTC) + HOLD_START_DELAY),
             "state": dict(state),
         }
         if until is not None:

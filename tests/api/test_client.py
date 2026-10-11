@@ -134,6 +134,8 @@ async def test_holds_and_schedules(hass: HomeAssistant, cloud: FakeCloud) -> Non
     assert cloud.hold is not None
     assert cloud.hold["holdType"] == "temporary"
     assert cloud.hold["endTime"] == "2026-10-11T07:30:00.000Z"
+    start = datetime.fromisoformat(cloud.hold["startTime"].replace("Z", "+00:00"))
+    assert start > datetime.now(UTC)  # Mysa rejects a start time in the past
     assert (await client.get_hold(DEVICE_ID)) == cloud.hold
     await client.resume_schedule(DEVICE_ID)
     assert cloud.hold is None
