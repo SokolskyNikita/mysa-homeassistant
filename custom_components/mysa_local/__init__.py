@@ -295,7 +295,8 @@ def _async_restore_cloud_entities(hass: HomeAssistant, entry: MysaConfigEntry) -
     """
     ent_reg = er.async_get(hass)
     for reg_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
-        if not reg_entry.options.get(DOMAIN, {}).get(DISABLED_WITH_CLOUD):
+        domain_options = reg_entry.options.get(DOMAIN)
+        if not domain_options or not domain_options.get(DISABLED_WITH_CLOUD):
             continue
         ent_reg.async_update_entity_options(reg_entry.entity_id, DOMAIN, None)
         if reg_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION:

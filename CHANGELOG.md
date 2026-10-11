@@ -8,6 +8,14 @@
 - A **Humidity** sensor, and the climate entity's current humidity, from the cloud. They're added whenever the cloud reports humidity: the Baseboard Lite does, although its capability data says it has no humidity sensor. Its readings matched a separate sensor in the same room (dew point within 1 °C).
 - A **Heater power** sensor (W): the heater wattage while the relay is on, 0 W while it's off. Added with the energy sensor when a wattage is set.
 - A Mysa Local section in Settings → System → Repairs → ⋮ → System information: thermostats per connection path, sign-in, saved password, cloud status, poll interval and whether Mysa's server can be reached (only checked with the cloud on).
+- Fixes from an audit against Mysa's Android app (4.20.1):
+  - A 403 from Mysa no longer asks you to sign in again. Only a refused token renewal does; a 403, or a 401 right after a renewal, is an ordinary error. A refused account claim (a thermostat on someone else's account) still shows "Mysa refused to add it".
+  - **Heating runtime today** never goes down within a day: it's the larger of the local count and the thermostat's own figure. Switching between them could lower it, and Home Assistant's statistics counted the day twice (Energy dashboard included). It also follows a heating cycle across midnight correctly.
+  - Diagnostics redact the HomeKit name ("Mysa-" plus the end of the Wi-Fi MAC, which gives away the Mysa device ID) and any other text containing the device ID.
+  - The device page no longer loses its serial number and firmware version when HomeKit and the cloud aren't reachable at startup, and a firmware update shows there without a restart.
+  - Turning the cloud off disables the cloud-only entities instead of deleting them, so their names, entity IDs, areas and history are kept. Turning it back on re-enables them (Home Assistant reloads the integration once more about 30 s later). Entities you had disabled yourself stay disabled.
+  - Cloud state shows only values the thermostat confirmed, not ones that were requested but never applied.
+  - Wake and sleep brightness follow Mysa's app: steps of 5, wake at least 10 %, and sleep never brighter than wake (the other value moves to match).
 
 ## 0.2.1 (2026-10-11)
 

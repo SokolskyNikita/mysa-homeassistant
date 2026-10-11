@@ -44,7 +44,7 @@ Not affiliated with or endorsed by Mysa (Empowered Homes Inc.). Mysa is a tradem
 | Heater energy today | Derived | Runtime × the wattage you enter. Works in the Energy dashboard. |
 | Humidity sensor | Cloud | Room humidity. Also shown on the climate entity. |
 | Button lock switch | Cloud | |
-| Wake / sleep brightness | Cloud | |
+| Wake / sleep brightness | Cloud | Steps of 5, like Mysa's app. Wake is at least 10 %, and sleep is never brighter than wake. |
 | Lowest / highest setpoint | Cloud | The thermostat's hardware limits. |
 | Temperature offset | Cloud | |
 | Heater type select | Cloud | Baseboard or fan forced (how often the relay switches). |
@@ -84,7 +84,7 @@ Choose **Move a thermostat from the HomeKit Device integration**. Mysa Local add
 
 ## Options
 
-The integration options have the cloud switch, the cloud poll interval (30–300 s, default 60) and Mysa sign-in or sign-out. Under *Advanced* there's **Allow firmware installs**, off by default: a firmware install is untested with this integration and can't be undone.
+The integration options have the cloud switch, the cloud poll interval (30–300 s, default 60) and Mysa sign-in or sign-out. With the cloud off, the cloud-only entities are disabled but keep their names, areas and history; turning it back on brings them back. Under *Advanced* there's **Allow firmware installs**, off by default: a firmware install is untested with this integration and can't be undone.
 
 The options page also says which Mysa account is signed in and whether its password is saved. The save-password choice is made at sign-in; to change it, sign out and sign in again. Signing out deletes a saved password too.
 

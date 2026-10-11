@@ -125,9 +125,7 @@ async def test_brightness_rules(hass: HomeAssistant, cloud: FakeCloud) -> None:
     await setup_entry(hass, hub_entry())
     wake = hass.states.get("number.living_room_wake_brightness")
     assert (wake.attributes["min"], wake.attributes["step"]) == (10, 5)
-    assert hass.states.get("number.living_room_sleep_brightness").attributes[
-        "min"
-    ] == 0
+    assert hass.states.get("number.living_room_sleep_brightness").attributes["min"] == 0
 
     async def set_value(entity: str, value: float) -> None:
         await hass.services.async_call(

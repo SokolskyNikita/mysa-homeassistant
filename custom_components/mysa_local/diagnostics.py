@@ -185,4 +185,5 @@ async def async_get_config_entry_diagnostics(
         ],
         "thermostats": thermostats,
     }
-    return _scrub_device_ids(diagnostics, fragments)
+    scrubbed: dict[str, Any] = _scrub_device_ids(diagnostics, fragments)
+    return scrubbed

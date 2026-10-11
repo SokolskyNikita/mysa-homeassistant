@@ -54,7 +54,7 @@ For models whose local protocol is Matter (Baseboard V3 and newer; the capabilit
 
 ### Cloud setting (options flow)
 - **Use Mysa cloud: On** (default when the user signed in). Cloud powers the cloud-only features and is the fallback.
-- **Off.** No calls to Mysa's servers at all, and cloud-only entities are removed. The stored sign-in is kept, so turning it back on doesn't require signing in again. "Sign out" deletes it.
+- **Off.** No calls to Mysa's servers at all, and cloud-only entities are disabled (not deleted, so their settings survive; turning the cloud back on re-enables them). The stored sign-in is kept, so turning it back on doesn't require signing in again. "Sign out" deletes it.
 - Users who skip the Mysa sign-in at setup are local-only automatically.
 - A middle option, "cloud only as fallback, no cloud-only features", stays out of v1 unless someone asks for it.
 
