@@ -32,17 +32,22 @@ class MysaEntity(Entity):
         if description is not None:
             self.entity_description = description
         self._attr_unique_id = f"{thermostat.device_id}_{key}"
-        serial = thermostat.local.info.serial if thermostat.local else None
-        self._attr_device_info = DeviceInfo(
+        device_info = DeviceInfo(
             identifiers={(DOMAIN, thermostat.device_id)},
             connections={(CONNECTION_NETWORK_MAC, thermostat.mac)},
             manufacturer=MANUFACTURER,
             model=thermostat.device_model,
-            model_id=thermostat.model,
             name=thermostat.name,
-            serial_number=serial,
-            sw_version=thermostat.firmware,
         )
+        # Leave out what isn't known yet (no LAN connection or cloud at
+        # startup): an explicit None would clear the stored value.
+        if model_id := thermostat.model:
+            device_info["model_id"] = model_id
+        if serial := thermostat.serial:
+            device_info["serial_number"] = serial
+        if firmware := thermostat.firmware:
+            device_info["sw_version"] = firmware
+        self._attr_device_info = device_info
 
     @property
     def available(self) -> bool:

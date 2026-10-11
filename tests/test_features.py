@@ -13,7 +13,7 @@ from homeassistant.components.update import DOMAIN as UPDATE_DOMAIN, SERVICE_INS
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers import device_registry as dr, issue_registry as ir
 from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
@@ -249,6 +249,43 @@ async def test_runtime_never_drops(
         hass.states.get("sensor.living_room_heating_runtime_today").attributes["source"]
         == "local"
     )
+
+
+async def test_device_info_kept_and_updated(
+    hass: HomeAssistant,
+    controller: FakeController,
+    cloud: FakeCloud,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A start without HomeKit or the cloud keeps the serial and firmware.
+
+    A firmware update shows on the device page without a restart.
+    """
+    entry = hub_entry()
+    await setup_entry(hass, entry)
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_device_by_identifier((DOMAIN, DEVICE_ID), entry.entry_id)
+    assert device is not None
+    assert (device.serial_number, device.sw_version) == ("SERIAL0001", "3.17.5.13")
+
+    await hass.config_entries.async_unload(entry.entry_id)
+    controller.aliases[HKID].available = False
+    cloud.backend_status = 500
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    device = dev_reg.async_get_device_by_identifier((DOMAIN, DEVICE_ID), entry.entry_id)
+    assert device is not None
+    assert (device.serial_number, device.sw_version) == ("SERIAL0001", "3.17.5.13")
+
+    controller.aliases[HKID].available = True
+    cloud.backend_status = None
+    cloud.state["identity"]["reported"]["fw"] = "3.18.0.2"
+    freezer.tick(timedelta(minutes=2))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    device = dev_reg.async_get_device_by_identifier((DOMAIN, DEVICE_ID), entry.entry_id)
+    assert device is not None
+    assert device.sw_version == "3.18.0.2"
 
 
 async def test_local_down_repair_issue(

@@ -199,7 +199,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
             for thermostat in runtime.thermostats.values():
                 thermostat.notify()
             async_update_account_issues(hass, entry)
-            _async_update_device_models(hass, entry)
+            _async_update_devices(hass, entry)
 
         entry.async_on_unload(cloud.async_add_listener(_cloud_updated))
         # A thermostat that is unreachable from the start goes into cloud
@@ -223,16 +223,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
 
 
 @callback
-def _async_update_device_models(hass: HomeAssistant, entry: MysaConfigEntry) -> None:
-    """Keep each device's model line in step with its name in the Mysa app."""
+def _async_update_devices(hass: HomeAssistant, entry: MysaConfigEntry) -> None:
+    """Keep each device's model line, firmware and serial up to date.
+
+    Entities only set the device info when they're added, and leave out what
+    isn't known then. This fills in a firmware update, a serial that becomes
+    known once HomeKit connects, and the Mysa app name on the model line.
+    """
     dev_reg = dr.async_get(hass)
     for thermostat in entry.runtime_data.thermostats.values():
         device = dev_reg.async_get_device_by_identifier(
             (DOMAIN, thermostat.device_id), entry.entry_id
         )
+        if device is None:
+            continue
+        changes: dict[str, str] = {}
         model = thermostat.device_model
-        if device is not None and model and device.model != model:
-            dev_reg.async_update_device(device.id, model=model)
+        if model and device.model != model:
+            changes["model"] = model
+        firmware = thermostat.firmware
+        stored = device.sw_version or ""
+        # HomeKit has only three parts of the version ("3.17.5" for the cloud's
+        # "3.17.5.13"): don't swap the full one for the short form of the same.
+        if firmware and firmware != stored and not stored.startswith(f"{firmware}."):
+            changes["sw_version"] = firmware
+        serial = thermostat.serial
+        if serial and device.serial_number != serial:
+            changes["serial_number"] = serial
+        if changes:
+            dev_reg.async_update_device(device.id, **changes)  # type: ignore[arg-type]
 
 
 @callback
@@ -275,6 +294,8 @@ def _async_check_local_health(
             )
         else:
             ir.async_delete_issue(hass, DOMAIN, issue_id)
+    # Without the cloud this is the only regular update of the device info.
+    _async_update_devices(hass, entry)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: MysaConfigEntry) -> None:

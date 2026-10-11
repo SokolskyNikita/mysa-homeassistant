@@ -344,6 +344,11 @@ class Thermostat:
         return None
 
     @property
+    def serial(self) -> str | None:
+        """Serial number (HomeKit only; the cloud doesn't have it)."""
+        return self.local.info.serial if self.local is not None else None
+
+    @property
     def mac(self) -> str:
         """Wi-Fi MAC as aa:bb:cc:dd:ee:ff."""
         dev = self.device_id
