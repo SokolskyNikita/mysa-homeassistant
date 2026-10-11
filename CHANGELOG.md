@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 (2026-10-11)
+
+- The setup and options menus mark the Mysa sign-in as [optional], and the sign-in form lists what it adds.
+
 ## 0.1.1 (2026-10-11)
 
 - Diagnostics also redact the thermostat's Mysa device ID (its Wi-Fi MAC) and HomeKit ID.

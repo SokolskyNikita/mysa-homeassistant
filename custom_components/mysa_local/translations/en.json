@@ -8,7 +8,7 @@
         "menu_options": {
           "pick": "Pair a thermostat on this network",
           "takeover": "Move a thermostat from the HomeKit Device integration",
-          "cloud_login": "Sign in to Mysa and add thermostats from my account",
+          "cloud_login": "Add thermostats from my Mysa account (cloud control) [optional]",
           "wifi_help": "My thermostat isn't on Wi-Fi yet"
         }
       },
@@ -42,15 +42,15 @@
       },
       "cloud_offer": {
         "title": "Mysa cloud (optional)",
-        "description": "Signing in to your Mysa account adds what HomeKit doesn't expose: button lock, display brightness, setpoint limits, temperature offset, heater type, schedules and holds, firmware updates and the thermostat's own heating runtime. It also keeps control working if the local connection drops.\n\nYou can skip this and sign in later from the integration's options.",
+        "description": "Signing in to Mysa is optional. Everything local already works; the next step lists what signing in adds.",
         "menu_options": {
-          "cloud_login": "Sign in to Mysa",
+          "cloud_login": "Sign in to Mysa [optional]",
           "finish": "Skip, local only"
         }
       },
       "cloud_login": {
-        "title": "Sign in to Mysa",
-        "description": "Your password is only used to sign in and isn't stored; Home Assistant keeps a sign-in token instead.",
+        "title": "Sign in to Mysa [optional]",
+        "description": "Signing in to Mysa is optional: everything local works without it. It adds:\n- Button lock, display brightness, setpoint limits, temperature offset and heater type\n- Mysa schedules and holds\n- Firmware update checks\n- The thermostat's own measured heating runtime\n- Control through Mysa's cloud while the local connection is down\n\nYour password isn't stored; Home Assistant keeps only a sign-in token.",
         "data": {
           "email": "Email",
           "password": "Password"
@@ -202,7 +202,7 @@
         "title": "Mysa Local options",
         "menu_options": {
           "settings": "Cloud and polling",
-          "sign_in": "Sign in to Mysa",
+          "sign_in": "Sign in to Mysa [optional]",
           "sign_out": "Sign out of Mysa"
         }
       },
@@ -229,8 +229,8 @@
         }
       },
       "sign_in": {
-        "title": "Sign in to Mysa",
-        "description": "Your password is only used to sign in and isn't stored; Home Assistant keeps a sign-in token instead.",
+        "title": "Sign in to Mysa [optional]",
+        "description": "Signing in to Mysa is optional: everything local works without it. It adds:\n- Button lock, display brightness, setpoint limits, temperature offset and heater type\n- Mysa schedules and holds\n- Firmware update checks\n- The thermostat's own measured heating runtime\n- Control through Mysa's cloud while the local connection is down\n\nYour password isn't stored; Home Assistant keeps only a sign-in token.",
         "data": {
           "email": "Email",
           "password": "Password"

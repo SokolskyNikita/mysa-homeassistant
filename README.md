@@ -62,7 +62,7 @@ Requires Home Assistant 2026.9 or newer.
 
 1. **Thermostat not on Wi-Fi yet?** A new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the [Wi-Fi setup page](https://sokolskynikita.github.io/mysa-wifi-setup/) (Chrome or Edge on a computer with Bluetooth; no Mysa app, no phone).
 2. **Pair.** Home Assistant discovers the thermostat. Click **Add** and enter the 8-digit HomeKit code from the back of the faceplate. A thermostat can only be paired to one HomeKit controller, so remove it from Apple Home first if it's there.
-3. **Mysa sign-in (optional).** Sign in to add the cloud features. Your password is used once to sign in (with SRP, so it isn't even sent to Mysa in plain form) and isn't stored; Home Assistant keeps only a sign-in token. You can skip this and sign in later from the options.
+3. **Mysa sign-in [optional].** Sign in to add the cloud features. Your password is used once to sign in (with SRP, so it isn't even sent to Mysa in plain form) and isn't stored; Home Assistant keeps only a sign-in token. You can skip this and sign in later from the options.
 
 More thermostats: they're discovered too, or use **Add thermostat** on the integration's page. Thermostats without a local path can be added from your Mysa account (cloud control only).
 
