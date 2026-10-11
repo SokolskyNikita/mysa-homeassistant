@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 import contextlib
+import copy
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 import time
@@ -321,8 +322,12 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
 
         @callback
         def _refresh(_now: datetime) -> None:
+            # Not the debounced request_refresh: its cooldown would delay the
+            # confirmation of back-to-back writes by up to 10 s.
             self._refresh_after_write = None
-            self.hass.async_create_task(self.async_request_refresh())
+            self.config_entry.async_create_background_task(
+                self.hass, self.async_refresh(), f"{DOMAIN} refresh after write"
+            )
 
         self._refresh_after_write = async_call_later(
             self.hass, CLOUD_REFRESH_AFTER_WRITE, _refresh
@@ -333,6 +338,15 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
     ) -> None:
         """Write state sections through the cloud."""
         await self._async_spaced(lambda: self.client.update_state(device_id, changes))
+        # Show the change now; the re-read 2 s later confirms or corrects it.
+        if self.data is not None and (state := self.data.states.get(device_id)):
+            raw = copy.deepcopy(state.raw)
+            for section, fields in changes.items():
+                node = raw.setdefault(section, {})
+                for part in ("desired", "reported"):
+                    node.setdefault(part, {}).update(fields)
+            self.data.states[device_id] = DeviceState.from_api(device_id, raw)
+            self.async_update_listeners()
 
     async def async_update_settings(
         self, device_id: str, fields: Mapping[str, Any]
@@ -340,6 +354,11 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         """Write settings-record fields through the cloud."""
         await self._async_spaced(lambda: self.client.update_settings(device_id, fields))
         self.mark_stale("records")
+        if self.data is not None and (record := self.data.records.get(device_id)):
+            self.data.records[device_id] = DeviceRecord.from_api(
+                device_id, {**record.raw, **fields}
+            )
+            self.async_update_listeners()
 
     async def async_call(
         self, call: Callable[[], Awaitable[Any]], *, stale: Iterable[str] = ()

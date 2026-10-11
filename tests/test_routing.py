@@ -256,3 +256,26 @@ async def test_live_mode_only_during_fallback(
     await thermostat.local.async_poll()
     await hass.async_block_till_done()
     assert len(cloud.live_mode) == 2
+
+
+@pytest.mark.usefixtures("controller")
+async def test_cloud_write_shows_immediately(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """A cloud write updates the entity at once, before the confirming re-read."""
+    await setup_entry(hass, hub_entry())
+    cloud.apply_updates = False  # the backend hasn't confirmed anything yet
+    await hass.services.async_call(
+        SWITCH_DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: "switch.living_room_button_lock"},
+        blocking=True,
+    )
+    assert hass.states.get("switch.living_room_button_lock").state == "on"
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        SERVICE_SELECT_OPTION,
+        {ATTR_ENTITY_ID: "select.living_room_heater_type", "option": "fan_forced"},
+        blocking=True,
+    )
+    assert hass.states.get("select.living_room_heater_type").state == "fan_forced"
