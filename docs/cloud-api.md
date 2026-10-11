@@ -571,6 +571,14 @@ The setup HTTP server is `http://192.168.4.1:57961`. The app reads `/pubkey`, `/
 
 On two Lite units in normal Wi-Fi mode, port 57961 refused connections. The only open TCP port found was HomeKit on 57959. An unauthenticated HomeKit HTTP request returned 470. These observations do not establish a usable local REST control API.
 
+### HomeKit Wi-Fi switching
+
+**Tested unsuccessfully on October 11, 2026**, on a Lite (`BB-V2-0-L`, firmware `3.17.5.13`). Reading Wi-Fi Configuration Control (`0x22D`) with operation 1 worked. Using the existing HomeKit pairing, we sent timed TLV8 writes with operation 3 (fail-safe update), the target SSID and WPA2 passphrase, a fresh cookie and a 120-second timeout. The sequence followed [Apple's decompiled controller implementation](https://github.com/EthanArbuckle/iPhone17-1_18.2_22C152_Restore/blob/e26ed4563f78871c59d2d96856756a65d62517e5/System/Library/PrivateFrameworks/HomeKitDaemon.framework/HMDWiFiManagementController.m#L708). Our test required target-AP association and a successful HomeKit read before sending operation 4 (commit).
+
+An initial AP configuration error was corrected before two trials against a verified, visible 2.4 GHz WPA2 AP on the same LAN. Both requests returned HAP status 0; `updateStatus` contained the matching cookie and “update pending” / “session restart required” flags. The thermostat left its original AP and reauthenticated there 5–6 seconds later; the router recorded no authentication attempt on the target AP. Keeping the initiating controller object open for 25 seconds did not change the result, though the library can reconnect automatically. The final configuration still contained the original SSID, with idle status; no commit was sent.
+
+Existing HomeKit pairings and fresh cloud reporting worked afterwards, with unchanged setpoints and modes. The temporary AP was removed and the router configuration restored. The cause remains unresolved: an accepted write does not establish a successful Wi-Fi migration, and this test does not prove that HomeKit switching is generally unsupported. Operation 2 (simple update) was not tested.
+
 ## Firmware
 
 ### Legacy devices
@@ -607,7 +615,42 @@ That result applies to the tested identity and connection flow. It does not prov
 
 Later analysis of 3.54.1 found a missing step: the old app calls `AttachPrincipalPolicy` with policy `default` and the Cognito identity ID before connecting. Its old client does so on every connection; its newer client relies on an attachment at sign-in. Neither the tested Mysa_HA flow nor app 4.20.1 performs that call.
 
-A missing policy is therefore a plausible explanation for the rejection. We have not tested whether the current Cognito role permits attachment or whether it would fix the connection. Mysa Local has no MQTT client and uses the verified HTTPS path.
+That was a hypothesis, not a confirmed cause. A fresh test on **October 11, 2026** found the identity already had `default` attached; no policy attachment was performed. `GetPolicy(default)` returned exactly:
+
+```json
+{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["iot:Connect","iot:Subscribe"],"Resource":"*"}]}
+```
+
+The policy grants neither `iot:Publish` nor `iot:Receive`. These are separate permissions from connecting and subscribing; authenticated Cognito identities need authorization from both their IAM role and attached IoT policies ([AWS documentation](https://docs.aws.amazon.com/iot/latest/developerguide/pub-sub-policy.html)). Live results with fresh identity credentials:
+
+| Check | Result |
+|---|---|
+| SigV4 WebSocket, random UUID, MQTT 3.1.1 | Successful CONNACK (`20 02 00 00`) |
+| Each account device's `/out`, QoS 1 | Successful SUBACK, granted QoS 1 |
+| Official-app harmless echo to an owned device's `/in` | Broker disconnected on publish |
+| Same echo via SDK-signed AWS IoT HTTPS `Publish` | HTTP 403 `ForbiddenException` |
+| Subscribe without publishing; request 20 seconds of reporting through the Mysa HTTPS live-mode route | Both devices' HTTPS reading timestamps advanced; zero MQTT messages during 25 seconds of listening |
+
+Setpoints and modes were unchanged. The successful connection used SigV4 service `iotdevicegateway`, signing with the temporary access key and secret, then appending the URL-encoded session token. A successful CONNACK or SUBACK is not proof of control or incoming telemetry.
+
+The confirmed current blocker is the identity's missing publish/receive authorization. Reattaching the same `default` policy cannot add those actions. The original pre-CONNACK failure was not reproduced, so its exact cause remains unconfirmed. This result applies to this identity and policy, not to every Mysa account. Mysa Local continues to use HTTPS and local HomeKit; no MQTT runtime dependency was added.
+
+Rechecking the old app's sign-in code found no additional per-device policy setup: `getCognitoUserAttr` calls `updateIoTCredentials`, which obtains identity credentials and attaches `default` directly through AWS IoT. It does not send the identity ID to a Mysa `/users` endpoint. The earlier scratch probe also appended the session token after signing, so a token-ordering bug is not established as the cause of the historical failure.
+
+The standalone [MQTT diagnostic](../tools/mqtt_probe.py) reproduces policy inspection and CONNECT/SUBACK with Paho. Install `aiohttp`, `boto3`, and `paho-mqtt>=2` in a separate diagnostic environment, then run:
+
+```sh
+python tools/mqtt_probe.py --credentials /private/path/mysa.json --duration 20
+```
+
+The private JSON contains `refresh_token` and/or `email` + `password`; omit `--credentials` to read it from stdin. Keep it out of Git. The tool never attaches policies or publishes, and reports no tokens, signed URLs, or message payloads. Exit 1 means the probe failed; exit 2 means CONNECT/SUBACK completed without establishing end-to-end MQTT functionality. It recognizes the exact limited policy observed above; other policy shapes are reported as inconclusive, not evaluated as IAM grants. The saved Paho probe was also run against both Lites and confirmed the same successful connection/subscriptions and missing permissions.
+
+### Other implementations checked (October 11, 2026)
+
+- **[bourquep/mysa2mqtt #299](https://github.com/bourquep/mysa2mqtt/issues/299)** reports the same connect/subscribe-success, publish-disconnect pattern on a BB-V1. An independent Python AWS IoT SDK client reproduced it; the reporter verified the newer HTTPS state-write route works. On October 11 the maintainer said his own BB-V1 devices still work and proposed a REST fallback. This is evidence against assuming all accounts lost MQTT access.
+- **[mysa2mqtt #125](https://github.com/bourquep/mysa2mqtt/issues/125)** concerned all-Lite fleets. Its July 21 fix, **[PR #208](https://github.com/bourquep/mysa2mqtt/pull/208)**, adds periodic REST state polling; it does not restore AWS publish permissions. Current SDK source still uses Cognito Identity credentials and the same endpoint/topics. Credential-refresh and reconnect fixes address different failure stages.
+- **[kgelinas/Mysa_HA #27](https://github.com/kgelinas/Mysa_HA/issues/27)** has an unresolved publish/disconnect report for AC devices. Its [signer](https://github.com/kgelinas/Mysa_HA/blob/main/custom_components/mysa/mysa_auth.py) appends the session token after signing; no policy bootstrap fix was found.
+- **[dlenski/mysotherm #6](https://github.com/dlenski/mysotherm/issues/6)** documents a different failure: accepted publishes but no setpoint change. The maintainer reported successful Lite control and described the array/string duplicate command format below. Payload changes can matter after publication is authorized; they cannot repair an AWS 403.
 
 ### App 3.54.1 protocol
 
