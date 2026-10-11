@@ -10,8 +10,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.mysa_local.api import srp
-from custom_components.mysa_local.api.srp import (
+from custom_components.mysa_local.protocols.cloud import srp
+from custom_components.mysa_local.protocols.cloud.srp import (
     BIG_N,
     CognitoSrp,
     G,

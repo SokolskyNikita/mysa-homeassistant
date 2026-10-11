@@ -16,8 +16,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 import pytest
 
-from custom_components.mysa_local.api import DeviceRecord
 from custom_components.mysa_local.const import DOMAIN
+from custom_components.mysa_local.protocols.cloud import DeviceRecord
 
 from .common import DEVICE_ID, FakeCloud, hub_entry
 from .conftest import setup_entry

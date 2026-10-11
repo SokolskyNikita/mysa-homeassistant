@@ -11,6 +11,18 @@ from typing import Any
 import aiohttp
 
 from .auth import MysaAuth
+from .commands import (
+    button_lock_changes,
+    display_brightness_changes,
+    display_unit_settings,
+    fan_speed_changes,
+    heater_type_settings,
+    mode_changes,
+    setpoint_limit_changes,
+    swing_changes,
+    temperature_changes,
+    temperature_offset_changes,
+)
 from .const import (
     API_BASE,
     APP_VERSION,
@@ -18,8 +30,13 @@ from .const import (
     REQUEST_TIMEOUT,
     WIFI_ONLY_FAMILIES,
     WRITE_SOURCE,
+    AcFan,
+    ButtonLock,
     DutyCycleOpt,
+    HeaterType,
+    Mode,
     ModelFamily,
+    Swing,
     model_family,
 )
 from .exceptions import (
@@ -373,10 +390,62 @@ class MysaClient:
         body.update({section: dict(fields) for section, fields in changes.items()})
         await self._request("POST", f"/state/{device_id}/update", body=body)
 
+    async def set_temperature(
+        self, device_id: str, mode: Mode | None, temperature: float
+    ) -> None:
+        """Set a thermostat's temperature target for the selected mode."""
+        await self.update_state(device_id, temperature_changes(mode, temperature))
+
+    async def set_mode(self, device_id: str, mode: Mode) -> None:
+        """Set a thermostat's operating mode."""
+        await self.update_state(device_id, mode_changes(mode))
+
+    async def set_fan_speed(
+        self, device_id: str, speed: AcFan, mode: Mode | None = None
+    ) -> None:
+        """Set an AC fan speed, optionally including its current mode."""
+        await self.update_state(device_id, fan_speed_changes(speed, mode))
+
+    async def set_swing(self, device_id: str, direction: str, value: Swing) -> None:
+        """Set vertical or horizontal AC swing."""
+        await self.update_state(device_id, swing_changes(direction, value))
+
+    async def set_display_brightness(
+        self, device_id: str, *, active: int, idle: int
+    ) -> None:
+        """Set both wake and idle screen brightness values."""
+        await self.update_state(device_id, display_brightness_changes(active, idle))
+
+    async def set_button_lock(self, device_id: str, value: ButtonLock) -> None:
+        """Lock or unlock the thermostat's physical buttons."""
+        await self.update_state(device_id, button_lock_changes(value))
+
+    async def set_setpoint_limit(
+        self, device_id: str, value: float, *, minimum: bool
+    ) -> None:
+        """Set the minimum or maximum allowed heating setpoint."""
+        await self.update_state(
+            device_id, setpoint_limit_changes(value, minimum=minimum)
+        )
+
+    async def set_temperature_offset(self, device_id: str, value: float) -> None:
+        """Set the room-temperature correction offset."""
+        await self.update_state(device_id, temperature_offset_changes(value))
+
     async def update_settings(self, device_id: str, fields: Mapping[str, Any]) -> None:
         """Change fields of the settings record (Format, DutyCycleOpt, Name, ...)."""
         # The trailing slash matches the app; without it the route differs.
         await self._request("POST", f"/devices/{device_id}/", body=dict(fields))
+
+    async def set_display_unit(self, device_id: str, unit: str) -> None:
+        """Set the thermostat's screen to Celsius or Fahrenheit."""
+        await self.update_settings(device_id, display_unit_settings(unit))
+
+    async def set_heater_type(
+        self, device_id: str, heater_type: int | HeaterType
+    ) -> None:
+        """Set the heater profile in the device settings record."""
+        await self.update_settings(device_id, heater_type_settings(heater_type))
 
     async def get_capabilities(self, device_id: str) -> Capabilities:
         """What this model supports."""

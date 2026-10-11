@@ -7,6 +7,7 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from aiohomekit.model.characteristics import CharacteristicsTypes
 from aiohomekit.testing import FakeController
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.components.update import DOMAIN as UPDATE_DOMAIN, SERVICE_INSTALL
@@ -34,6 +35,7 @@ from .common import (
     FakeCloud,
     hub_entry,
     thermostat_subentry,
+    update_fake_characteristic,
 )
 from .conftest import setup_entry
 
@@ -149,7 +151,7 @@ def test_build_events_off_mode() -> None:
     """An off event carries no setpoint."""
     from datetime import time
 
-    from custom_components.mysa_local.api import Mode
+    from custom_components.mysa_local.protocols.cloud import Mode
 
     events = build_events(
         [{"days": ["sat"], "time": time(8, 0), "hvac_mode": "off"}], Mode.HEAT
@@ -373,7 +375,7 @@ async def test_diagnostics_redacted(
     thermostat = diag["thermostats"][0]
     assert thermostat["model"] == "BB-V2-0-L"
     assert thermostat["cloud"]["capabilities"]["system"]["model"] == "BB-V2-0-L"
-    assert thermostat["homekit"]["characteristics"]
+    assert thermostat["homekit"]["fields"]
 
 
 @pytest.mark.usefixtures("controller")
@@ -430,12 +432,11 @@ async def test_remove_subentry_unpairs(
     """Deleting a thermostat removes our HomeKit pairing from it."""
     entry = hub_entry(signed_in=False)
     await setup_entry(hass, entry)
-    pairing = controller.aliases[HKID]
     (subentry_id,) = entry.subentries
-    with patch.object(pairing, "remove_pairing", AsyncMock()) as remove:
+    with patch.object(controller, "remove_pairing", AsyncMock()) as remove:
         hass.config_entries.async_remove_subentry(entry, subentry_id)
         await hass.async_block_till_done()
-    remove.assert_awaited_once_with(PAIRING_DATA["iOSPairingId"])
+    remove.assert_awaited_once_with(HKID)
     assert hass.states.get(CLIMATE) is None
 
 
@@ -471,18 +472,17 @@ async def test_no_humidity_without_cloud(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.usefixtures("controller")
-async def test_heater_power(hass: HomeAssistant) -> None:
+async def test_heater_power(hass: HomeAssistant, controller: FakeController) -> None:
     """Heater power is the set wattage while the relay is on, else 0 W."""
     sub = thermostat_subentry()
     sub["data"] = {**sub["data"], "heater_watts": 1500}
     await setup_entry(hass, hub_entry(signed_in=False, subentries=[sub]))
-    thermostat = _thermostat(hass)
-    assert thermostat.local is not None
-    from custom_components.mysa_local.local import CURRENT_STATE
+    pairing = controller.aliases[HKID]
 
-    for relay, watts in ((1, "1500.0"), (0, "0.0")):
-        thermostat.local.values[CURRENT_STATE] = relay
-        thermostat.notify()
+    for relay, watts in ((0, "0.0"), (1, "1500.0")):
+        update_fake_characteristic(
+            pairing, CharacteristicsTypes.HEATING_COOLING_CURRENT, relay
+        )
         await hass.async_block_till_done()
         assert hass.states.get("sensor.living_room_heater_power").state == watts
 

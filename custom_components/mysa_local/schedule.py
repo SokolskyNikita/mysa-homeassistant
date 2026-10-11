@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 from copy import deepcopy
-from datetime import datetime, time
+from datetime import datetime
 from functools import partial
 import json
 import math
@@ -17,29 +17,24 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from homeassistant.util.hass_dict import HassKey
 
-from .api import Mode, MysaNotFoundError
-from .api.const import SETPOINT_SECTION_BY_MODE
-from .cloud import translated_error
+from .cloud_coordinator import translated_error
 from .const import DOMAIN, LOGGER, VERSION
+from .protocols.cloud import (
+    Mode,
+    MysaNotFoundError,
+    ScheduleEventSpec,
+    encode_schedule_events,
+    make_state,
+)
 
 if TYPE_CHECKING:
     from .thermostat import Thermostat
 
-# Home Assistant weekday names -> Mysa dayOfWeek (0 = Sunday).
-DAY_NUMBERS = {"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6}
 CLIENT_KEY = f"HomeAssistant-{VERSION}"
 _SCHEDULE_STORES: HassKey[dict[str, Store[dict[str, Any]]]] = HassKey(
     f"{DOMAIN}_schedule_stores"
 )
 _SCHEDULE_LOCKS: HassKey[dict[str, asyncio.Lock]] = HassKey(f"{DOMAIN}_schedule_locks")
-
-
-def _state_body(mode: Mode, temperature: float | None) -> dict[str, Any]:
-    body: dict[str, Any] = {"modes": {"mode": int(mode)}}
-    section = SETPOINT_SECTION_BY_MODE.get(mode)
-    if section and temperature is not None:
-        body[section] = {"setpoint": temperature}
-    return body
 
 
 def _home_id(thermostat: Thermostat) -> str:
@@ -70,7 +65,7 @@ async def async_hold(
         if until <= dt_util.utcnow():
             raise translated_error("hold_in_past")
     device_id = thermostat.device_id
-    state = _state_body(mode, temperature)
+    state = make_state(mode, temperature)
 
     async def _hold() -> None:
         try:
@@ -560,22 +555,18 @@ def build_events(
     events: list[dict[str, Any]], default_mode: Mode
 ) -> list[dict[str, Any]]:
     """Turn the action's events into Mysa schedule events."""
-    result: list[dict[str, Any]] = []
-    for event in events:
-        at: time = event["time"]
-        mode = Mode[str(event.get("hvac_mode", default_mode.name)).upper()]
-        state = _state_body(mode, event.get("temperature"))
-        result.extend(
-            {
-                "executionTime": at.strftime("%H:%M:00"),
-                "dayOfWeek": str(DAY_NUMBERS[day]),
-                "clientKey": CLIENT_KEY,
-                "state": state,
-            }
-            for day in event["days"]
-        )
-    result.sort(key=lambda e: (int(e["dayOfWeek"]), e["executionTime"]))
-    return result
+    return encode_schedule_events(
+        [
+            ScheduleEventSpec(
+                days=tuple(event["days"]),
+                at=event["time"],
+                mode=Mode[str(event.get("hvac_mode", default_mode.name)).upper()],
+                temperature=event.get("temperature"),
+                client_key=CLIENT_KEY,
+            )
+            for event in events
+        ]
+    )
 
 
 async def async_set_schedule(

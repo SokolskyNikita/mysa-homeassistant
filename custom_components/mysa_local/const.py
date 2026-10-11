@@ -10,7 +10,7 @@ from typing import Final
 DOMAIN: Final = "mysa_local"
 LOGGER = logging.getLogger(__package__)
 
-VERSION: Final = "0.4.1"
+VERSION: Final = "0.4.2"
 USER_AGENT: Final = (
     f"mysa-homeassistant/{VERSION} "
     "(+https://github.com/SokolskyNikita/mysa-homeassistant)"
@@ -87,10 +87,6 @@ def is_mysa_model(model: str | None) -> bool:
 
 MANUFACTURER: Final = "Mysa"
 HOMEKIT_MANUFACTURER: Final = "Empowered Homes Inc."
-
-# Hidden accessory-information characteristic that holds the Wi-Fi MAC, which is
-# also Mysa's cloud device ID.
-MAC_CHAR_UUID: Final = "22280E2C-9B79-43BD-8370-5A8F67777B29"
 
 ATTR_UNTIL: Final = "until"
 ATTR_EVENTS: Final = "events"

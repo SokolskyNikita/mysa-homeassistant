@@ -14,7 +14,8 @@ from homeassistant.helpers.typing import VolDictType
 import voluptuous as vol
 
 from .const import ATTR_EVENTS, ATTR_UNTIL, DOMAIN
-from .schedule import DAY_NUMBERS
+
+WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 HOLD_SCHEMA: VolDictType = {
     vol.Optional(ATTR_TEMPERATURE): vol.Coerce(float),
@@ -24,7 +25,7 @@ HOLD_SCHEMA: VolDictType = {
 
 EVENT_SCHEMA = vol.Schema(
     {
-        vol.Required("days"): vol.All(cv.ensure_list, [vol.In(list(DAY_NUMBERS))]),
+        vol.Required("days"): vol.All(cv.ensure_list, [vol.In(WEEKDAYS)]),
         vol.Required("time"): cv.time,
         vol.Optional(ATTR_TEMPERATURE): vol.Coerce(float),
         vol.Optional(ATTR_HVAC_MODE, default=HVACMode.HEAT): vol.In(

@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
 
 from homeassistant.components.number import (
     NumberDeviceClass,
@@ -16,10 +15,10 @@ from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .api import Capabilities, DeviceState
-from .cloud import translated_error
+from .cloud_coordinator import translated_error
 from .data import MysaConfigEntry
 from .entity import MysaCloudEntity, MysaEntity, async_add_when_ready
+from .protocols.cloud import Capabilities, DeviceState
 from .thermostat import Thermostat
 
 PARALLEL_UPDATES = 1
@@ -32,34 +31,14 @@ class MysaNumberDescription(NumberEntityDescription):
     value: Callable[[DeviceState], float | None]
     supported: Callable[[Capabilities], bool]
     value_range: Callable[[Capabilities], tuple[float, float, float] | None]
-    changes: Callable[[DeviceState, float], dict[str, dict[str, Any]]]
+    set_value: Callable[[Thermostat, float], Awaitable[None]]
 
 
-# Mysa's app (4.20.1): brightness in steps of 5, wake brightness never below 10,
-# and sleep never brighter than wake. It never sends anything else.
+# Mysa's app (4.20.1): brightness in steps of 5 and wake brightness never below
+# 10. These values describe the controls; the thermostat owns paired-value
+# normalization and the cloud protocol owns the request format.
 BRIGHTNESS_STEP = 5
 MIN_WAKE_BRIGHTNESS = 10
-
-
-def _brightness_changes(
-    key: str,
-) -> Callable[[DeviceState, float], dict[str, dict[str, Any]]]:
-    def _changes(state: DeviceState, value: float) -> dict[str, dict[str, Any]]:
-        # Mysa's app always sends both brightness values together.
-        active = state.active_brightness if state.active_brightness is not None else 100
-        idle = state.idle_brightness if state.idle_brightness is not None else 50
-        value = round(value / BRIGHTNESS_STEP) * BRIGHTNESS_STEP
-        # Keep the value just set and move the other one if they'd cross (the
-        # app swaps them instead, which would undo what was just set here).
-        if key == "activeIntensity":
-            active = max(MIN_WAKE_BRIGHTNESS, value)
-            idle = min(idle, active)
-        else:
-            idle = value
-            active = max(active, idle)
-        return {"physicalInterface": {"activeIntensity": active, "idleIntensity": idle}}
-
-    return _changes
 
 
 NUMBERS: tuple[MysaNumberDescription, ...] = (
@@ -72,7 +51,9 @@ NUMBERS: tuple[MysaNumberDescription, ...] = (
         value=lambda s: s.active_brightness,
         supported=lambda c: c.brightness,
         value_range=lambda c: (MIN_WAKE_BRIGHTNESS, 100, BRIGHTNESS_STEP),
-        changes=_brightness_changes("activeIntensity"),
+        set_value=lambda thermostat, value: thermostat.async_set_brightness(
+            value, active=True
+        ),
     ),
     MysaNumberDescription(
         key="brightness_idle",
@@ -83,7 +64,9 @@ NUMBERS: tuple[MysaNumberDescription, ...] = (
         value=lambda s: s.idle_brightness,
         supported=lambda c: c.brightness,
         value_range=lambda c: (0, 100, BRIGHTNESS_STEP),
-        changes=_brightness_changes("idleIntensity"),
+        set_value=lambda thermostat, value: thermostat.async_set_brightness(
+            value, active=False
+        ),
     ),
     MysaNumberDescription(
         key="setpoint_min",
@@ -95,7 +78,9 @@ NUMBERS: tuple[MysaNumberDescription, ...] = (
         value=lambda s: s.setpoint_min,
         supported=lambda c: c.heat_setpoint_range is not None,
         value_range=lambda c: c.heat_setpoint_range,
-        changes=lambda s, v: {"targetHeat": {"lockoutMin": v}},
+        set_value=lambda thermostat, value: thermostat.async_set_setpoint_limit(
+            value, minimum=True
+        ),
     ),
     MysaNumberDescription(
         key="setpoint_max",
@@ -107,7 +92,9 @@ NUMBERS: tuple[MysaNumberDescription, ...] = (
         value=lambda s: s.setpoint_max,
         supported=lambda c: c.heat_setpoint_range is not None,
         value_range=lambda c: c.heat_setpoint_range,
-        changes=lambda s, v: {"targetHeat": {"lockoutMax": v}},
+        set_value=lambda thermostat, value: thermostat.async_set_setpoint_limit(
+            value, minimum=False
+        ),
     ),
     MysaNumberDescription(
         key="temperature_offset",
@@ -120,7 +107,9 @@ NUMBERS: tuple[MysaNumberDescription, ...] = (
         value=lambda s: s.temperature_offset,
         supported=lambda c: c.offset_range is not None,
         value_range=lambda c: c.offset_range,
-        changes=lambda s, v: {"tracking": {"ambientOffset": v}},
+        set_value=lambda thermostat, value: thermostat.async_set_temperature_offset(
+            value
+        ),
     ),
 )
 
@@ -204,6 +193,4 @@ class MysaNumber(MysaCloudEntity, NumberEntity):
             and value <= setpoint_min
         ):
             raise translated_error("limits_invalid")
-        await self.thermostat.async_cloud_update(
-            self.entity_description.changes(state, value)
-        )
+        await self.entity_description.set_value(self.thermostat, value)

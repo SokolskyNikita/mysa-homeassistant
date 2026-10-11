@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any, cast
 
+from aiohomekit.model.characteristics import CharacteristicsTypes
 from aiohomekit.testing import FakeController
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.components.number import DOMAIN as NUMBER_DOMAIN, SERVICE_SET_VALUE
@@ -19,9 +20,14 @@ import pytest
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.mysa_local.const import CONF_CLOUD_RUNTIME, DOMAIN
-from custom_components.mysa_local.local import CURRENT_STATE
 
-from .common import HKID, FakeCloud, hub_entry, thermostat_subentry
+from .common import (
+    HKID,
+    FakeCloud,
+    hub_entry,
+    thermostat_subentry,
+    update_fake_characteristic,
+)
 from .conftest import setup_entry
 
 
@@ -316,14 +322,14 @@ async def test_local_relay_runtime_stops_and_resumes_across_fallback(
     thermostat = _thermostat(hass)
     assert thermostat.local is not None
 
-    thermostat.local.values[CURRENT_STATE] = 1
-    thermostat.notify()
+    pairing = controller.aliases[HKID]
+    update_fake_characteristic(pairing, CharacteristicsTypes.HEATING_COOLING_CURRENT, 1)
+    await hass.async_block_till_done()
     freezer.tick(timedelta(minutes=2))
     assert thermostat.runtime_today == pytest.approx(120)
 
     # On loss of HomeKit the relay's current state is unknown. A fresh 40%
     # cloud duty reading must not extend the locally observed runtime.
-    pairing = controller.aliases[HKID]
     pairing.available = False
     await thermostat.local.async_poll()
     await hass.async_block_till_done()
@@ -333,7 +339,7 @@ async def test_local_relay_runtime_stops_and_resumes_across_fallback(
 
     # The next local relay observation starts a new interval after recovery.
     pairing.available = True
-    pairing.testing.update_aid_iid([(1, 259, 1)])
+    update_fake_characteristic(pairing, CharacteristicsTypes.HEATING_COOLING_CURRENT, 1)
     await thermostat.local.async_poll()
     await hass.async_block_till_done()
     freezer.tick(timedelta(minutes=2))

@@ -1,0 +1,355 @@
+"""Home Assistant lifecycle adapter for one semantic HomeKit device."""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable, Iterable, Mapping
+from datetime import datetime, timedelta
+from typing import Any
+
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.util import dt as dt_util
+
+from .const import LOCAL_POLL_INTERVAL, LOCAL_READ_TIMEOUT, LOGGER
+from .protocols.homekit import (
+    AccessoryInfo,
+    CharacteristicInfo,
+    Field,
+    HomeKitCharacteristicReadError,
+    HomeKitConnectionError,
+    HomeKitDevice,
+    HomeKitError,
+    HomeKitEvent,
+    HomeKitProtocol,
+    HomeKitWriteRejectedError,
+    LocalMode,
+)
+
+# Keep the public aliases semantic. HomeKit UUIDs, IIDs and integer enum values
+# belong exclusively to protocols.homekit.
+CURRENT_TEMPERATURE = Field.CURRENT_TEMPERATURE
+TARGET_TEMPERATURE = Field.TARGET_TEMPERATURE
+CURRENT_STATE = Field.CURRENT_ACTION
+TARGET_STATE = Field.TARGET_MODE
+DISPLAY_UNITS = Field.DISPLAY_UNIT
+
+_ESSENTIAL_FIELDS = frozenset(
+    {
+        CURRENT_TEMPERATURE,
+        TARGET_TEMPERATURE,
+        CURRENT_STATE,
+        TARGET_STATE,
+    }
+)
+
+CONNECTION_ERRORS: tuple[type[BaseException], ...] = (
+    HomeKitConnectionError,
+    TimeoutError,
+    OSError,
+)
+LOCAL_ERRORS: tuple[type[BaseException], ...] = (
+    HomeKitError,
+    TimeoutError,
+    OSError,
+)
+LocalWriteRejectedError = HomeKitWriteRejectedError
+
+
+class LocalThermostat:
+    """Bridge a semantic HomeKit device into HA timers and callbacks."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        controller: HomeKitProtocol,
+        pairing_data: Mapping[str, Any],
+        name: str,
+    ) -> None:
+        """Load a pairing without connecting to the accessory yet."""
+        self.hass = hass
+        self.name = name
+        self.__device: HomeKitDevice = controller.load_pairing(pairing_data)
+        self.__listeners: set[CALLBACK_TYPE] = set()
+        self.__device_unsub: Callable[[], None] | None = None
+        self.__poll_unsub: CALLBACK_TYPE | None = None
+        self.__started = False
+        self.__poll_lock = asyncio.Lock()
+        self.__failed_essential_fields: set[Field] = set()
+        self.__observed_values: dict[Field, Any] = dict(self.__device.state)
+        self.available = False
+        self.down_since: datetime | None = dt_util.utcnow()
+        self.last_error: str | None = None
+
+    @property
+    def pairing_data(self) -> dict[str, Any]:
+        """Return the opaque credentials and latest endpoint as a copy."""
+        return self.__device.pairing_data
+
+    @property
+    def host(self) -> str | None:
+        """Return the protocol's last known address for repair messaging."""
+        return self.__device.host
+
+    @property
+    def info(self) -> AccessoryInfo:
+        """Accessory identity read from the HomeKit information service."""
+        return self.__device.info
+
+    @property
+    def values(self) -> Mapping[Field, Any]:
+        """Immutable current semantic characteristic values."""
+        return self.__device.state
+
+    @property
+    def chars(self) -> Mapping[Field, CharacteristicInfo]:
+        """Immutable metadata for the semantic fields this device supports."""
+        return self.__device.capabilities
+
+    @property
+    def ready(self) -> bool:
+        """Whether the essential thermostat fields are present."""
+        return self.__device.ready
+
+    @property
+    def supported_modes(self) -> tuple[LocalMode, ...]:
+        """Modes advertised by this accessory."""
+        return self.__device.supported_modes
+
+    @property
+    def temperature_range(self) -> tuple[float | None, float | None, float | None]:
+        """Setpoint minimum, maximum and step."""
+        return self.__device.temperature_range
+
+    @callback
+    def supports(self, field: Field) -> bool:
+        """Whether a semantic field is present in the accessory database."""
+        return field in self.__device.supported_fields
+
+    @callback
+    def add_listener(self, listener: CALLBACK_TYPE) -> CALLBACK_TYPE:
+        """Call the listener when values or availability change."""
+        self.__listeners.add(listener)
+        return lambda: self.__listeners.discard(listener)
+
+    @callback
+    def __notify(self) -> None:
+        for listener in tuple(self.__listeners):
+            listener()
+
+    @callback
+    def __set_available(self, available: bool, error: str | None = None) -> None:
+        if available:
+            self.last_error = None
+        elif error:
+            self.last_error = error
+        if available == self.available:
+            return
+        self.available = available
+        self.down_since = None if available else dt_util.utcnow()
+        LOGGER.debug(
+            "%s: local HomeKit connection %s%s",
+            self.name,
+            "up" if available else "down",
+            f" ({error})" if error else "",
+        )
+        self.__notify()
+
+    @callback
+    def __handle_event(self, event: HomeKitEvent) -> None:
+        """Apply translated notifications without inspecting HAP payloads."""
+        for field in event.failed_fields:
+            if field in _ESSENTIAL_FIELDS:
+                self.__failed_essential_fields.add(field)
+
+        changed = False
+        for field, value in event.values.items():
+            if self.__observed_values.get(field) != value:
+                changed = True
+            self.__observed_values[field] = value
+        essential_error = any(
+            field in _ESSENTIAL_FIELDS for field in event.failed_fields
+        )
+        if essential_error:
+            self.__set_available(False, self.__format_event_error(event))
+            if changed:
+                self.__notify()
+            return
+
+        if (
+            self.ready
+            and not self.__failed_essential_fields
+            and (
+                event.reconnected
+                or any(field in _ESSENTIAL_FIELDS for field in event.values)
+            )
+        ):
+            self.__set_available(True)
+        if changed and self.available:
+            self.__notify()
+
+    @staticmethod
+    def __format_event_error(event: HomeKitEvent) -> str:
+        return (
+            ", ".join(
+                f"{field.value}: {status}"
+                for field, status in event.failed_fields.items()
+            )
+            or "HomeKit characteristic read failed"
+        )
+
+    async def async_start(self) -> None:
+        """Connect, subscribe and schedule background polling."""
+        if self.__started:
+            return
+        self.__started = True
+        self.__device_unsub = self.__device.add_listener(self.__handle_event)
+        self.__poll_unsub = async_track_time_interval(
+            self.hass,
+            self._async_scheduled_poll,
+            LOCAL_POLL_INTERVAL,
+            name=f"Mysa {self.name} local poll",
+        )
+        try:
+            async with asyncio.timeout(15):
+                await self.__device.async_connect()
+        except (HomeKitError, TimeoutError) as error:
+            self.__failed_essential_fields.update(_ESSENTIAL_FIELDS)
+            self.__set_available(False, str(error) or type(error).__name__)
+            return
+        if not self.ready:
+            missing = _ESSENTIAL_FIELDS - self.__device.supported_fields
+            self.__set_available(
+                False,
+                "HomeKit missing required fields: "
+                + ", ".join(sorted(field.value for field in missing)),
+            )
+        elif not self.__failed_essential_fields:
+            self.__set_available(True)
+
+    async def _async_scheduled_poll(self, _now: datetime | None = None) -> None:
+        await self.async_poll()
+
+    async def async_poll(self) -> None:
+        """Refresh the accessory database or read current semantic state."""
+        if self.__poll_lock.locked():
+            return
+        async with self.__poll_lock:
+            if not self.ready:
+                try:
+                    async with asyncio.timeout(15):
+                        await self.__device.async_connect()
+                except (HomeKitError, TimeoutError) as error:
+                    self.__failed_essential_fields.update(_ESSENTIAL_FIELDS)
+                    self.__set_available(False, str(error) or type(error).__name__)
+                    return
+                if not self.ready:
+                    missing = _ESSENTIAL_FIELDS - self.__device.supported_fields
+                    self.__failed_essential_fields.update(missing)
+                    self.__set_available(
+                        False,
+                        "HomeKit missing required fields: "
+                        + ", ".join(sorted(field.value for field in missing)),
+                    )
+                    return
+
+            try:
+                previous = dict(self.__device.state)
+                await self.async_read(
+                    tuple(self.__device.supported_fields),
+                    timeout=LOCAL_READ_TIMEOUT * 3,
+                )
+            except LOCAL_ERRORS as error:
+                if isinstance(error, HomeKitCharacteristicReadError) and error.fields:
+                    self.__failed_essential_fields.update(error.fields)
+                else:
+                    self.__failed_essential_fields.update(_ESSENTIAL_FIELDS)
+                self.__set_available(False, str(error) or type(error).__name__)
+                return
+
+            self.__failed_essential_fields.clear()
+            current = dict(self.__device.state)
+            self.__observed_values.update(current)
+            changed = previous != current
+            self.__set_available(True)
+            if changed and self.available:
+                self.__notify()
+
+    async def async_read(
+        self,
+        fields: Iterable[Field],
+        *,
+        timeout: float | None = None,  # noqa: ASYNC109 - router read-back deadline
+    ) -> dict[Field, Any]:
+        """Read semantic values, updating the protocol cache on success."""
+        requested = tuple(fields)
+        try:
+            values = await self.__device.async_read(requested, timeout=timeout)
+        except HomeKitCharacteristicReadError as error:
+            self.__failed_essential_fields.update(error.fields)
+            raise
+        self.__observed_values.update(values)
+        self.__failed_essential_fields.difference_update(
+            field
+            for field in requested
+            if field in _ESSENTIAL_FIELDS and field in self.__device.supported_fields
+        )
+        return values
+
+    def start_write(self, values: Mapping[Field, Any]) -> asyncio.Task[None]:
+        """Start a HomeKit write that cannot be cancelled by a caller timeout."""
+        return self.hass.async_create_background_task(
+            self.__device.async_write(values), f"mysa {self.name} local write"
+        )
+
+    @callback
+    def mark_available(self) -> None:
+        """Mark healthy after a successful router read-back."""
+        if not self.__failed_essential_fields and self.ready:
+            self.__set_available(True)
+
+    @callback
+    def mark_unavailable(self, error: str) -> None:
+        """Mark unavailable after an uncertain write or transport failure."""
+        self.__set_available(False, error)
+
+    async def async_identify(self) -> None:
+        """Ask the thermostat to identify itself over HomeKit."""
+        await self.__device.async_identify()
+
+    async def async_stop(self) -> None:
+        """Stop the HA poll timer and close the protocol session."""
+        if self.__poll_unsub is not None:
+            self.__poll_unsub()
+            self.__poll_unsub = None
+        if self.__device_unsub is not None:
+            self.__device_unsub()
+            self.__device_unsub = None
+        self.__listeners.clear()
+        if not self.__started:
+            return
+        self.__started = False
+        try:
+            await self.__device.async_close()
+        except HomeKitError as error:
+            LOGGER.debug(
+                "Closing local HomeKit session failed (%s)", type(error).__name__
+            )
+
+    def down_for(self) -> timedelta | None:
+        """Return the outage duration while local HomeKit is unavailable."""
+        if self.available or self.down_since is None:
+            return None
+        return dt_util.utcnow() - self.down_since
+
+    @callback
+    def diagnostics(self) -> dict[str, Any]:
+        """Return semantic HomeKit diagnostics with identifiers omitted."""
+        details = self.__device.diagnostics()
+        return {
+            "connected": self.available,
+            "model": self.info.model,
+            "manufacturer": self.info.manufacturer,
+            "firmware": self.info.firmware,
+            "fields": details["fields"],
+        }

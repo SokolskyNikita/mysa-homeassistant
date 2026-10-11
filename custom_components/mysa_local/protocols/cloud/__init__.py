@@ -6,6 +6,7 @@ package later.
 
 from .auth import MysaAuth, Tokens, jwt_claims
 from .client import MysaClient, iso_utc
+from .commands import ScheduleEventSpec, encode_schedule_events, make_state
 from .const import (
     MODEL_FAMILIES,
     MODEL_NAMES,
@@ -74,13 +75,16 @@ __all__ = [
     "MysaNotFoundError",
     "MysaRateLimitError",
     "MysaUnsupportedChallengeError",
+    "ScheduleEventSpec",
     "StateChange",
     "Swing",
     "Tokens",
     "UsageBucket",
     "UsageDay",
+    "encode_schedule_events",
     "iso_utc",
     "jwt_claims",
+    "make_state",
     "model_family",
     "value_range",
 ]

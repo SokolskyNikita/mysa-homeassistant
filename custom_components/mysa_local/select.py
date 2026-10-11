@@ -7,10 +7,9 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .api import HeaterType
 from .data import MysaConfigEntry
 from .entity import MysaCloudEntity, MysaEntity, async_add_when_ready
-from .local import DISPLAY_UNITS
+from .protocols.cloud import HeaterType
 from .thermostat import Thermostat
 
 PARALLEL_UPDATES = 1
@@ -33,12 +32,9 @@ async def async_setup_entry(
 
     def _entities(thermostat: Thermostat) -> list[MysaEntity]:
         entities: list[MysaEntity] = []
-        local_units = (
-            thermostat.local is not None and DISPLAY_UNITS in thermostat.local.chars
-        )
-        caps = thermostat.capabilities
-        if local_units or (caps is not None and {"C", "F"} <= set(caps.units)):
+        if thermostat.supports_display_unit:
             entities.append(DisplayUnitSelect(thermostat))
+        caps = thermostat.capabilities
         if caps is not None and set(HEATER_OPTIONS) <= set(caps.control_types):
             entities.append(HeaterTypeSelect(thermostat))
         return entities
@@ -98,6 +94,4 @@ class HeaterTypeSelect(MysaCloudEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change the heater type."""
-        await self.thermostat.async_cloud_settings(
-            {"DutyCycleOpt": int(HEATER_BY_OPTION[option])}
-        )
+        await self.thermostat.async_set_heater_type(HEATER_BY_OPTION[option])

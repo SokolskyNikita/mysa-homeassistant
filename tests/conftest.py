@@ -11,6 +11,8 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
+from custom_components.mysa_local.protocols.homekit import HomeKitProtocol
+
 from .common import FakeCloud, hub_entry, make_controller
 
 
@@ -34,18 +36,19 @@ def cloud(aioclient_mock: AiohttpClientMocker) -> FakeCloud:
 async def controller() -> AsyncGenerator[FakeController]:
     """A fake aiohomekit controller with the Lite paired."""
     ctrl = await make_controller(paired=True)
+    protocol = HomeKitProtocol.from_controller(ctrl)
     with (
         patch(
             "custom_components.mysa_local.async_get_controller",
-            AsyncMock(return_value=ctrl),
+            AsyncMock(return_value=protocol),
         ),
         patch(
             "custom_components.mysa_local.config_flow.async_get_controller",
-            AsyncMock(return_value=ctrl),
+            AsyncMock(return_value=protocol),
         ),
         patch(
-            "custom_components.mysa_local.homekit.async_get_controller",
-            AsyncMock(return_value=ctrl),
+            "custom_components.mysa_local.homekit_adapter.async_get_controller",
+            AsyncMock(return_value=protocol),
         ),
     ):
         yield ctrl
@@ -54,17 +57,20 @@ async def controller() -> AsyncGenerator[FakeController]:
 @pytest.fixture
 def unpaired_controller() -> Generator[None]:
     """Patch in a controller that only has an unpaired, discoverable Lite."""
-    holder: dict[str, FakeController] = {}
+    holder: dict[str, HomeKitProtocol] = {}
 
-    async def _get(hass: HomeAssistant) -> FakeController:
+    async def _get(hass: HomeAssistant) -> HomeKitProtocol:
         if "c" not in holder:
-            holder["c"] = await make_controller(paired=False, unpaired=True)
+            controller = await make_controller(paired=False, unpaired=True)
+            holder["c"] = HomeKitProtocol.from_controller(controller)
         return holder["c"]
 
     with (
         patch("custom_components.mysa_local.async_get_controller", _get),
         patch("custom_components.mysa_local.config_flow.async_get_controller", _get),
-        patch("custom_components.mysa_local.homekit.async_get_controller", _get),
+        patch(
+            "custom_components.mysa_local.homekit_adapter.async_get_controller", _get
+        ),
     ):
         yield
 

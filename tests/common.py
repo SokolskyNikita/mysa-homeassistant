@@ -25,12 +25,6 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import (
 )
 from yarl import URL
 
-from custom_components.mysa_local.api.const import (
-    API_BASE,
-    COGNITO_URL,
-    COGNITO_USER_POOL_ID,
-)
-from custom_components.mysa_local.api.srp import BIG_N, G, K, pad_hex
 from custom_components.mysa_local.const import (
     CONF_CLOUD_ENABLED,
     CONF_CLOUD_RUNTIME,
@@ -43,6 +37,12 @@ from custom_components.mysa_local.const import (
     DOMAIN,
     SUBENTRY_THERMOSTAT,
 )
+from custom_components.mysa_local.protocols.cloud.const import (
+    API_BASE,
+    COGNITO_URL,
+    COGNITO_USER_POOL_ID,
+)
+from custom_components.mysa_local.protocols.cloud.srp import BIG_N, G, K, pad_hex
 
 FIXTURES = Path(__file__).parent / "fixtures"
 DEVICE_ID = "a1b2c3d4e5f6"
@@ -197,6 +197,24 @@ async def make_controller(
     if unpaired:
         controller.discoveries[HKID] = LiteDiscovery(controller, lite_accessories())
     return controller
+
+
+def update_fake_characteristic(
+    pairing: FakePairing, characteristic_type: str, value: Any
+) -> None:
+    """Emit a HomeKit value event for a characteristic in the fake accessory."""
+    aid, iid = fake_characteristic_address(pairing, characteristic_type)
+    pairing.testing.update_aid_iid([(aid, iid, value)])
+
+
+def fake_characteristic_address(
+    pairing: FakePairing, characteristic_type: str
+) -> tuple[int, int]:
+    """Find a fake accessory's HAP address by its characteristic type."""
+    for (aid, iid), characteristic in pairing.testing.characteristics.items():
+        if characteristic.type == characteristic_type:
+            return aid, iid
+    raise AssertionError(f"Fake accessory has no characteristic {characteristic_type}")
 
 
 # ---- Mysa cloud -----------------------------------------------------------

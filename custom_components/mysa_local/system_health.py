@@ -9,7 +9,6 @@ from homeassistant.components import system_health
 from homeassistant.const import CONF_PASSWORD
 from homeassistant.core import HomeAssistant, callback
 
-from .api.const import API_BASE
 from .const import (
     CONF_REFRESH_TOKEN,
     CONNECTION_CLOUD,
@@ -19,6 +18,7 @@ from .const import (
     VERSION,
 )
 from .data import MysaConfigEntry
+from .protocols.cloud.const import API_BASE
 
 
 @callback

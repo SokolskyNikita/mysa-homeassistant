@@ -8,8 +8,6 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from aiohomekit.exceptions import AccessoryDisconnectedError, MalformedPinError
-from aiohomekit.testing import FakePairing
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntryState
@@ -31,13 +29,7 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.mysa_local import async_setup
 from custom_components.mysa_local.config_flow import (
-    _PAIRING_SESSION,
-    _PENDING_PAIRINGS_STORE,
     InsecureCodeError,
-    _async_clear_configured_pairing_backups,
-    _async_load_pending_pairings,
-    _async_save_pending_pairing,
-    _pairing_session_id,
     configured_hkids,
     format_pin,
 )
@@ -57,7 +49,21 @@ from custom_components.mysa_local.const import (
     HOMEKIT_MODEL_PATTERNS,
     SUBENTRY_THERMOSTAT,
 )
-from custom_components.mysa_local.local import AccessoryInfo
+from custom_components.mysa_local.pairing_store import (
+    _PAIRING_SESSION,
+    _PENDING_PAIRINGS_STORE,
+    async_clear_configured_pairing_backups,
+    async_load_pending_pairings,
+    pairing_session_id,
+    pairing_store,
+)
+from custom_components.mysa_local.protocols.homekit import (
+    AccessoryInfo,
+    HomeKitConnectionError,
+    HomeKitMalformedPinError,
+)
+from custom_components.mysa_local.protocols.homekit.device import HomeKitDevice
+from custom_components.mysa_local.protocols.homekit.models import HomeKitDiscovery
 
 from .common import (
     DEVICE_ID,
@@ -202,17 +208,17 @@ async def test_pairing_recovers_after_flow_cancellation_and_store_reload(
         result["flow_id"], {"pairing_code": PAIRING_CODE}
     )
     assert result["step_id"] == "cloud_offer"
-    assert (await _async_load_pending_pairings(hass))[HKID.lower()][
+    assert (await async_load_pending_pairings(hass))[HKID.lower()][
         "pairing"
     ] == PAIRING_DATA
 
     hass.config_entries.flow.async_abort(result["flow_id"])
     # A new Store and session ID simulate HA restarting after flow cancellation.
     hass.data.pop(_PENDING_PAIRINGS_STORE)
-    old_session = (await _async_load_pending_pairings(hass))[HKID.lower()]["session"]
+    old_session = (await async_load_pending_pairings(hass))[HKID.lower()]["session"]
     hass.data.pop(_PAIRING_SESSION)
-    assert _pairing_session_id(hass) != old_session
-    assert (await _async_load_pending_pairings(hass))[HKID.lower()][
+    assert pairing_session_id(hass) != old_session
+    assert (await async_load_pending_pairings(hass))[HKID.lower()][
         "pairing"
     ] == PAIRING_DATA
 
@@ -225,7 +231,7 @@ async def test_pairing_recovers_after_flow_cancellation_and_store_reload(
 
     # Resume completed without asking for the HomeKit code again.
     hass.config_entries.flow.async_abort(result["flow_id"])
-    assert (await _async_load_pending_pairings(hass))[HKID.lower()][
+    assert (await async_load_pending_pairings(hass))[HKID.lower()][
         "pairing"
     ] == PAIRING_DATA
 
@@ -239,16 +245,16 @@ async def test_pairing_recovers_after_accessory_discovery_failure(
         DOMAIN, context={"source": config_entries.SOURCE_HOMEKIT}, data=discovery()
     )
     with patch.object(
-        FakePairing,
-        "list_accessories_and_characteristics",
+        HomeKitDevice,
+        "async_get_info",
         new_callable=AsyncMock,
-        side_effect=AccessoryDisconnectedError("device restarted"),
+        side_effect=HomeKitConnectionError("device restarted"),
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"pairing_code": PAIRING_CODE}
         )
     assert result["errors"] == {"base": "cannot_connect_device"}
-    assert (await _async_load_pending_pairings(hass))[HKID.lower()][
+    assert (await async_load_pending_pairings(hass))[HKID.lower()][
         "pairing"
     ] == PAIRING_DATA
 
@@ -265,16 +271,14 @@ async def test_pairing_backup_is_pruned_after_startup_loads_entry(
     hass: HomeAssistant,
 ) -> None:
     """Prune only old backups for pairings in entries loaded from storage."""
-    await _async_save_pending_pairing(
-        hass,
+    await pairing_store(hass).async_save(
         HKID.lower(),
         PAIRING_DATA,
         name="Living Room",
         model="BB-V2-0-L",
     )
     other_hkid = "11:11:11:11:11:11"
-    await _async_save_pending_pairing(
-        hass,
+    await pairing_store(hass).async_save(
         other_hkid,
         {**PAIRING_DATA, "AccessoryPairingID": other_hkid},
         name="Other Room",
@@ -284,19 +288,19 @@ async def test_pairing_backup_is_pruned_after_startup_loads_entry(
     # Represent the entry as it was loaded from HA's already persisted storage.
     entry.add_to_hass(hass)
     assert configured_hkids(entry) == {HKID.lower(): next(iter(entry.subentries))}
-    pending = await _async_load_pending_pairings(hass)
+    pending = await async_load_pending_pairings(hass)
     old_session = pending[HKID.lower()]["session"]
-    await _async_clear_configured_pairing_backups(hass, set(configured_hkids(entry)))
-    assert set(await _async_load_pending_pairings(hass)) == {HKID.lower(), other_hkid}
+    await async_clear_configured_pairing_backups(hass, set(configured_hkids(entry)))
+    assert set(await async_load_pending_pairings(hass)) == {HKID.lower(), other_hkid}
 
     hass.data.pop(_PAIRING_SESSION)
-    assert _pairing_session_id(hass) != old_session
+    assert pairing_session_id(hass) != old_session
 
     assert await async_setup(hass, {})
     hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
     await hass.async_block_till_done()
 
-    assert set(await _async_load_pending_pairings(hass)) == {other_hkid}
+    assert set(await async_load_pending_pairings(hass)) == {other_hkid}
 
 
 @pytest.mark.usefixtures("unpaired_controller")
@@ -448,7 +452,7 @@ async def test_sign_in_survives_bootstrap_failure(
 )
 async def test_sign_in_errors(hass: HomeAssistant, error: str, key: str) -> None:
     """Sign-in problems show as form errors."""
-    from custom_components.mysa_local.api import (
+    from custom_components.mysa_local.protocols.cloud import (
         MysaConnectionError,
         MysaUnsupportedChallengeError,
     )
@@ -872,7 +876,7 @@ async def test_takeover_from_homekit_device(
         )
         await hass.async_block_till_done()
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert (await _async_load_pending_pairings(hass))[HKID.lower()][
+    assert (await async_load_pending_pairings(hass))[HKID.lower()][
         "pairing"
     ] == PAIRING_DATA
     entry = result["result"]
@@ -908,7 +912,7 @@ def test_format_pin_accepts_any_separators(typed: str, expected: str) -> None:
 @pytest.mark.parametrize("typed", ["", "1234567", "123456789", "abc-de-fgh"])
 def test_format_pin_needs_eight_digits(typed: str) -> None:
     """Anything other than 8 digits is rejected."""
-    with pytest.raises(MalformedPinError):
+    with pytest.raises(HomeKitMalformedPinError):
         format_pin(typed)
 
 
@@ -921,32 +925,26 @@ def test_format_pin_rejects_trivial_codes() -> None:
 @pytest.mark.usefixtures("unpaired_controller")
 async def test_pairing_retries_after_connection_error(hass: HomeAssistant) -> None:
     """A dozing thermostat doesn't end the flow; the user wakes it and retries."""
-    from aiohomekit.exceptions import AccessoryDisconnectedError
-
-    from custom_components.mysa_local import config_flow
-
-    controller = await config_flow.async_get_controller(hass)
-    lite = controller.discoveries[HKID]
-    real_start = lite.async_start_pairing
+    real_start = HomeKitDiscovery.async_start_pairing
     calls = 0
 
-    async def flaky_start(alias: str) -> object:
+    async def flaky_start(discovery: HomeKitDiscovery) -> object:
         nonlocal calls
         calls += 1
         if calls == 1:
-            raise AccessoryDisconnectedError("HAP server restarting")
-        return await real_start(alias)
+            raise HomeKitConnectionError("HAP server restarting")
+        return await real_start(discovery)
 
-    lite.async_start_pairing = flaky_start  # type: ignore[method-assign]
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_HOMEKIT}, data=discovery()
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"pairing_code": PAIRING_CODE}
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect_device"}
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"pairing_code": PAIRING_CODE}
-    )
+    with patch.object(HomeKitDiscovery, "async_start_pairing", flaky_start):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_HOMEKIT}, data=discovery()
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"pairing_code": PAIRING_CODE}
+        )
+        assert result["type"] is FlowResultType.FORM
+        assert result["errors"] == {"base": "cannot_connect_device"}
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"pairing_code": PAIRING_CODE}
+        )
     assert result["step_id"] == "cloud_offer"

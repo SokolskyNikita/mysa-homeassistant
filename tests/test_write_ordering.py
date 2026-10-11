@@ -2,13 +2,17 @@
 
 import asyncio
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 
 from homeassistant.exceptions import HomeAssistantError
 import pytest
 
-from custom_components.mysa_local.api import Mode, MysaConnectionError
-from custom_components.mysa_local.local import TARGET_TEMPERATURE
+from custom_components.mysa_local.local_adapter import TARGET_TEMPERATURE
+from custom_components.mysa_local.protocols.cloud import (
+    AcFan,
+    Mode,
+    MysaConnectionError,
+)
 
 from .common import HKID, hub_entry
 from .conftest import setup_entry
@@ -25,7 +29,7 @@ async def test_late_local_write_reasserts_latest_cloud_command(
     pairing = controller.aliases[HKID]
     release = asyncio.Event()
     real_put = pairing.put_characteristics
-    real_update = thermostat.cloud.async_update_state
+    real_update = thermostat.cloud.client.update_state
     physical_setpoints: list[float] = []
 
     async def delayed_put(chars: Any) -> Any:
@@ -42,8 +46,8 @@ async def test_late_local_write_reasserts_latest_cloud_command(
         patch.object(
             pairing, "get_characteristics", AsyncMock(side_effect=OSError("offline"))
         ),
-        patch.object(thermostat.cloud, "async_update_state", cloud_write),
-        patch("custom_components.mysa_local.thermostat.LOCAL_WRITE_TIMEOUT", 0.001),
+        patch.object(thermostat.cloud.client, "update_state", cloud_write),
+        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.001),
     ):
         await thermostat.async_set_temperature(22)
         # A recovery event must not allow a second local write to overtake the
@@ -54,8 +58,8 @@ async def test_late_local_write_reasserts_latest_cloud_command(
         assert physical_setpoints == [22, 19, 18]
         if fail_first_reconciliation:
             with patch.object(
-                thermostat.cloud,
-                "async_update_state",
+                thermostat.cloud.client,
+                "update_state",
                 AsyncMock(side_effect=HomeAssistantError("cloud unavailable")),
             ):
                 release.set()
@@ -69,8 +73,8 @@ async def test_late_local_write_reasserts_latest_cloud_command(
 
     assert physical_setpoints == [22, 19, 18, 22, 18]
     assert thermostat.target_temperature == 18
-    assert thermostat._pending_local is None
-    assert not thermostat._reconcile
+    assert thermostat.commands._pending_local is None
+    assert not thermostat.commands._reconcile
 
 
 async def test_simultaneous_local_commands_are_serialized(
@@ -128,11 +132,11 @@ async def test_unload_closes_and_reconciles_pending_write(
         patch.object(
             pairing, "get_characteristics", AsyncMock(side_effect=OSError("offline"))
         ),
-        patch("custom_components.mysa_local.thermostat.LOCAL_WRITE_TIMEOUT", 0.001),
+        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.001),
     ):
         await thermostat.async_set_temperature(22)
         await thermostat.async_set_temperature(18)
-        pending = thermostat._pending_local
+        pending = thermostat.commands._pending_local
         assert await hass.config_entries.async_unload(entry.entry_id)
         assert pending.cancelled()
         release.set()
@@ -162,7 +166,7 @@ async def test_late_setpoint_reasserts_newer_off_command(
         patch.object(
             pairing, "get_characteristics", AsyncMock(side_effect=OSError("offline"))
         ),
-        patch("custom_components.mysa_local.thermostat.LOCAL_WRITE_TIMEOUT", 0.001),
+        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.001),
     ):
         await thermostat.async_set_temperature(22)
         await thermostat.async_set_mode(Mode.OFF)
@@ -197,7 +201,7 @@ async def test_cloud_only_mode_supersedes_pending_local_mode(
         patch.object(
             pairing, "get_characteristics", AsyncMock(side_effect=OSError("offline"))
         ),
-        patch("custom_components.mysa_local.thermostat.LOCAL_WRITE_TIMEOUT", 0.001),
+        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.001),
     ):
         await thermostat.async_set_mode(Mode.OFF)
         await thermostat.async_set_mode(Mode.FAN_ONLY)
@@ -233,10 +237,17 @@ async def test_multi_field_cloud_write_is_reconciled_once(
         patch.object(
             pairing, "get_characteristics", AsyncMock(side_effect=OSError("offline"))
         ),
-        patch("custom_components.mysa_local.thermostat.LOCAL_WRITE_TIMEOUT", 0.001),
+        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.001),
     ):
         await thermostat.async_set_temperature(22)
-        await thermostat.async_cloud_update(changes)
+        # A fan command carries the current mode and fan speed together.
+        with patch.object(
+            type(thermostat),
+            "mode",
+            new_callable=PropertyMock,
+            return_value=Mode.FAN_ONLY,
+        ):
+            await thermostat.async_set_fan_speed(AcFan.HIGH)
         release.set()
         await hass.async_block_till_done(wait_background_tasks=True)
 
@@ -279,7 +290,7 @@ async def test_lost_cloud_response_preserves_latest_intent(
             pairing, "get_characteristics", AsyncMock(side_effect=OSError("offline"))
         ),
         patch.object(thermostat.cloud.client, "update_state", update),
-        patch("custom_components.mysa_local.thermostat.LOCAL_WRITE_TIMEOUT", 0.001),
+        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.001),
     ):
         await thermostat.async_set_temperature(22)
         with pytest.raises(HomeAssistantError):

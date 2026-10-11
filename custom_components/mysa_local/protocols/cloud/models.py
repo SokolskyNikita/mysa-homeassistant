@@ -19,6 +19,7 @@ from .const import (
     AC_SWING_KEYS,
     MODE_BY_NAME,
     SETPOINT_SECTION_BY_MODE,
+    STATE_TO_AC_FAN,
     AcFan,
     ChangeSource,
     Mode,
@@ -181,6 +182,11 @@ class DeviceState:
         if mode is not None and SETPOINT_SECTION_BY_MODE.get(mode) == "targetCool":
             return self.cool_setpoint
         return self.heat_setpoint
+
+    @property
+    def ac_fan(self) -> AcFan | None:
+        """The AC fan speed in Mysa's app enum, if the state has one."""
+        return STATE_TO_AC_FAN.get(self.fan_mode) if self.fan_mode is not None else None
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,124 +1,81 @@
-"""Tests for the shared HomeKit controller helpers."""
+"""Tests for Home Assistant's HomeKit lifecycle and pairing adapter."""
 
-from __future__ import annotations
-
-from collections.abc import Mapping
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant
-import pytest
 
-from custom_components.mysa_local import homekit
+from custom_components.mysa_local import homekit_adapter
+from custom_components.mysa_local.protocols.homekit import AccessoryInfo, HomeKitError
 
-from .common import PAIRING_DATA, lite_accessories
-
-
-class _FakeIpPairing:
-    """Small fake for the pairing operations used by async_copy_pairing."""
-
-    def __init__(self, name: str, events: list[str]) -> None:
-        self.name = name
-        self.events = events
-        self.accessories = None
-
-    async def add_pairing(self, *_args: Any) -> None:
-        self.events.append("add_pairing")
-
-    async def list_accessories_and_characteristics(self) -> None:
-        self.events.append("list_accessories")
-        self.accessories = lite_accessories()
-
-    async def close(self) -> None:
-        self.events.append(f"close_{self.name}")
-
-    async def remove_pairing(self, _pairing_id: str) -> None:
-        self.events.append("remove_pairing")
+from .common import PAIRING_DATA
 
 
-class _FakeController:
-    """Return separate source and newly-created pairing objects."""
-
-    def __init__(self, *, events: list[str], **_kwargs: Any) -> None:
-        self.events = events
-        self.old = _FakeIpPairing("old", events)
-        self.new = _FakeIpPairing("new", events)
-
-    async def async_start(self) -> None:
-        self.events.append("start")
-
-    async def async_stop(self) -> None:
-        self.events.append("stop")
-
-    def load_pairing(self, alias: str, _data: Mapping[str, Any]) -> _FakeIpPairing:
-        self.events.append(f"load_{alias[:4]}")
-        return self.old if alias.startswith("copy-src") else self.new
-
-
-async def test_async_copy_pairing_persists_before_accessory_read(
+async def test_async_get_controller_is_shared_and_stopped_with_hass(
     hass: HomeAssistant,
 ) -> None:
-    """Save newly installed controller keys before a fallible network read."""
-    events: list[str] = []
-    controllers: list[_FakeController] = []
-
-    def controller_factory(**kwargs: Any) -> _FakeController:
-        controller = _FakeController(events=events, **kwargs)
-        controllers.append(controller)
-        return controller
-
-    async def save_pairing(data: Mapping[str, Any]) -> None:
-        assert data["AccessoryPairingID"] == PAIRING_DATA["AccessoryPairingID"]
-        assert data["iOSPairingId"]
-        events.append("persist")
+    """One protocol instance is started once and closed with Home Assistant."""
+    protocol = AsyncMock()
+    zeroconf_instance = object()
 
     with (
-        patch.object(homekit, "Controller", side_effect=controller_factory),
-        patch.object(homekit.ip, "IpPairing", _FakeIpPairing),
         patch.object(
-            homekit.zeroconf,
+            homekit_adapter.zeroconf,
             "async_get_async_instance",
-            AsyncMock(return_value=object()),
-        ),
+            AsyncMock(return_value=zeroconf_instance),
+        ) as get_zeroconf,
+        patch.object(homekit_adapter, "HomeKitProtocol", return_value=protocol),
     ):
-        await homekit.async_copy_pairing(
+        first = await homekit_adapter.async_get_controller(hass)
+        second = await homekit_adapter.async_get_controller(hass)
+
+        assert first is protocol
+        assert second is protocol
+        protocol.async_start.assert_awaited_once_with()
+        get_zeroconf.assert_awaited_once_with(hass)
+
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+        await hass.async_block_till_done()
+
+    protocol.async_stop.assert_awaited_once_with()
+
+
+async def test_pairing_helpers_delegate_to_protocol(
+    hass: HomeAssistant,
+) -> None:
+    """HA helpers pass through the protocol's semantic pairing operations."""
+    protocol = AsyncMock()
+    expected = (dict(PAIRING_DATA), AccessoryInfo(model="BB-V2-0-L"))
+    protocol.async_copy_pairing.return_value = expected
+    save_pairing = AsyncMock()
+
+    with patch.object(
+        homekit_adapter,
+        "async_get_controller",
+        AsyncMock(return_value=protocol),
+    ):
+        result = await homekit_adapter.async_copy_pairing(
             hass, PAIRING_DATA, on_pairing_saved=save_pairing
         )
+        await homekit_adapter.async_unpair(hass, PAIRING_DATA)
 
-    assert events.index("add_pairing") < events.index("persist")
-    assert events.index("persist") < events.index("list_accessories")
-    assert events[-1] == "stop"
-    assert len(controllers) == 1
+    assert result == expected
+    protocol.async_copy_pairing.assert_awaited_once_with(
+        PAIRING_DATA, on_pairing_saved=save_pairing
+    )
+    protocol.async_unpair.assert_awaited_once_with(PAIRING_DATA)
 
 
-async def test_async_copy_pairing_rolls_back_if_backup_fails(
-    hass: HomeAssistant,
-) -> None:
-    """Undo the accessory-side pairing when its credentials cannot be saved."""
-    events: list[str] = []
+async def test_unpair_swallows_protocol_failure(hass: HomeAssistant) -> None:
+    """A failed accessory-side unpair leaves HA cleanup able to complete."""
+    protocol = AsyncMock()
+    protocol.async_unpair.side_effect = HomeKitError("device unavailable")
 
-    async def fail_to_save(_data: Mapping[str, Any]) -> None:
-        events.append("persist")
-        raise OSError("storage unavailable")
-
-    with (
-        patch.object(
-            homekit,
-            "Controller",
-            side_effect=lambda **kwargs: _FakeController(events=events, **kwargs),
-        ),
-        patch.object(homekit.ip, "IpPairing", _FakeIpPairing),
-        patch.object(
-            homekit.zeroconf,
-            "async_get_async_instance",
-            AsyncMock(return_value=object()),
-        ),
-        pytest.raises(OSError, match="storage unavailable"),
+    with patch.object(
+        homekit_adapter,
+        "async_get_controller",
+        AsyncMock(return_value=protocol),
     ):
-        await homekit.async_copy_pairing(
-            hass, PAIRING_DATA, on_pairing_saved=fail_to_save
-        )
+        await homekit_adapter.async_unpair(hass, PAIRING_DATA)
 
-    assert events.index("persist") < events.index("remove_pairing")
-    assert "list_accessories" not in events
-    assert events[-1] == "stop"
+    protocol.async_unpair.assert_awaited_once_with(PAIRING_DATA)

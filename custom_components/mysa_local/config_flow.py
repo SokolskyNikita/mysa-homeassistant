@@ -11,16 +11,7 @@ import asyncio
 from collections.abc import Mapping
 import re
 from typing import Any, override
-import uuid
 
-import aiohomekit
-from aiohomekit.controller.abstract import (
-    AbstractDiscovery,
-    AbstractPairing,
-    FinishPairing,
-)
-from aiohomekit.exceptions import AuthenticationError, HomeKitException
-from aiohomekit.utils import domain_to_name
 from homeassistant.config_entries import (
     SOURCE_RECONFIGURE,
     ConfigEntry,
@@ -51,8 +42,6 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
-from homeassistant.helpers.storage import Store
-from homeassistant.util.hass_dict import HassKey
 import voluptuous as vol
 
 from .account import (
@@ -67,20 +56,7 @@ from .account import (
     can_pair_locally,
     is_supported_model,
 )
-from .api import (
-    MODEL_NAMES,
-    TESTED_MODELS,
-    Bootstrap,
-    MysaApiError,
-    MysaAuth,
-    MysaAuthError,
-    MysaClient,
-    MysaConnectionError,
-    MysaError,
-    MysaInvalidCredentialsError,
-    MysaUnsupportedChallengeError,
-)
-from .cloud import CloudData
+from .cloud_coordinator import CloudData
 from .const import (
     CONF_CLOUD_ENABLED,
     CONF_CLOUD_RUNTIME,
@@ -105,14 +81,42 @@ from .const import (
     WIFI_SETUP_URL,
     is_mysa_model,
 )
-from .homekit import (
-    ENDPOINT_KEYS,
+from .homekit_adapter import (
     async_copy_pairing,
     async_get_controller,
     async_unpair,
+    discovery_from_zeroconf,
+    update_pairing_endpoints,
 )
-from .local import CONNECTION_ERRORS, LOCAL_ERRORS, AccessoryInfo, parse_accessories
 from .migration import HKC_DOMAIN
+from .pairing_store import pairing_store
+from .protocols.cloud import (
+    MODEL_NAMES,
+    TESTED_MODELS,
+    Bootstrap,
+    MysaApiError,
+    MysaAuth,
+    MysaAuthError,
+    MysaClient,
+    MysaConnectionError,
+    MysaError,
+    MysaInvalidCredentialsError,
+    MysaUnsupportedChallengeError,
+)
+from .protocols.homekit import (
+    AccessoryInfo,
+    HomeKitAuthenticationError,
+    HomeKitBusyError,
+    HomeKitConnectionError,
+    HomeKitDiscovery,
+    HomeKitError,
+    HomeKitMalformedPinError,
+    HomeKitMaxPeersError,
+    HomeKitMaxTriesError,
+    HomeKitNotFoundError,
+    HomeKitUnavailableError,
+    PairingSession,
+)
 
 INSECURE_CODES = {
     "00000000",
@@ -134,111 +138,6 @@ CONF_ENTRY = "entry"
 CONF_DEVICES = "devices"
 CONF_ADD_TO_ACCOUNT = "add_to_account"
 CONF_HOME = "home"
-PENDING_PAIRINGS_STORAGE_KEY = f"{DOMAIN}_pending_pairings"
-_PENDING_PAIRINGS_STORE: HassKey[Store[dict[str, dict[str, Any]]]] = HassKey(
-    f"{DOMAIN}_pending_pairings_store"
-)
-_PENDING_PAIRINGS_LOCK: HassKey[asyncio.Lock] = HassKey(
-    f"{DOMAIN}_pending_pairings_lock"
-)
-_PAIRING_SESSION: HassKey[str] = HassKey(f"{DOMAIN}_pairing_session")
-
-
-def _pending_pairings_store(
-    hass: HomeAssistant,
-) -> Store[dict[str, dict[str, Any]]]:
-    """Return private, restart-persistent storage for completed pairings in a flow."""
-    return hass.data.setdefault(
-        _PENDING_PAIRINGS_STORE,
-        Store(hass, 1, PENDING_PAIRINGS_STORAGE_KEY, private=True),
-    )
-
-
-def _pending_pairings_lock(hass: HomeAssistant) -> asyncio.Lock:
-    """Serialize read/modify/write operations to the pending-pairing store."""
-    return hass.data.setdefault(_PENDING_PAIRINGS_LOCK, asyncio.Lock())
-
-
-def _pairing_session_id(hass: HomeAssistant) -> str:
-    """Stable for this HA process, new after a restart."""
-    return hass.data.setdefault(_PAIRING_SESSION, str(uuid.uuid4()))
-
-
-async def _async_load_pending_pairings(
-    hass: HomeAssistant,
-) -> dict[str, dict[str, Any]]:
-    """Load HomeKit pairings accepted by a device but not yet in a config entry."""
-    async with _pending_pairings_lock(hass):
-        data = await _pending_pairings_store(hass).async_load()
-        if not isinstance(data, dict):
-            return {}
-        return {
-            hkid: dict(record)
-            for hkid, record in data.items()
-            if isinstance(hkid, str) and isinstance(record, dict)
-        }
-
-
-async def _async_save_pending_pairing(
-    hass: HomeAssistant,
-    hkid: str,
-    pairing: Mapping[str, Any],
-    *,
-    name: str | None,
-    model: str | None,
-    migrate_from: str | None = None,
-) -> None:
-    """Persist credentials before any optional or failure-prone flow steps."""
-    async with _pending_pairings_lock(hass):
-        store = _pending_pairings_store(hass)
-        loaded = await store.async_load()
-        data = dict(loaded) if isinstance(loaded, dict) else {}
-        data[hkid] = {
-            "pairing": dict(pairing),
-            "name": name,
-            "model": model,
-            "migrate_from": migrate_from,
-            "session": _pairing_session_id(hass),
-        }
-        await store.async_save(data)
-
-
-async def _async_clear_pending_pairing(hass: HomeAssistant, hkid: str) -> None:
-    """Remove a pairing recovery record."""
-    async with _pending_pairings_lock(hass):
-        store = _pending_pairings_store(hass)
-        loaded = await store.async_load()
-        data = dict(loaded) if isinstance(loaded, dict) else {}
-        if hkid not in data:
-            return
-        data.pop(hkid)
-        if data:
-            await store.async_save(data)
-        else:
-            await store.async_remove()
-
-
-async def _async_clear_configured_pairing_backups(
-    hass: HomeAssistant, configured_hkids: set[str]
-) -> None:
-    """Prune old backups for pairings in the entry loaded at HA startup."""
-    async with _pending_pairings_lock(hass):
-        store = _pending_pairings_store(hass)
-        loaded = await store.async_load()
-        data = dict(loaded) if isinstance(loaded, dict) else {}
-        session_id = _pairing_session_id(hass)
-        remaining = {
-            hkid: record
-            for hkid, record in data.items()
-            if hkid not in configured_hkids
-            or (isinstance(record, dict) and record.get("session") == session_id)
-        }
-        if remaining == data:
-            return
-        if remaining:
-            await store.async_save(remaining)
-        else:
-            await store.async_remove()
 
 
 # Status text built in code (the integration ships English only).
@@ -287,6 +186,14 @@ class InsecureCodeError(ValueError):
     """A trivial code like 11111111, which HomeKit never uses."""
 
 
+class PairingPersistenceError(Exception):
+    """The accessory paired, but HA could not save the recovery credentials."""
+
+    def __init__(self) -> None:
+        """Create a safe error without retaining or logging pairing secrets."""
+        super().__init__("Couldn't persist the HomeKit pairing")
+
+
 def format_pin(pin: str) -> str:
     """Return the code as 123-45-678, whatever spacing or dashes it was typed with.
 
@@ -295,7 +202,7 @@ def format_pin(pin: str) -> str:
     """
     digits = re.sub(r"\D", "", pin)
     if len(digits) != 8:
-        raise aiohomekit.exceptions.MalformedPinError(pin)
+        raise HomeKitMalformedPinError(pin)
     if digits in INSECURE_CODES:
         raise InsecureCodeError(pin)
     return f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
@@ -448,9 +355,9 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
     _hkid: str | None = None
     _name: str | None = None
     _model: str | None = None
-    _finish_pairing: FinishPairing | None = None
+    _finish_pairing: PairingSession | None = None
     _pairing_in_progress = False
-    _discoveries: dict[str, AbstractDiscovery]
+    _discoveries: dict[str, HomeKitDiscovery]
     _pending_recoveries: dict[str, dict[str, Any]]
     _takeover_entry_id: str | None = None
 
@@ -486,7 +393,8 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         """Pick an unpaired Mysa found on the network."""
         controller = await async_get_controller(self.hass)
         known = self._known_hkids()
-        pending = await _async_load_pending_pairings(self.hass)
+        store = pairing_store(self.hass)
+        pending = await store.async_load()
         self._pending_recoveries = {
             hkid: record for hkid, record in pending.items() if hkid not in known
         }
@@ -499,25 +407,23 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             self, "_discoveries", {}
         ):
             discovery = self._discoveries[user_input[CONF_DEVICE]]
-            self._hkid = discovery.description.id.lower()
-            self._name = discovery.description.name
-            self._model = getattr(discovery.description, "model", None)
+            self._hkid = discovery.id.lower()
+            self._name = discovery.name
+            self._model = discovery.model
             return await self.async_step_pair()
 
         self._discoveries = {}
         async for discovery in controller.async_discover():
-            description = discovery.description
-            model = getattr(description, "model", None)
-            if not is_mysa_model(model) or discovery.paired:
+            if not is_mysa_model(discovery.model) or discovery.paired:
                 continue
-            if description.id.lower() in known:
+            if discovery.id.lower() in known:
                 continue
-            self._discoveries[description.id.lower()] = discovery
+            self._discoveries[discovery.id.lower()] = discovery
 
         # An unpaired advertisement means the accessory was reset or had our
         # pairing removed; the saved keys can no longer be resumed.
         for hkid in self._discoveries.keys() & self._pending_recoveries.keys():
-            await _async_clear_pending_pairing(self.hass, hkid)
+            await store.async_clear(hkid)
             self._pending_recoveries.pop(hkid)
 
         if not self._discoveries and not self._pending_recoveries:
@@ -530,7 +436,11 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         options = [
             SelectOptionDict(
                 value=hkid,
-                label=f"{d.description.name} ({MODEL_NAMES.get(d.description.model, d.description.model)})",  # type: ignore[attr-defined]
+                label=(
+                    f"{d.name} ({MODEL_NAMES.get(d.model, d.model)})"
+                    if isinstance(d.model, str)
+                    else f"{d.name} ({d.model})"
+                ),
             )
             for hkid, d in self._discoveries.items()
         ]
@@ -591,33 +501,28 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         self._name = saved_name if isinstance(saved_name, str) else self._name
         self._model = saved_model if isinstance(saved_model, str) else self._model
         controller = await async_get_controller(self.hass)
-        pairing: AbstractPairing | None = None
+        device = None
         try:
-            pairing = controller.load_pairing(hkid, dict(pairing_data))
+            device = controller.load_pairing(dict(pairing_data))
             async with asyncio.timeout(30):
-                await pairing.list_accessories_and_characteristics()
-            if pairing.accessories is None:
-                return self._show_pair_form(
-                    {"base": "pairing_failed"}, "No accessory data"
-                )
-            info = parse_accessories(pairing.accessories)[0]
-        except CONNECTION_ERRORS as err:
+                info = await device.async_get_info()
+        except HomeKitConnectionError as err:
             LOGGER.warning(
                 "Couldn't resume HomeKit pairing with %s: %s", self._name, err
             )
             return self._show_pair_form({"base": "cannot_connect_device"}, str(err))
-        except AuthenticationError as err:
-            await _async_clear_pending_pairing(self.hass, hkid)
+        except HomeKitAuthenticationError as err:
+            await pairing_store(self.hass).async_clear(hkid)
             LOGGER.debug("Saved HomeKit pairing is no longer accepted: %s", err)
             return self._show_pair_form({"base": "pairing_failed"}, str(err))
-        except (HomeKitException, KeyError, TypeError, ValueError) as err:
+        except (HomeKitError, KeyError, TypeError, ValueError) as err:
             LOGGER.debug("Resuming HomeKit pairing failed: %s", err, exc_info=True)
             return self._show_pair_form({"base": "pairing_failed"}, str(err))
         finally:
-            if pairing is not None:
+            if device is not None:
                 try:
-                    await pairing.close()
-                except LOCAL_ERRORS as err:
+                    await device.async_close()
+                except HomeKitError as err:
                     LOGGER.debug("Closing resumed pairing failed: %s", err)
 
         await self._async_store_pairing_backup(
@@ -645,8 +550,7 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         """Save a newly accepted HomeKit pairing before later setup steps."""
         self._hkid = hkid.lower()
         await asyncio.shield(
-            _async_save_pending_pairing(
-                self.hass,
+            pairing_store(self.hass).async_save(
                 self._hkid,
                 pairing,
                 name=name,
@@ -661,22 +565,19 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         controller = await async_get_controller(self.hass)
         try:
             discovery = await controller.async_find(self._hkid)
-            self._finish_pairing = await discovery.async_start_pairing(self._hkid)
-        except aiohomekit.BusyError:
+            self._finish_pairing = await discovery.async_start_pairing()
+        except HomeKitBusyError:
             return "busy", ""
-        except aiohomekit.MaxTriesError:
+        except HomeKitMaxTriesError:
             return "max_tries", ""
-        except aiohomekit.UnavailableError as err:
+        except HomeKitUnavailableError as err:
             raise AbortFlow("already_paired") from err
-        except (
-            aiohomekit.AccessoryNotFoundError,
-            aiohomekit.AccessoryDisconnectedError,
-        ) as err:
+        except (HomeKitNotFoundError, HomeKitConnectionError) as err:
             # Mysa's HomeKit server sometimes restarts for a few minutes (seen
             # right after an unpair); keep the form so the user can retry.
             LOGGER.warning("Couldn't start pairing with %s: %s", self._name, err)
             return "cannot_connect_device", str(err)
-        except (HomeKitException, IndexError) as err:
+        except (HomeKitError, IndexError) as err:
             LOGGER.debug("Starting pairing failed: %s", err, exc_info=True)
             return "pairing_failed", str(err)
         return None, ""
@@ -688,7 +589,7 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         pair-setup session (if needed) and finishes it.
         """
         if self._hkid is not None and (
-            pending := (await _async_load_pending_pairings(self.hass)).get(self._hkid)
+            pending := (await pairing_store(self.hass).async_load()).get(self._hkid)
         ):
             # A previous attempt completed HomeKit pairing but did not finish
             # reading the accessory or the user cancelled the rest of setup.
@@ -698,7 +599,7 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         if user_input is not None:
             try:
                 code = format_pin(user_input[CONF_PAIRING_CODE])
-            except aiohomekit.exceptions.MalformedPinError:
+            except HomeKitMalformedPinError:
                 return self._show_pair_form({CONF_PAIRING_CODE: "invalid_code"})
             except InsecureCodeError:
                 return self._show_pair_form({CONF_PAIRING_CODE: "insecure_code"})
@@ -712,58 +613,42 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             return self._show_pair_form()
 
         self._pairing_in_progress = True
-        pairing: AbstractPairing | None = None
-        try:
-            pairing = await self._finish_pairing(code)
-            data = dict(pairing.pairing_data)  # type: ignore[attr-defined]
+
+        async def _persist_pairing(pairing_data: Mapping[str, Any]) -> None:
             assert self._hkid is not None
             try:
                 await self._async_store_pairing_backup(
                     self._hkid,
-                    data,
+                    pairing_data,
                     name=self._name,
                     model=self._model,
                 )
-            except Exception:  # noqa: BLE001 - pairing already changed the device
-                # Pairing has already changed the thermostat. If HA storage is
-                # unavailable, undo that change rather than strand credentials.
-                LOGGER.exception("Couldn't persist the HomeKit pairing")
-                try:
-                    await async_unpair(self.hass, data)
-                except LOCAL_ERRORS as err:
-                    LOGGER.warning("Couldn't roll back the HomeKit pairing: %s", err)
-                return self._show_pair_form({"base": "pairing_failed"})
+            except Exception as err:  # Pairing already changed the accessory.
+                raise PairingPersistenceError from err
 
-            await pairing.list_accessories_and_characteristics()
-            info = (
-                parse_accessories(pairing.accessories)[0]
-                if pairing.accessories is not None
-                else AccessoryInfo()
+        try:
+            data, info = await self._finish_pairing.async_complete(
+                code, on_pairing_saved=_persist_pairing
             )
-        except AuthenticationError:
+        except PairingPersistenceError as err:
+            LOGGER.error("Couldn't persist the HomeKit pairing: %s", err.__cause__)
             self._finish_pairing = None
-            self._pairing_in_progress = False
+            return self._show_pair_form({"base": "pairing_failed"})
+        except HomeKitAuthenticationError:
+            self._finish_pairing = None
             return self._show_pair_form({CONF_PAIRING_CODE: "wrong_code"})
-        except aiohomekit.exceptions.MaxPeersError:
+        except HomeKitMaxPeersError:
             self._finish_pairing = None
-            self._pairing_in_progress = False
             return self._show_pair_form({"base": "max_peers"})
-        except CONNECTION_ERRORS as err:
+        except HomeKitConnectionError as err:
             LOGGER.warning("Pairing with %s was interrupted: %s", self._name, err)
             self._finish_pairing = None
-            self._pairing_in_progress = False
             return self._show_pair_form({"base": "cannot_connect_device"}, str(err))
-        except HomeKitException as err:
+        except HomeKitError as err:
             LOGGER.debug("Pairing failed: %s", err, exc_info=True)
             self._finish_pairing = None
-            self._pairing_in_progress = False
             return self._show_pair_form({"base": "pairing_failed"}, str(err))
         finally:
-            if pairing is not None:
-                try:
-                    await pairing.close()
-                except LOCAL_ERRORS as err:
-                    LOGGER.debug("Closing pairing failed: %s", err)
             self._pairing_in_progress = False
         return await self._async_thermostat_ready(info, data)
 
@@ -811,32 +696,40 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         detail = ""
         if user_input is not None:
             hkid = str(entry.data.get("AccessoryPairingID", "")).lower()
-            if pending := (await _async_load_pending_pairings(self.hass)).get(hkid):
+            if pending := (await pairing_store(self.hass).async_load()).get(hkid):
                 self._hkid = hkid
                 return await self._async_resume_pending_pairing(hkid, pending)
 
             async def _save_pairing(pairing: Mapping[str, Any]) -> None:
                 hkid = str(pairing["AccessoryPairingID"]).lower()
-                await self._async_store_pairing_backup(
-                    hkid,
-                    pairing,
-                    name=entry.title,
-                    model=None,
-                    migrate_from=entry.entry_id,
-                )
+                try:
+                    await self._async_store_pairing_backup(
+                        hkid,
+                        pairing,
+                        name=entry.title,
+                        model=None,
+                        migrate_from=entry.entry_id,
+                    )
+                except Exception as err:
+                    raise PairingPersistenceError from err
 
             try:
                 pairing, info = await async_copy_pairing(
                     self.hass, entry.data, on_pairing_saved=_save_pairing
                 )
-            except aiohomekit.exceptions.MaxPeersError:
+            except PairingPersistenceError as err:
+                LOGGER.error(
+                    "Couldn't persist the copied HomeKit pairing: %s", err.__cause__
+                )
+                errors["base"] = "takeover_failed"
+            except HomeKitMaxPeersError:
                 errors["base"] = "max_peers"
-            except AuthenticationError as err:
+            except HomeKitAuthenticationError as err:
                 errors["base"] = "takeover_failed"
                 detail = str(err)
-            except CONNECTION_ERRORS:
+            except HomeKitConnectionError:
                 errors["base"] = "cannot_connect_device"
-            except HomeKitException as err:
+            except HomeKitError as err:
                 LOGGER.debug("Takeover failed: %s", err, exc_info=True)
                 errors["base"] = "takeover_failed"
                 detail = str(err)
@@ -967,9 +860,9 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
                     "url": WIFI_SETUP_URL,
                 },
             )
-        self._hkid = discovery.description.id.lower()
-        self._name = discovery.description.name
-        self._model = getattr(discovery.description, "model", None)
+        self._hkid = discovery.id.lower()
+        self._name = discovery.name
+        self._model = discovery.model
         self._finish_pairing = None
         return await self.async_step_pair()
 
@@ -986,7 +879,7 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         self._target_device_id = None
         return await self._async_local_skipped()
 
-    async def _async_find_unpaired(self, device_id: str) -> AbstractDiscovery | None:
+    async def _async_find_unpaired(self, device_id: str) -> HomeKitDiscovery | None:
         """The unpaired HomeKit advertisement of a thermostat, by its Mysa ID.
 
         A Mysa advertises as "Mysa-" plus the last 6 hex digits of its Wi-Fi
@@ -995,12 +888,9 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         controller = await async_get_controller(self.hass)
         suffix = device_id[-6:].lower()
         async for discovery in controller.async_discover():
-            description = discovery.description
-            if discovery.paired or not is_mysa_model(
-                getattr(description, "model", None)
-            ):
+            if discovery.paired or not is_mysa_model(discovery.model):
                 continue
-            if str(description.name).split(".")[0].lower().endswith(suffix):
+            if discovery.name.split(".")[0].lower().endswith(suffix):
                 return discovery
         return None
 
@@ -1018,7 +908,7 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         )
         await async_unpair(self.hass, pairing)
         if self._hkid is not None:
-            await _async_clear_pending_pairing(self.hass, self._hkid)
+            await pairing_store(self.hass).async_clear(self._hkid)
         return self.async_abort(
             reason="wrong_thermostat",
             description_placeholders={"name": self._target_name or target},
@@ -1096,53 +986,46 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
         self, discovery_info: ZeroconfServiceInfo
     ) -> ConfigFlowResult:
         """A Mysa advertised itself over HomeKit."""
-        props = {k.lower(): v for k, v in discovery_info.properties.items()}
-        if "id" not in props or "md" not in props:
-            return self.async_abort(reason="invalid_discovery")
-        hkid = str(props["id"]).lower()
-        model = str(props["md"])
-        if not is_mysa_model(model):
-            return self.async_abort(reason="not_supported")
         try:
-            paired = not int(props.get("sf", 1)) & 0x01
-        except ValueError:
-            paired = False
+            advertisement = discovery_from_zeroconf(discovery_info)
+        except HomeKitError as err:
+            LOGGER.debug("Ignoring invalid HomeKit discovery data: %s", err)
+            return self.async_abort(reason="invalid_discovery")
+        if advertisement is None:
+            return self.async_abort(reason="invalid_discovery")
+        if not is_mysa_model(advertisement.model):
+            return self.async_abort(reason="not_supported")
+        hkid = advertisement.id
 
         hub = hub_entry(self.hass)
         if hub is not None and (subentry_id := configured_hkids(hub).get(hkid)):
             subentry = hub.subentries[subentry_id]
             pairing = dict(subentry.data.get(CONF_PAIRING) or {})
-            endpoint = {
-                "AccessoryIP": discovery_info.host,
-                "AccessoryIPs": [
-                    str(ip)
-                    for ip in discovery_info.ip_addresses
-                    if not ip.is_link_local and not ip.is_unspecified
-                ],
-                "AccessoryPort": discovery_info.port,
-            }
-            if any(pairing.get(k) != endpoint[k] for k in ENDPOINT_KEYS):
-                pairing.update(endpoint)
+            updated_pairing = update_pairing_endpoints(pairing, advertisement)
+            if pairing != updated_pairing:
                 self.hass.config_entries.async_update_subentry(
-                    hub, subentry, data={**subentry.data, CONF_PAIRING: pairing}
+                    hub,
+                    subentry,
+                    data={**subentry.data, CONF_PAIRING: updated_pairing},
                 )
             return self.async_abort(reason="already_configured")
 
         await self.async_set_unique_id(f"hk_{hkid}")
         self._abort_if_unique_id_configured()
         self._hkid = hkid
-        self._model = model
-        self._name = domain_to_name(discovery_info.name)
+        self._model = advertisement.model
+        self._name = advertisement.name
         self.context["title_placeholders"] = {"name": self._name}
         if self.hass.config_entries.flow.async_has_matching_flow(self):
             return self.async_abort(reason="already_in_progress")
 
-        if pending := (await _async_load_pending_pairings(self.hass)).get(hkid):
-            if paired:
+        store = pairing_store(self.hass)
+        if pending := (await store.async_load()).get(hkid):
+            if advertisement.paired:
                 return await self._async_resume_pending_pairing(hkid, pending)
-            await _async_clear_pending_pairing(self.hass, hkid)
+            await store.async_clear(hkid)
 
-        if paired:
+        if advertisement.paired:
             for entry_id in homekit_device_candidates(self.hass):
                 entry = self.hass.config_entries.async_get_entry(entry_id)
                 if (

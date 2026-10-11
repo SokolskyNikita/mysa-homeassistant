@@ -9,9 +9,9 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .api import ButtonLock
 from .data import MysaConfigEntry
 from .entity import MysaCloudEntity, MysaEntity, async_add_when_ready
+from .protocols.cloud import ButtonLock
 from .thermostat import Thermostat
 
 PARALLEL_UPDATES = 1
@@ -53,12 +53,8 @@ class ButtonLockSwitch(MysaCloudEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Lock the buttons."""
-        await self.thermostat.async_cloud_update(
-            {"physicalInterface": {"lockout": int(ButtonLock.LOCKED)}}
-        )
+        await self.thermostat.async_set_button_lock(ButtonLock.LOCKED)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Unlock the buttons."""
-        await self.thermostat.async_cloud_update(
-            {"physicalInterface": {"lockout": int(ButtonLock.UNLOCKED)}}
-        )
+        await self.thermostat.async_set_button_lock(ButtonLock.UNLOCKED)

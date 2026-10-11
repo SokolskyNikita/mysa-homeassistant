@@ -66,7 +66,7 @@ Content-Type: application/x-amz-json-1.1
 
 No AWS request signature is required for these user-pool calls. Sign-in uses `InitiateAuth` with `AuthFlow: "USER_SRP_AUTH"` and `AuthParameters` containing `USERNAME` and `SRP_A`. A `PASSWORD_VERIFIER` challenge follows. `RespondToAuthChallenge` sends `PASSWORD_CLAIM_SIGNATURE`, `PASSWORD_CLAIM_SECRET_BLOCK`, `TIMESTAMP` and `USERNAME` as `ChallengeResponses`, plus the challenge session if supplied. The response contains `IdToken`, `AccessToken`, `RefreshToken` and `ExpiresIn: 3600`. The captured sign-in had no `NewDeviceMetadata`.
 
-The Python SRP implementation uses Cognito's 3072-bit group, SHA-256 and a 16-byte derived authentication key. Use the challenge's `USER_ID_FOR_SRP` when computing the response, even when sign-in began with an email address. Cognito also expects an English UTC timestamp with an unpadded day, for example `Fri Jan 2 03:04:05 UTC 2026`. [srp.py](../custom_components/mysa_local/api/srp.py) contains the calculation; [test_srp.py](../tests/api/test_srp.py) checks it against a simulated server and optionally `pycognito`.
+The Python SRP implementation uses Cognito's 3072-bit group, SHA-256 and a 16-byte derived authentication key. Use the challenge's `USER_ID_FOR_SRP` when computing the response, even when sign-in began with an email address. Cognito also expects an English UTC timestamp with an unpadded day, for example `Fri Jan 2 03:04:05 UTC 2026`. [srp.py](../custom_components/mysa_local/protocols/cloud/srp.py) contains the calculation; [test_srp.py](../tests/api/test_srp.py) checks it against a simulated server and optionally `pycognito`.
 
 Every Mysa API request sends the raw Cognito ID token:
 
@@ -83,7 +83,7 @@ Refresh uses `GetTokensFromRefreshToken` with:
 {"ClientId":"6cktj934gasnc72f7jo2cmf6rt","RefreshToken":"<refresh token>"}
 ```
 
-The observed response supplied fresh ID and access tokens with a one-hour lifetime and no replacement refresh token. [MysaAuth](../custom_components/mysa_local/api/auth.py) keeps the existing refresh token in that case and stores a replacement if one is returned. It refreshes five minutes before ID-token expiry and serializes concurrent refreshes.
+The observed response supplied fresh ID and access tokens with a one-hour lifetime and no replacement refresh token. [MysaAuth](../custom_components/mysa_local/protocols/cloud/auth.py) keeps the existing refresh token in that case and stores a replacement if one is returned. It refreshes five minutes before ID-token expiry and serializes concurrent refreshes.
 
 The client supports the password-verifier flow only; another challenge raises `MysaUnsupportedChallengeError`. If the user chose to save their password, the integration can sign in again when refresh authentication fails. Otherwise it asks for reauthentication.
 
@@ -91,7 +91,7 @@ The identity pool is a separate AWS credential flow: `GetId` followed by `GetCre
 
 ### HTTP responses and errors
 
-[MysaClient](../custom_components/mysa_local/api/client.py) uses a 20-second request timeout. It accepts any 2xx response, returns `None` for an empty body and accepts text replies when the body is not JSON.
+[MysaClient](../custom_components/mysa_local/protocols/cloud/client.py) uses a 20-second request timeout. It accepts any 2xx response, returns `None` for an empty body and accepts text replies when the body is not JSON.
 
 | Response | Python behavior |
 |---|---|
@@ -203,7 +203,7 @@ Do not apply the `modes.mode` enum to `latestTelemetry.reading.mode`. On the Lit
 
 The app's `CONTROL_SHADOW_TYPE` names include `latestTelemetry`, `targetHeat`, `targetCool`, `targetAuto`, `modes`, `tracking`, `physicalInterface`, `hvacConfig`, `identity` and `telemetry`. The response can contain further sections, as the table shows.
 
-[DeviceState](../custom_components/mysa_local/api/models.py) reads `reported` only for split sections. It does not fall back to `desired` or telemetry for mode and setpoints. Missing or unknown values remain `None`; the raw response is retained.
+[DeviceState](../custom_components/mysa_local/protocols/cloud/models.py) reads `reported` only for split sections. It does not fall back to `desired` or telemetry for mode and setpoints. Missing or unknown values remain `None`; the raw response is retained.
 
 ### Live mode and liveness
 
@@ -677,10 +677,10 @@ The older app also defines `/energy/device|zone|home/{id}`, `/batchReadings/v2/{
 
 | File | Responsibility |
 |---|---|
-| [api/auth.py](../custom_components/mysa_local/api/auth.py), [api/srp.py](../custom_components/mysa_local/api/srp.py) | Cognito sign-in, refresh and SRP |
-| [api/client.py](../custom_components/mysa_local/api/client.py) | HTTP requests and endpoint wrappers |
-| [api/models.py](../custom_components/mysa_local/api/models.py), [api/const.py](../custom_components/mysa_local/api/const.py) | Response parsing, capability ranges, model names and protocol enums |
-| [cloud.py](../custom_components/mysa_local/cloud.py) | Polling, write spacing, optimistic values and refresh scheduling |
+| [protocols/cloud/auth.py](../custom_components/mysa_local/protocols/cloud/auth.py), [protocols/cloud/srp.py](../custom_components/mysa_local/protocols/cloud/srp.py) | Cognito sign-in, refresh and SRP |
+| [protocols/cloud/client.py](../custom_components/mysa_local/protocols/cloud/client.py) | HTTP requests and endpoint wrappers |
+| [protocols/cloud/models.py](../custom_components/mysa_local/protocols/cloud/models.py), [protocols/cloud/const.py](../custom_components/mysa_local/protocols/cloud/const.py) | Response parsing, capability ranges, model names and protocol enums |
+| [cloud_coordinator.py](../custom_components/mysa_local/cloud_coordinator.py) | Polling, write spacing, optimistic values and refresh scheduling |
 | [thermostat.py](../custom_components/mysa_local/thermostat.py) | Local/cloud selection, timeout readback, AC controls and runtime tracking |
 | [schedule.py](../custom_components/mysa_local/schedule.py) | HA hold and weekly-schedule actions |
 | [account.py](../custom_components/mysa_local/account.py) | Cloud account operations for local thermostats |

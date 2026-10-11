@@ -68,7 +68,7 @@ async def test_timed_out_write_that_landed(
 
     with (
         patch.object(pairing, "put_characteristics", slow_put),
-        patch("custom_components.mysa_local.thermostat.LOCAL_WRITE_TIMEOUT", 0.05),
+        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.05),
     ):
         await _set_temp(hass, 23)
     assert cloud.updates == []
@@ -89,8 +89,8 @@ async def test_timed_out_write_checked_in_cloud(
     with (
         patch.object(pairing, "put_characteristics", hang),
         patch.object(pairing, "get_characteristics", hang),
-        patch("custom_components.mysa_local.thermostat.LOCAL_WRITE_TIMEOUT", 0.05),
-        patch("custom_components.mysa_local.local.LOCAL_READ_TIMEOUT", 0.05),
+        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.05),
+        patch("custom_components.mysa_local.local_adapter.LOCAL_READ_TIMEOUT", 0.05),
     ):
         await _set_temp(hass, 21.5)
         assert cloud.updates == []

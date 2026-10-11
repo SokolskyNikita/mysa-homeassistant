@@ -11,10 +11,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 
 from .account import ISSUE_CLOUD_ONLY, account_client, async_refresh_account
-from .api import MysaClient
 from .config_flow import ThermostatSteps
 from .const import CONF_DEVICE_ID, CONF_MODEL, CONF_PAIRING
-from .local import AccessoryInfo
+from .protocols.cloud import MysaClient
+from .protocols.homekit import AccessoryInfo
 
 
 class _ThermostatRepairFlow(ThermostatSteps, RepairsFlow):

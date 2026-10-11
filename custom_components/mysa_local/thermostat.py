@@ -8,7 +8,6 @@ commands so an old request cannot remain the thermostat's final state.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import date, datetime
 import math
@@ -19,28 +18,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from .account import cloud_account_status
-from .api import (
-    MODEL_NAMES,
-    AcFan,
-    Capabilities,
-    DeviceRecord,
-    DeviceState,
-    FirmwareInfo,
-    Mode,
-    ModelFamily,
-    MysaConnectionError,
-    MysaError,
-    MysaRateLimitError,
-    Swing,
-    model_family,
-)
-from .api.const import (
-    AC_FAN_TO_STATE,
-    SETPOINT_SECTION_BY_MODE,
-    STATE_TO_AC_FAN,
-    SWING_VERTICAL,
-)
-from .cloud import MysaCloudCoordinator, translated_error
+from .cloud_coordinator import MysaCloudCoordinator, translated_error
+from .command_router import CommandRouter
 from .const import (
     CLOUD_TELEMETRY_FUTURE_TOLERANCE,
     CLOUD_TELEMETRY_MAX_AGE,
@@ -51,10 +30,8 @@ from .const import (
     CONNECTION_CLOUD,
     CONNECTION_LOCAL,
     CONNECTION_OFFLINE,
-    LOCAL_WRITE_TIMEOUT,
-    LOGGER,
 )
-from .local import (
+from .local_adapter import (
     CURRENT_STATE,
     CURRENT_TEMPERATURE,
     DISPLAY_UNITS,
@@ -62,20 +39,38 @@ from .local import (
     TARGET_STATE,
     TARGET_TEMPERATURE,
     LocalThermostat,
-    LocalWriteRejectedError,
 )
+from .protocols.cloud import (
+    MODEL_NAMES,
+    AcFan,
+    ButtonLock,
+    Capabilities,
+    DeviceRecord,
+    DeviceState,
+    FirmwareInfo,
+    HeaterType,
+    Mode,
+    ModelFamily,
+    MysaError,
+    Swing,
+    model_family,
+)
+from .protocols.cloud.const import (
+    SWING_VERTICAL,
+)
+from .protocols.homekit import Field, LocalMode
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
 
-# HomeKit TargetHeatingCoolingState values.
-HK_MODE_TO_MODE: dict[int, Mode] = {
-    0: Mode.OFF,
-    1: Mode.HEAT,
-    2: Mode.COOL,
-    3: Mode.AUTO,
+# Translate the local protocol's semantic modes into Mysa's device modes.
+LOCAL_MODE_TO_MODE = {
+    LocalMode.OFF: Mode.OFF,
+    LocalMode.HEAT: Mode.HEAT,
+    LocalMode.COOL: Mode.COOL,
+    LocalMode.AUTO: Mode.AUTO,
 }
-MODE_TO_HK_MODE: dict[Mode, int] = {v: k for k, v in HK_MODE_TO_MODE.items()}
+MODE_TO_LOCAL_MODE = {mode: local for local, mode in LOCAL_MODE_TO_MODE.items()}
 
 ACTION_OFF = "off"
 ACTION_IDLE = "idle"
@@ -154,14 +149,14 @@ class Thermostat:
         self._listeners: set[CALLBACK_TYPE] = set()
         self.runtime = RuntimeTracker()
         self._in_fallback = False
-        self._write_lock = asyncio.Lock()
-        self._pending_local: asyncio.Task[None] | None = None
-        self._pending_values: dict[str, Any] = {}
-        self._reconcile: dict[
-            str, Callable[[MysaCloudCoordinator], Awaitable[None]]
-        ] = {}
-        self._reconcile_task: asyncio.Task[None] | None = None
-        self._stopped = False
+        self.commands = CommandRouter(
+            hass,
+            device_id=self.device_id,
+            name=self.name,
+            local=local,
+            cloud_getter=cloud_getter,
+            notify=self.notify,
+        )
         if local is not None:
             local.add_listener(self.notify)
 
@@ -180,7 +175,7 @@ class Thermostat:
         # Cloud dutyCycle is an interval fraction, not an instantaneous relay
         # state. During fallback only the device's measured daily usage counts.
         self.runtime.update(self.heating if self.local_ok else None)
-        self._schedule_reconciliation()
+        self.commands.schedule_reconciliation()
         for listener in list(self._listeners):
             listener()
 
@@ -308,12 +303,7 @@ class Thermostat:
     @property
     def local_ok(self) -> bool:
         """True while the HomeKit connection works."""
-        return (
-            self.local is not None
-            and self.local.available
-            and bool(self.local.chars)
-            and not self._reconcile
-        )
+        return self.commands.local_ok
 
     @property
     def cloud_ok(self) -> bool:
@@ -354,7 +344,7 @@ class Thermostat:
         """True if either path works."""
         return self.connection_path != CONNECTION_OFFLINE
 
-    def _local(self, ctype: str) -> Any:
+    def _local(self, ctype: Field) -> Any:
         assert self.local is not None
         return self.local.values.get(ctype)
 
@@ -439,7 +429,7 @@ class Thermostat:
         """Current mode."""
         if self.local_ok:
             value = self._local(TARGET_STATE)
-            return HK_MODE_TO_MODE.get(value) if isinstance(value, int) else None
+            return LOCAL_MODE_TO_MODE.get(value)
         state = self.cloud_state
         return state.mode if state else None
 
@@ -460,11 +450,11 @@ class Thermostat:
             return ACTION_OFF
         if self.local_ok:
             value = self._local(CURRENT_STATE)
-            if value == 1:
+            if value == ACTION_HEATING:
                 return ACTION_HEATING
-            if value == 2:
+            if value == ACTION_COOLING:
                 return ACTION_COOLING
-            return ACTION_IDLE if value == 0 else None
+            return ACTION_IDLE if value == ACTION_IDLE else None
         state = self.cloud_state
         if state is None or state.heating is None:
             return None
@@ -501,8 +491,8 @@ class Thermostat:
         """C or F, as shown on the thermostat's own screen."""
         if self.local_ok:
             value = self._local(DISPLAY_UNITS)
-            if value in (0, 1):
-                return "F" if value == 1 else "C"
+            if value in ("C", "F"):
+                return str(value)
         record = self.cloud_record
         if record is not None and record.display_unit:
             return record.display_unit
@@ -515,19 +505,16 @@ class Thermostat:
         caps = self.capabilities
         if caps is not None and caps.modes:
             return [m for m in caps.modes if m in SUPPORTED_MODES]
-        if self.local is not None and TARGET_STATE in self.local.chars:
-            valid = self.local.chars[TARGET_STATE].valid_values or (0, 1)
-            return [HK_MODE_TO_MODE[v] for v in valid if v in HK_MODE_TO_MODE]
+        if self.local is not None and self.local.supports(TARGET_STATE):
+            return [LOCAL_MODE_TO_MODE[m] for m in self.local.supported_modes]
         return [Mode.OFF, Mode.HEAT]
 
     @property
     def setpoint_range(self) -> tuple[float, float, float]:
         """(min, max, step) for the setpoint, honoring the hardware limits."""
         low = high = step = None
-        if self.local is not None and (
-            meta := self.local.chars.get(TARGET_TEMPERATURE)
-        ):
-            low, high, step = meta.min_value, meta.max_value, meta.min_step
+        if self.local is not None:
+            low, high, step = self.local.temperature_range
         caps = self.capabilities
         if caps is not None and caps.heat_setpoint_range is not None:
             c_low, c_high, c_step = caps.heat_setpoint_range
@@ -575,7 +562,7 @@ class Thermostat:
         state = self.cloud_state
         if self._ac_record is None or state is None or state.fan_mode is None:
             return None
-        return STATE_TO_AC_FAN.get(state.fan_mode)
+        return state.ac_fan
 
     def swing_options(self, direction: str) -> tuple[Swing, ...]:
         """Swing settings the AC's remote offers in the current mode."""
@@ -600,262 +587,73 @@ class Thermostat:
 
     @callback
     def stop(self) -> None:
-        """Stop reconciliation when this thermostat's entry is unloaded."""
-        self._stopped = True
-        if self._reconcile_task is not None:
-            self._reconcile_task.cancel()
+        """Stop scheduling command reconciliation during unload."""
+        self.commands.stop()
 
     async def async_stop(self) -> None:
-        """Close the HAP session before cancelling and reconciling pending writes."""
-        self.stop()
-        if self._reconcile_task is not None:
-            await asyncio.gather(self._reconcile_task, return_exceptions=True)
-        async with self._write_lock:
-            if self.local is not None:
-                await self.local.async_stop()
-            if self._pending_local is not None and not self._pending_local.done():
-                # Normal timeouts leave requests alone to preserve HAP framing.
-                # On unload the session is closed first, so cancelling cannot
-                # corrupt a later request on that session.
-                self._pending_local.cancel()
-                await asyncio.gather(self._pending_local, return_exceptions=True)
-        await self._async_reconcile(allow_stopped=True)
-
-    @callback
-    def _local_write_done(self, task: asyncio.Task[None]) -> None:
-        """Observe late failures and reconcile commands after the request settles."""
-        if not task.cancelled():
-            task.exception()
-        self._schedule_reconciliation()
-
-    @callback
-    def _schedule_reconciliation(self) -> None:
-        if (
-            self._stopped
-            or self.hass.is_stopping
-            or self._pending_local is None
-            or not self._pending_local.done()
-            or (self._reconcile_task is not None and not self._reconcile_task.done())
-        ):
-            return
-        self._reconcile_task = self.hass.async_create_background_task(
-            self._async_reconcile(), f"mysa {self.name} reconcile local write"
-        )
-
-    async def _async_reconcile(self, *, allow_stopped: bool = False) -> None:
-        """Reassert newer successful commands after an older local write finishes."""
-        async with self._write_lock:
-            if (
-                (self._stopped and not allow_stopped)
-                or self._pending_local is None
-                or not self._pending_local.done()
-            ):
-                return
-            if self._reconcile:
-                cloud = self.cloud
-                if cloud is None:
-                    return
-                assert self.local is not None
-                self.local.mark_unavailable("confirming newer cloud commands")
-                try:
-                    writes: list[Callable[[MysaCloudCoordinator], Awaitable[None]]] = []
-                    for write in self._reconcile.values():
-                        if not any(write is pending for pending in writes):
-                            writes.append(write)
-                    for write in writes:
-                        await write(cloud)
-                        for key, pending in list(self._reconcile.items()):
-                            if pending is write:
-                                del self._reconcile[key]
-                except HomeAssistantError as err:
-                    # Keep the desired commands and retry on the next update.
-                    LOGGER.warning(
-                        "%s: couldn't reconcile a late write: %s", self.name, err
-                    )
-                    return
-            self._pending_local = None
-            self._pending_values.clear()
-            self.notify()
-
-    async def _async_route(
-        self,
-        *,
-        local_values: Mapping[str, Any] | None,
-        cloud_write: Callable[[MysaCloudCoordinator], Awaitable[None]] | None,
-        cloud_applied: Callable[[DeviceState], bool] | None,
-        intent: Mapping[str, Any] | None = None,
-    ) -> None:
-        """Serialize commands and remember those that supersede an in-flight write."""
-        async with self._write_lock:
-            if self._stopped:
-                raise translated_error("thermostat_unreachable", name=self.name)
-            intent_values = intent if intent is not None else local_values
-            try:
-                await self._async_route_locked(
-                    local_values=local_values,
-                    cloud_write=cloud_write,
-                    cloud_applied=cloud_applied,
-                    intent=intent_values,
-                )
-            except HomeAssistantError as err:
-                if isinstance(err.__cause__, MysaConnectionError) and not isinstance(
-                    err.__cause__, MysaRateLimitError
-                ):
-                    # A lost response doesn't mean the newer write wasn't applied.
-                    self._remember_intent(intent_values, cloud_write)
-                raise
-            except asyncio.CancelledError:
-                self._remember_intent(intent_values, cloud_write)
-                raise
-            else:
-                self._remember_intent(intent_values, cloud_write)
-
-    @callback
-    def _remember_intent(
-        self,
-        values: Mapping[str, Any] | None,
-        cloud_write: Callable[[MysaCloudCoordinator], Awaitable[None]] | None,
-    ) -> None:
-        """Keep later commands, including those whose cloud response was lost."""
-        if self._pending_local is None or not values or cloud_write is None:
-            return
-        for key, value in values.items():
-            self._reconcile.pop(key, None)
-            if key not in self._pending_values or value != self._pending_values[key]:
-                # Reassert mode commands too: hardware can change more than one
-                # characteristic. Reinserting keys preserves latest-command order.
-                self._reconcile[key] = cloud_write
-        self.notify()
-
-    async def _async_route_locked(
-        self,
-        *,
-        local_values: Mapping[str, Any] | None,
-        cloud_write: Callable[[MysaCloudCoordinator], Awaitable[None]] | None,
-        cloud_applied: Callable[[DeviceState], bool] | None,
-        intent: Mapping[str, Any] | None,
-    ) -> None:
-        """Try HomeKit, then read back an uncertain result before cloud fallback."""
-        outcome_unknown = False
-        local = self.local
-        if (
-            local_values is not None
-            and local is not None
-            and self.local_ok
-            and self._pending_local is None
-            and all(k in local.chars for k in local_values)
-        ):
-            task = local.start_write(local_values)
-            self._pending_local = task
-            self._pending_values = dict(intent or local_values)
-            task.add_done_callback(self._local_write_done)
-            done, _ = await asyncio.wait({task}, timeout=LOCAL_WRITE_TIMEOUT)
-            if task in done:
-                self._pending_local = None
-                self._pending_values.clear()
-                error = task.exception()
-                if error is None:
-                    self.notify()
-                    return
-                if isinstance(error, LocalWriteRejectedError):
-                    raise translated_error("local_write_rejected", error=str(error))
-                local.mark_unavailable(str(error) or type(error).__name__)
-            else:
-                outcome_unknown = True
-                local.mark_unavailable("write timed out")
-                # Read back before retrying anywhere.
-                try:
-                    values = await local.async_read(local_values)
-                except LOCAL_ERRORS:
-                    values = {}
-                if values and all(values.get(k) == v for k, v in local_values.items()):
-                    local.values.update(values)
-                    local.mark_available()
-                    self.notify()
-                    return
-
-        cloud = self.cloud
-        if cloud_write is None or cloud is None:
-            raise translated_error("thermostat_unreachable", name=self.name)
-
-        if outcome_unknown and cloud_applied is not None:
-            try:
-                state = await cloud.async_fetch_state(self.device_id)
-            except MysaError as err:
-                LOGGER.debug(
-                    "%s: couldn't verify the write in the cloud: %s", self.name, err
-                )
-            else:
-                if cloud_applied(state):
-                    LOGGER.debug("%s: the timed-out local write had landed", self.name)
-                    return
-        await cloud_write(cloud)
+        """Drain commands and close the local connection."""
+        await self.commands.async_stop()
 
     async def async_set_temperature(self, value: float) -> None:
         """Change the setpoint for the current mode."""
         mode = self.mode
-        section = SETPOINT_SECTION_BY_MODE.get(mode or Mode.HEAT, "targetHeat")
 
         async def _cloud(cloud: MysaCloudCoordinator) -> None:
-            await cloud.async_update_state(
-                self.device_id, {section: {"setpoint": value}}
-            )
+            await cloud.async_set_temperature(self.device_id, mode or Mode.HEAT, value)
 
-        def _applied(state: DeviceState) -> bool:
-            return state.setpoint_for(mode) == value
-
-        await self._async_route(
+        await self.commands.async_route(
             local_values={TARGET_TEMPERATURE: value},
             cloud_write=_cloud,
-            cloud_applied=_applied,
+            cloud_applied=lambda state: state.setpoint_for(mode) == value,
         )
 
     async def async_set_mode(self, mode: Mode) -> None:
-        """Change the mode."""
-        hk_value = MODE_TO_HK_MODE.get(mode)
+        """Change the mode through an available transport."""
+        local_mode = MODE_TO_LOCAL_MODE.get(mode)
 
         async def _cloud(cloud: MysaCloudCoordinator) -> None:
-            await cloud.async_update_state(
-                self.device_id, {"modes": {"mode": int(mode)}}
-            )
+            await cloud.async_set_mode(self.device_id, mode)
 
-        def _applied(state: DeviceState) -> bool:
-            return state.mode == mode
-
-        await self._async_route(
-            local_values={TARGET_STATE: hk_value} if hk_value is not None else None,
+        await self.commands.async_route(
+            local_values={TARGET_STATE: local_mode} if local_mode is not None else None,
             cloud_write=_cloud,
-            cloud_applied=_applied,
-            intent={TARGET_STATE: int(mode)},
+            cloud_applied=lambda state: state.mode == mode,
+            intent={TARGET_STATE: mode.name.lower()},
         )
 
     async def async_set_fan_speed(self, speed: AcFan) -> None:
-        """Change the AC's fan speed (cloud only).
-
-        Like Mysa's app, send the current mode along with an AC's fan speed.
-        """
-        fields: dict[str, int] = {"fan_mode": AC_FAN_TO_STATE[speed]}
-        if (mode := self.mode) is not None:
-            fields["mode"] = int(mode)
-        await self.async_cloud_update({"modes": fields})
+        """Change the AC fan speed, keeping its current mode in the same command."""
+        mode = self.mode
+        intent: dict[str, Any] = {"fan_speed": speed}
+        if mode is not None:
+            intent[TARGET_STATE] = mode.name.lower()
+        await self._async_cloud_command(
+            lambda cloud: cloud.async_set_fan_speed(self.device_id, speed, mode), intent
+        )
 
     async def async_set_swing(self, direction: str, value: Swing) -> None:
-        """Change the AC's vertical or horizontal swing (cloud only)."""
-        await self.async_cloud_update({"modes": {f"{direction}State": int(value)}})
+        """Change vertical or horizontal AC swing."""
+        await self._async_cloud_command(
+            lambda cloud: cloud.async_set_swing(self.device_id, direction, value),
+            {f"swing:{direction}": value},
+        )
 
     async def async_set_display_unit(self, unit: str) -> None:
-        """Switch the thermostat's own screen between °C and °F."""
-
-        async def _cloud(cloud: MysaCloudCoordinator) -> None:
-            await cloud.async_update_settings(
-                self.device_id, {"Format": "fahrenheit" if unit == "F" else "celsius"}
-            )
-
-        await self._async_route(
-            local_values={DISPLAY_UNITS: 1 if unit == "F" else 0},
-            cloud_write=_cloud,
+        """Switch the thermostat screen between Celsius and Fahrenheit."""
+        await self.commands.async_route(
+            local_values={DISPLAY_UNITS: unit},
+            cloud_write=lambda cloud: cloud.async_set_display_unit(
+                self.device_id, unit
+            ),
             cloud_applied=None,
         )
+
+    @property
+    def supports_display_unit(self) -> bool:
+        """Whether either protocol supports changing screen temperature units."""
+        local_units = self.local is not None and self.local.supports(DISPLAY_UNITS)
+        caps = self.capabilities
+        return local_units or (caps is not None and {"C", "F"} <= set(caps.units))
 
     async def async_identify(self) -> None:
         """Make the thermostat identify itself (local only)."""
@@ -866,40 +664,65 @@ class Thermostat:
         except LOCAL_ERRORS as err:
             raise translated_error("thermostat_unreachable", name=self.name) from err
 
-    async def async_cloud_update(
-        self, changes: Mapping[str, Mapping[str, Any]]
+    async def _async_cloud_command(
+        self,
+        write: Callable[[MysaCloudCoordinator], Awaitable[None]],
+        intent: Mapping[str, Any],
     ) -> None:
-        """Write a cloud-only setting (lock, brightness, limits, offset...)."""
-
-        async def _write(cloud: MysaCloudCoordinator) -> None:
-            await cloud.async_update_state(self.device_id, changes)
-
-        await self._async_route(
-            local_values=None,
-            cloud_write=_write,
-            cloud_applied=None,
-            intent={
-                (
-                    TARGET_STATE
-                    if section == "modes" and key == "mode"
-                    else f"cloud:{section}.{key}"
-                ): value
-                for section, fields in changes.items()
-                for key, value in fields.items()
-            },
+        """Order a cloud-only operation alongside commands using HomeKit."""
+        await self.commands.async_route(
+            local_values=None, cloud_write=write, cloud_applied=None, intent=intent
         )
 
-    async def async_cloud_settings(self, fields: Mapping[str, Any]) -> None:
-        """Write a cloud-only settings-record field (heater type...)."""
+    async def async_set_brightness(self, value: float, *, active: bool) -> None:
+        """Adjust brightness in app-sized steps, keeping sleep no brighter than wake."""
+        state = self.cloud_state
+        if state is None:
+            raise translated_error("cloud_required", name=self.name)
+        wake = state.active_brightness if state.active_brightness is not None else 100
+        sleep = state.idle_brightness if state.idle_brightness is not None else 50
+        value = round(value / 5) * 5
+        if active:
+            wake = max(10, value)
+            sleep = min(sleep, wake)
+        else:
+            sleep = value
+            wake = max(wake, sleep)
+        await self._async_cloud_command(
+            lambda cloud: cloud.async_set_display_brightness(
+                self.device_id, active=wake, idle=sleep
+            ),
+            {"brightness_active": wake, "brightness_idle": sleep},
+        )
 
-        async def _write(cloud: MysaCloudCoordinator) -> None:
-            await cloud.async_update_settings(self.device_id, fields)
+    async def async_set_setpoint_limit(self, value: float, *, minimum: bool) -> None:
+        """Change one hardware setpoint limit."""
+        await self._async_cloud_command(
+            lambda cloud: cloud.async_set_setpoint_limit(
+                self.device_id, value, minimum=minimum
+            ),
+            {"setpoint_min" if minimum else "setpoint_max": value},
+        )
 
-        await self._async_route(
-            local_values=None,
-            cloud_write=_write,
-            cloud_applied=None,
-            intent={f"settings:{key}": value for key, value in fields.items()},
+    async def async_set_temperature_offset(self, value: float) -> None:
+        """Change the ambient sensor calibration offset."""
+        await self._async_cloud_command(
+            lambda cloud: cloud.async_set_temperature_offset(self.device_id, value),
+            {"temperature_offset": value},
+        )
+
+    async def async_set_button_lock(self, value: ButtonLock) -> None:
+        """Change the thermostat's physical button lock."""
+        await self._async_cloud_command(
+            lambda cloud: cloud.async_set_button_lock(self.device_id, value),
+            {"button_lock": value},
+        )
+
+    async def async_set_heater_type(self, value: HeaterType) -> None:
+        """Change the relay control profile."""
+        await self._async_cloud_command(
+            lambda cloud: cloud.async_set_heater_type(self.device_id, value),
+            {"heater_type": value},
         )
 
     def require_cloud(self) -> MysaCloudCoordinator:

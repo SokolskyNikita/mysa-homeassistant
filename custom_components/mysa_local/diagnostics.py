@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-import json
 from typing import Any
 
-from aiohomekit.model.characteristics import CharacteristicsTypes
 from homeassistant.components.diagnostics import REDACTED, async_redact_data
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
@@ -15,7 +13,6 @@ from .const import (
     CONF_PAIRING,
     CONF_REFRESH_TOKEN,
     CONF_USER_ID,
-    MAC_CHAR_UUID,
     VERSION,
 )
 from .data import MysaConfigEntry
@@ -44,29 +41,6 @@ TO_REDACT = {
     "Name",
     "name",
 }
-
-
-# Characteristic values that identify the unit: name ("Mysa-" plus the end of
-# the MAC), serial, MAC, setup ID.
-_PRIVATE_CHARS = {
-    CharacteristicsTypes.NAME,
-    CharacteristicsTypes.CONFIGURED_NAME,
-    CharacteristicsTypes.SERIAL_NUMBER,
-    MAC_CHAR_UUID,
-    "00000220-0000-1000-8000-0026BB765291",
-}
-
-
-def _redact_accessories(accessories: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    for accessory in accessories:
-        for service in accessory.get("services", []):
-            for char in service.get("characteristics", []):
-                if (
-                    str(char.get("type", "")).upper() in _PRIVATE_CHARS
-                    and "value" in char
-                ):
-                    char["value"] = REDACTED
-    return accessories
 
 
 def _scrub_device_ids(data: Any, fragments: tuple[str, ...]) -> Any:
@@ -105,30 +79,7 @@ async def async_get_config_entry_diagnostics(
             "runtime_source": thermostat.runtime_source,
         }
         if local is not None:
-            item["homekit"] = {
-                "available": local.available,
-                "last_error": local.last_error,
-                "info": async_redact_data(asdict(local.info), TO_REDACT | {"mac"}),
-                "characteristics": {
-                    ctype: {
-                        "aid": meta.aid,
-                        "iid": meta.iid,
-                        "min": meta.min_value,
-                        "max": meta.max_value,
-                        "step": meta.min_step,
-                        "valid": meta.valid_values,
-                        "value": local.values.get(ctype),
-                    }
-                    for ctype, meta in local.chars.items()
-                },
-                "accessories": (
-                    _redact_accessories(
-                        json.loads(json.dumps(local.pairing.accessories.serialize()))
-                    )
-                    if local.pairing.accessories is not None
-                    else None
-                ),
-            }
+            item["homekit"] = local.diagnostics()
         if cloud is not None and cloud.data is not None:
             dev = thermostat.device_id
             state = cloud.data.states.get(dev)

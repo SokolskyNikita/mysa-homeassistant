@@ -29,7 +29,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 import pytest
 
-from custom_components.mysa_local.api import AcFan, DeviceRecord, Mode, Swing
+from custom_components.mysa_local.protocols.cloud import (
+    AcFan,
+    DeviceRecord,
+    Mode,
+    Swing,
+)
 
 from .common import DEVICE_ID, FakeCloud, hub_entry
 from .conftest import setup_entry

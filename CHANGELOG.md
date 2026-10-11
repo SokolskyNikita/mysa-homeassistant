@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2 (2026-10-11)
+
+- Separated cloud HTTPS/authentication and HomeKit communications into independent protocol packages. HomeKit continues to use aiohomekit. Protocol code has no Home Assistant imports or dependency on the other protocol.
+- Added semantic protocol operations and read-only HomeKit state so entities and setup flows no longer construct wire payloads or access raw HomeKit objects.
+- Isolated HA polling/lifecycle adapters, command ordering/fallback, and durable pairing storage. Existing credential formats, entity IDs, delayed-write reconciliation, and schedule recovery are preserved.
+- HomeKit takeover rolls back an ambiguous pairing addition after a lost response or cancellation, with bounded cleanup that preserves the original error.
+- Added architecture documentation and automated dependency-boundary checks.
+
+Validated with 217 automated tests (90% coverage), Ruff and mypy, and two connected Baseboard Lite thermostats on Home Assistant 2026.10.1. Live checks covered HomeKit setpoints and display units, concurrent commands, cloud brightness and direct setpoint writes confirmed through HomeKit, and temporary schedule creation/replacement/removal. Original settings were restored; no device was unpaired or deliberately taken offline. AC-specific features remain covered by simulated tests.
+
 ## 0.4.1 (2026-10-11)
 
 - Commands to each thermostat are serialized. A delayed local write is reconciled with newer commands after cloud fallback, including ambiguous responses and integration unload.

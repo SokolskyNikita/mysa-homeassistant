@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 from homeassistant.config_entries import ConfigEntry
 
 if TYPE_CHECKING:
-    from .api import MysaClient
-    from .cloud import MysaCloudCoordinator
+    from .cloud_coordinator import MysaCloudCoordinator
+    from .protocols.cloud import MysaClient
     from .thermostat import Thermostat
 
 

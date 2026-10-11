@@ -18,18 +18,6 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .api import (
-    Capabilities,
-    DeviceRecord,
-    DeviceState,
-    FirmwareInfo,
-    MysaAuthError,
-    MysaClient,
-    MysaConnectionError,
-    MysaError,
-    MysaNotFoundError,
-    MysaRateLimitError,
-)
 from .const import (
     CLOUD_CAPABILITIES_INTERVAL,
     CLOUD_FALLBACK_INTERVAL,
@@ -44,6 +32,35 @@ from .const import (
     CLOUD_WRITE_SPACING,
     DOMAIN,
     LOGGER,
+)
+from .protocols.cloud import (
+    AcFan,
+    ButtonLock,
+    Capabilities,
+    DeviceRecord,
+    DeviceState,
+    FirmwareInfo,
+    HeaterType,
+    Mode,
+    MysaAuthError,
+    MysaClient,
+    MysaConnectionError,
+    MysaError,
+    MysaNotFoundError,
+    MysaRateLimitError,
+    Swing,
+)
+from .protocols.cloud.commands import (
+    button_lock_changes,
+    display_brightness_changes,
+    display_unit_settings,
+    fan_speed_changes,
+    heater_type_settings,
+    mode_changes,
+    setpoint_limit_changes,
+    swing_changes,
+    temperature_changes,
+    temperature_offset_changes,
 )
 
 if TYPE_CHECKING:
@@ -341,7 +358,20 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         self, device_id: str, changes: Mapping[str, Mapping[str, Any]]
     ) -> None:
         """Write state sections through the cloud."""
-        await self._async_spaced(lambda: self.client.update_state(device_id, changes))
+        await self._async_write_state(
+            device_id,
+            lambda: self.client.update_state(device_id, changes),
+            changes,
+        )
+
+    async def _async_write_state(
+        self,
+        device_id: str,
+        call: Callable[[], Awaitable[Any]],
+        changes: Mapping[str, Mapping[str, Any]],
+    ) -> None:
+        """Serialize a state write, then reflect the accepted command locally."""
+        await self._async_spaced(call)
         # Show the change now; the re-read 2 s later confirms or corrects it.
         if self.data is not None and (state := self.data.states.get(device_id)):
             raw = copy.deepcopy(state.raw)
@@ -352,17 +382,130 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             self.data.states[device_id] = DeviceState.from_api(device_id, raw)
             self.async_update_listeners()
 
+    async def async_set_temperature(
+        self, device_id: str, mode: Mode | None, temperature: float
+    ) -> None:
+        """Set a temperature target using the cloud protocol's mode mapping."""
+        await self._async_write_state(
+            device_id,
+            lambda: self.client.set_temperature(device_id, mode, temperature),
+            temperature_changes(mode, temperature),
+        )
+
+    async def async_set_mode(self, device_id: str, mode: Mode) -> None:
+        """Set operating mode through the cloud."""
+        await self._async_write_state(
+            device_id,
+            lambda: self.client.set_mode(device_id, mode),
+            mode_changes(mode),
+        )
+
+    async def async_set_fan_speed(
+        self, device_id: str, speed: AcFan, mode: Mode | None = None
+    ) -> None:
+        """Set an AC fan speed through the cloud."""
+        await self._async_write_state(
+            device_id,
+            lambda: self.client.set_fan_speed(device_id, speed, mode),
+            fan_speed_changes(speed, mode),
+        )
+
+    async def async_set_swing(
+        self, device_id: str, direction: str, value: Swing
+    ) -> None:
+        """Set an AC swing direction through the cloud."""
+        await self._async_write_state(
+            device_id,
+            lambda: self.client.set_swing(device_id, direction, value),
+            swing_changes(direction, value),
+        )
+
+    async def async_set_display_brightness(
+        self, device_id: str, *, active: int, idle: int
+    ) -> None:
+        """Set both display brightness values through the cloud."""
+        changes = display_brightness_changes(active, idle)
+        await self._async_write_state(
+            device_id,
+            lambda: self.client.set_display_brightness(
+                device_id, active=active, idle=idle
+            ),
+            changes,
+        )
+
+    async def async_set_button_lock(self, device_id: str, value: ButtonLock) -> None:
+        """Lock or unlock the thermostat's physical buttons through the cloud."""
+        changes = button_lock_changes(value)
+        await self._async_write_state(
+            device_id,
+            lambda: self.client.set_button_lock(device_id, value),
+            changes,
+        )
+
+    async def async_set_setpoint_limit(
+        self, device_id: str, value: float, *, minimum: bool
+    ) -> None:
+        """Set a heating setpoint bound through the cloud."""
+        changes = setpoint_limit_changes(value, minimum=minimum)
+        await self._async_write_state(
+            device_id,
+            lambda: self.client.set_setpoint_limit(device_id, value, minimum=minimum),
+            changes,
+        )
+
+    async def async_set_temperature_offset(self, device_id: str, value: float) -> None:
+        """Set the thermostat's room-temperature correction."""
+        changes = temperature_offset_changes(value)
+        await self._async_write_state(
+            device_id,
+            lambda: self.client.set_temperature_offset(device_id, value),
+            changes,
+        )
+
     async def async_update_settings(
         self, device_id: str, fields: Mapping[str, Any]
     ) -> None:
         """Write settings-record fields through the cloud."""
-        await self._async_spaced(lambda: self.client.update_settings(device_id, fields))
+        await self._async_write_settings(
+            device_id,
+            lambda: self.client.update_settings(device_id, fields),
+            fields,
+        )
+
+    async def _async_write_settings(
+        self,
+        device_id: str,
+        call: Callable[[], Awaitable[Any]],
+        fields: Mapping[str, Any],
+    ) -> None:
+        """Serialize a settings write and update the cached record."""
+        await self._async_spaced(call)
         self.mark_stale("records")
         if self.data is not None and (record := self.data.records.get(device_id)):
             self.data.records[device_id] = DeviceRecord.from_api(
                 device_id, {**record.raw, **fields}
             )
             self.async_update_listeners()
+
+    async def async_set_display_unit(self, device_id: str, unit: str) -> None:
+        """Set the thermostat's display unit through the cloud."""
+        fields = display_unit_settings(unit)
+        await self._async_write_settings(
+            device_id,
+            lambda: self.client.set_display_unit(device_id, unit),
+            fields,
+        )
+
+    async def async_set_heater_type(
+        self, device_id: str, heater_type: int | HeaterType
+    ) -> None:
+        """Set the heater profile through the cloud."""
+        fields = heater_type_settings(heater_type)
+        await self._async_write_settings(
+            device_id,
+            lambda: self.client.set_heater_type(device_id, heater_type),
+            fields,
+        )
 
     async def async_call(
         self, call: Callable[[], Awaitable[Any]], *, stale: Iterable[str] = ()

@@ -32,8 +32,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 
 from .account import async_delete_account_issues, async_update_account_issues
-from .api import MysaAuth, MysaClient, MysaError
-from .cloud import MysaCloudCoordinator
+from .cloud_coordinator import MysaCloudCoordinator
 from .const import (
     CONF_CLOUD_ENABLED,
     CONF_CLOUD_RUNTIME,
@@ -52,9 +51,11 @@ from .const import (
     USER_AGENT,
 )
 from .data import MysaConfigEntry, MysaRuntimeData
-from .homekit import ENDPOINT_KEYS, async_get_controller, async_unpair
-from .local import LOCAL_ERRORS, LocalThermostat
+from .homekit_adapter import async_get_controller, async_unpair
+from .local_adapter import LOCAL_ERRORS, LocalThermostat
 from .migration import async_migrate_homekit_controller
+from .protocols.cloud import MysaAuth, MysaClient, MysaError
+from .protocols.homekit import pairing_identity
 from .schedule import async_recover_schedule
 from .services import async_setup_services
 from .thermostat import Thermostat
@@ -102,15 +103,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     async def _prune_pairing_backups_after_start(_event: Event) -> None:
         """Prune backups only when persisted config entries have been loaded."""
-        from .config_flow import (
-            _async_clear_configured_pairing_backups,
-            configured_hkids,
-        )
+        from .config_flow import configured_hkids
+        from .pairing_store import async_clear_configured_pairing_backups
 
         configured: set[str] = set()
         for entry in hass.config_entries.async_entries(DOMAIN, include_ignore=False):
             configured.update(configured_hkids(entry))
-        await _async_clear_configured_pairing_backups(hass, configured)
+        await async_clear_configured_pairing_backups(hass, configured)
 
     # A flow-created entry may not yet be durably written by HA's delayed
     # config-entry storage. Wait for the next full startup before deleting its
@@ -126,10 +125,7 @@ def _fingerprint(entry: MysaConfigEntry) -> object:
     subentries = {}
     for subentry_id, subentry in entry.subentries.items():
         data = dict(subentry.data)
-        pairing = dict(data.get(CONF_PAIRING) or {})
-        for key in ENDPOINT_KEYS:
-            pairing.pop(key, None)
-        data[CONF_PAIRING] = pairing
+        data[CONF_PAIRING] = pairing_identity(data.get(CONF_PAIRING) or {})
         data.pop(CONF_MIGRATE_FROM, None)
         subentries[subentry_id] = (
             subentry.title,
@@ -401,9 +397,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: MysaConfigEntry) ->
         LOGGER.info("Removing the HomeKit pairing of %s", thermostat.name)
         try:
             async with asyncio.timeout(15):
-                await thermostat.local.pairing.remove_pairing(
-                    thermostat.local.pairing_data["iOSPairingId"]
-                )
+                await async_unpair(hass, thermostat.local.pairing_data)
         except LOCAL_ERRORS as err:
             LOGGER.warning(
                 "Couldn't unpair %s (%s); reset its HomeKit pairing on the device "
