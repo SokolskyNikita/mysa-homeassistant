@@ -587,3 +587,18 @@ async def test_account_step_without_a_home(
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], {})
     assert result["errors"] == {"base": "no_home"}
     assert cloud.claims == []
+
+
+@pytest.mark.usefixtures("controller")
+async def test_unfixable_account_issue_has_text_only(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """A model Home Assistant can't add gets the text-only warning."""
+    cloud.remove_from_account()
+    sub = cloud_only_subentry()
+    sub["data"]["model"] = "BB-V3-0"
+    await setup_entry(hass, hub_entry(subentries=[sub]))
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, ACCOUNT_ISSUE)
+    assert issue is not None
+    assert not issue.is_fixable
+    assert issue.translation_key == "removed_from_account_info"

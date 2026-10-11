@@ -14,7 +14,7 @@
       },
       "wifi_help": {
         "title": "Put the thermostat on Wi-Fi",
-        "description": "A new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the browser-based setup page: [{url}]({url}). It works in Chrome or Edge on a computer with Bluetooth, with no Mysa app and no phone.\n\nOnce it's on Wi-Fi, Home Assistant discovers it. Submit to go back."
+        "description": "A new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the browser-based setup page: [{url}]({url}). It works in Chrome or Edge on a computer with Bluetooth and doesn't need the Mysa app or a phone.\n\nOnce it's on Wi-Fi, Home Assistant discovers it. Submit to go back."
       },
       "pick": {
         "title": "Pick a thermostat",
@@ -77,7 +77,7 @@
       },
       "account": {
         "title": "Add {name} to your Mysa account?",
-        "description": "{name} isn't on your Mysa account. Adding it lets Home Assistant use the Mysa cloud for it: button lock, brightness, setpoint limits, schedules, firmware checks, and control through the cloud while the local connection is down. Local control works either way. {error}",
+        "description": "{name} isn't on your Mysa account. Adding it lets Home Assistant use the Mysa cloud for it: button lock, brightness, setpoint limits, schedules, firmware checks and control through the cloud while the local connection is down. Local control works either way. {error}",
         "data": {
           "add_to_account": "Add it to my Mysa account",
           "home": "Mysa home"
@@ -154,7 +154,7 @@
         },
         "wifi_help": {
           "title": "Put the thermostat on Wi-Fi",
-          "description": "A new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the browser-based setup page: [{url}]({url}). It works in Chrome or Edge on a computer with Bluetooth, with no Mysa app and no phone.\n\nOnce it's on Wi-Fi, Home Assistant discovers it. Submit to go back."
+          "description": "A new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the browser-based setup page: [{url}]({url}). It works in Chrome or Edge on a computer with Bluetooth and doesn't need the Mysa app or a phone.\n\nOnce it's on Wi-Fi, Home Assistant discovers it. Submit to go back."
         },
         "pick": {
           "title": "Pick a thermostat",
@@ -216,7 +216,7 @@
         },
         "account": {
           "title": "Add {name} to your Mysa account?",
-          "description": "{name} isn't on your Mysa account. Adding it lets Home Assistant use the Mysa cloud for it: button lock, brightness, setpoint limits, schedules, firmware checks, and control through the cloud while the local connection is down. Local control works either way. {error}",
+          "description": "{name} isn't on your Mysa account. Adding it lets Home Assistant use the Mysa cloud for it: button lock, brightness, setpoint limits, schedules, firmware checks and control through the cloud while the local connection is down. Local control works either way. {error}",
           "data": {
             "add_to_account": "Add it to my Mysa account",
             "home": "Mysa home"
@@ -484,12 +484,11 @@
     },
     "not_on_account": {
       "title": "{name} isn't on your Mysa account",
-      "description": "{name} is paired locally, but it isn't on the Mysa account Home Assistant is signed in to. Local control works; the cloud extras (button lock, brightness, schedules, firmware checks) and control through the cloud while the local connection is down don't.\n\nAdd it to your account here, or ignore this to keep it local only.",
       "fix_flow": {
         "step": {
           "account": {
             "title": "Add {name} to your Mysa account?",
-            "description": "{name} isn't on your Mysa account. Adding it lets Home Assistant use the Mysa cloud for it: button lock, brightness, setpoint limits, schedules, firmware checks, and control through the cloud while the local connection is down. Local control works either way. {error}",
+            "description": "{name} isn't on your Mysa account. Adding it lets Home Assistant use the Mysa cloud for it: button lock, brightness, setpoint limits, schedules, firmware checks and control through the cloud while the local connection is down. Local control works either way. {error}",
             "data": {
               "add_to_account": "Add it to my Mysa account",
               "home": "Mysa home"
@@ -506,15 +505,18 @@
           "not_available": "This thermostat or the Mysa cloud isn't available anymore."
         }
       }
+    },
+    "not_on_account_info": {
+      "title": "{name} isn't on your Mysa account",
+      "description": "{name} is paired locally, but it isn't on the Mysa account Home Assistant is signed in to, and Home Assistant can't add this model to an account. Local control works; the cloud extras don't. Add it with the Mysa app, or ignore this to keep it local only."
     },
     "removed_from_account": {
       "title": "{name} is no longer on your Mysa account",
-      "description": "{name} was added from your Mysa account and is only connected through the cloud, but it isn't on the account anymore, so Home Assistant can't reach it.\n\nAdd it back here, pair it locally from its settings, or remove it from Home Assistant.",
       "fix_flow": {
         "step": {
           "account": {
             "title": "Add {name} to your Mysa account?",
-            "description": "{name} isn't on your Mysa account. Adding it lets Home Assistant use the Mysa cloud for it: button lock, brightness, setpoint limits, schedules, firmware checks, and control through the cloud while the local connection is down. Local control works either way. {error}",
+            "description": "{name} isn't on your Mysa account. Adding it lets Home Assistant use the Mysa cloud for it: button lock, brightness, setpoint limits, schedules, firmware checks and control through the cloud while the local connection is down. Local control works either way. {error}",
             "data": {
               "add_to_account": "Add it to my Mysa account",
               "home": "Mysa home"
@@ -532,9 +534,12 @@
         }
       }
     },
+    "removed_from_account_info": {
+      "title": "{name} is no longer on your Mysa account",
+      "description": "{name} is only connected through the Mysa cloud, but it isn't on the account anymore, so Home Assistant can't reach it. Home Assistant can't add this model to an account: add it back with the Mysa app, or remove it from Home Assistant."
+    },
     "cloud_only": {
       "title": "{name} is only connected through the Mysa cloud",
-      "description": "{name} isn't paired locally, so it depends on Mysa's servers and your internet connection. Pair it over HomeKit with the 8-digit code from the back of its faceplate, or ignore this to keep it cloud only.",
       "fix_flow": {
         "step": {
           "local_not_found": {

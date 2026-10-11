@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 (2026-10-11)
+
+- Repairs warnings: a fixable warning's text now lives only in its fix flow, and the ones Home Assistant can't fix (models it can't add to an account) get their own text-only version. Home Assistant's translation check (hassfest) rejected 0.2.0 for having both.
+
 ## 0.2.0 (2026-10-11)
 
 - Local and cloud kept in step (while signed in to Mysa):

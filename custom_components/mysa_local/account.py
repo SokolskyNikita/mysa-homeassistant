@@ -176,15 +176,16 @@ def async_update_account_issues(hass: HomeAssistant, entry: MysaConfigEntry) -> 
         account_issue = f"{ISSUE_NOT_ON_ACCOUNT}_{device_id}"
         local_issue = f"{ISSUE_CLOUD_ONLY}_{device_id}"
         if status == ACCOUNT_OFF:
+            fixable = can_claim(device_id, model)
+            key = "not_on_account" if thermostat.has_local else "removed_from_account"
             ir.async_create_issue(
                 hass,
                 DOMAIN,
                 account_issue,
-                is_fixable=can_claim(device_id, model),
+                is_fixable=fixable,
                 severity=ir.IssueSeverity.WARNING,
-                translation_key=(
-                    "not_on_account" if thermostat.has_local else "removed_from_account"
-                ),
+                # A translation has either a fix flow or a plain description.
+                translation_key=key if fixable else f"{key}_info",
                 translation_placeholders=placeholders,
                 data=data,
             )
