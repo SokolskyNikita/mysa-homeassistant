@@ -144,6 +144,7 @@ async def test_local_runtime_and_energy(
     hass: HomeAssistant, controller: FakeController, freezer: FrozenDateTimeFactory
 ) -> None:
     """Runtime counts while the relay is on; energy = runtime x wattage."""
+    freezer.move_to("2026-10-10T12:00:00-07:00")  # well clear of midnight
     await setup_entry(
         hass, hub_entry(signed_in=False, subentries=[thermostat_subentry(watts=2000)])
     )
