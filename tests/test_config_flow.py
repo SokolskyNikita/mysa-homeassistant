@@ -30,6 +30,7 @@ from custom_components.mysa_local.const import (
     CONF_DEVICE_ID,
     CONF_FIRMWARE_INSTALL,
     CONF_HEATER_WATTS,
+    CONF_LIVE_MODE,
     CONF_MIGRATE_FROM,
     CONF_PAIRING,
     CONF_REFRESH_TOKEN,
@@ -492,6 +493,7 @@ async def test_options_cloud_off_hides_cloud_entities(
         {
             CONF_CLOUD_ENABLED: False,
             CONF_SCAN_INTERVAL: 120,
+            CONF_LIVE_MODE: False,
             "advanced": {CONF_FIRMWARE_INSTALL: False},
         },
     )
@@ -532,6 +534,52 @@ async def test_options_cloud_off_hides_cloud_entities(
     wifi = ent_reg.async_get("sensor.living_room_wi_fi_signal")
     assert wifi is not None
     assert wifi.disabled_by is er.RegistryEntryDisabler.INTEGRATION  # still default
+
+
+@pytest.mark.usefixtures("controller", "cloud")
+async def test_options_live_mode(hass: HomeAssistant) -> None:
+    """Live mode is off by default and is switched on in the settings form."""
+    entry = hub_entry()
+    await setup_entry(hass, entry)
+    assert entry.runtime_data.cloud is not None
+    assert entry.runtime_data.cloud.live_mode is False
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "settings"}
+    )
+    schema = result["data_schema"].schema
+    field = next(key for key in schema if key == CONF_LIVE_MODE)
+    assert field.description == {"suggested_value": False}
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_CLOUD_ENABLED: True,
+            CONF_SCAN_INTERVAL: 60,
+            CONF_LIVE_MODE: True,
+            "advanced": {CONF_FIRMWARE_INSTALL: False},
+        },
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.options[CONF_LIVE_MODE] is True
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data.cloud is not None
+    assert entry.runtime_data.cloud.live_mode is True
+
+
+@pytest.mark.usefixtures("controller")
+async def test_options_live_mode_needs_sign_in(hass: HomeAssistant) -> None:
+    """Without a Mysa sign-in, the settings form leaves out the cloud switches."""
+    entry = hub_entry(signed_in=False)
+    await setup_entry(hass, entry)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "settings"}
+    )
+    schema = result["data_schema"].schema
+    assert CONF_LIVE_MODE not in schema
+    assert CONF_CLOUD_ENABLED not in schema
 
 
 @pytest.mark.usefixtures("controller")

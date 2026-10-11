@@ -36,6 +36,7 @@ from .const import (
     CONF_CLOUD_ENABLED,
     CONF_CLOUD_RUNTIME,
     CONF_DEVICE_ID,
+    CONF_LIVE_MODE,
     CONF_MIGRATE_FROM,
     CONF_PAIRING,
     CONF_REFRESH_TOKEN,
@@ -159,6 +160,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
                 for s in subentries
                 if s.data.get(CONF_CLOUD_RUNTIME, True)
             ],
+            live_mode=entry.options.get(CONF_LIVE_MODE, False),
         )
 
     runtime = MysaRuntimeData(
@@ -208,7 +210,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
 
         entry.async_on_unload(cloud.async_add_listener(_cloud_updated))
         # A thermostat that is unreachable from the start goes into cloud
-        # fallback (live mode, faster polling) now, not at the next poll.
+        # fallback (and live mode, if on) now, not at the next poll.
         _cloud_updated()
     else:
         _async_disable_cloud_entities(hass, entry)

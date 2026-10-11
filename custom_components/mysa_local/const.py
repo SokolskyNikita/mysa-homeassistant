@@ -30,6 +30,7 @@ CONF_SAVE_PASSWORD: Final = "save_password"  # noqa: S105
 # Hub entry options
 CONF_CLOUD_ENABLED: Final = "cloud_enabled"
 CONF_FIRMWARE_INSTALL: Final = "allow_firmware_install"
+CONF_LIVE_MODE: Final = "live_mode"
 DEFAULT_SCAN_INTERVAL: Final = 60
 MIN_SCAN_INTERVAL: Final = 30
 MAX_SCAN_INTERVAL: Final = 300
@@ -58,9 +59,10 @@ CLOUD_REFRESH_AFTER_WRITE: Final = 2.0
 CLOUD_WRITE_SPACING: Final = 0.5
 CLOUD_MAX_BACKOFF: Final = timedelta(minutes=10)
 
-# While a paired thermostat's LAN path is down and the cloud stands in, ask Mysa
-# for "live mode" (a reading every ~5 s instead of every few minutes) and poll
-# faster. Never while the LAN path is healthy or the cloud is off.
+# With the live mode option on (off by default): while a paired thermostat's LAN
+# path is down and the cloud stands in, ask Mysa for "live mode" (a reading every
+# ~5 s instead of every few minutes) and poll faster. Never while the LAN path
+# is healthy or the cloud is off.
 CLOUD_FALLBACK_INTERVAL: Final = timedelta(seconds=10)
 CLOUD_LIVE_MODE_TIMEOUT: Final = 300
 CLOUD_LIVE_MODE_RENEW: Final = timedelta(seconds=240)

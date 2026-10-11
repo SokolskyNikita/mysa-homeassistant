@@ -73,7 +73,8 @@ Measured on a Baseboard Lite, 10 setpoint changes per path, times from send:
 | Cloud `reported` shows it | ~2.1 s | 1.2 s |
 
 - Room temperature: HomeKit pushes it the moment it changes. The cloud's `latestTelemetry.reading` updates about every 5 s only while "live mode" is on (after the app opens or after commands), then slows to ~40 s and then stops: one test went 2.5+ minutes without a new reading, and the cloud still said 21.5 °C while HomeKit already showed 21.4 °C. So a polled cloud temperature can be minutes old.
-- Rule: while a paired thermostat's local connection is down and the cloud is on, request live mode for its home (`POST /mysa-legacy/stream/home/{home}` `{"timeout":300}`), renew it every 4 minutes (the app renews about every 4.2 min) and poll `/state/batch` every 10 s. Stop both as soon as local is back: the poll returns to the normal interval and live mode lapses on its own after 300 s.
+- Opt-in since 0.3.1 (option `live_mode`, off by default); with it off, fallback polls at the normal interval and never requests live mode.
+- Rule: with the option on, while a paired thermostat's local connection is down and the cloud is on, request live mode for its home (`POST /mysa-legacy/stream/home/{home}` `{"timeout":300}`), renew it every 4 minutes (the app renews about every 4.2 min) and poll `/state/batch` every 10 s. Stop both as soon as local is back: the poll returns to the normal interval and live mode lapses on its own after 300 s.
 - Never request live mode while local is healthy, for thermostats without a local path (cloud-only) or with the cloud off.
 
 ### Writes and fallback

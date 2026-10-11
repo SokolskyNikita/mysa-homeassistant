@@ -23,6 +23,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 import pytest
 
+from custom_components.mysa_local.const import CONF_LIVE_MODE
+
 from .common import HKID, FakeCloud, hub_entry
 from .conftest import setup_entry
 
@@ -257,7 +259,7 @@ async def test_live_mode_only_during_fallback(
     hass: HomeAssistant, controller: FakeController, cloud: FakeCloud
 ) -> None:
     """Live mode and fast polling run only while the LAN path is down."""
-    await setup_entry(hass, hub_entry())
+    await setup_entry(hass, hub_entry(options={CONF_LIVE_MODE: True}))
     thermostat = _thermostat(hass)
     coordinator = thermostat.cloud
     await coordinator.async_refresh()
@@ -284,6 +286,22 @@ async def test_live_mode_only_during_fallback(
     await thermostat.local.async_poll()
     await hass.async_block_till_done()
     assert len(cloud.live_mode) == 2
+
+
+async def test_live_mode_off_by_default(
+    hass: HomeAssistant, controller: FakeController, cloud: FakeCloud
+) -> None:
+    """Without the option, fallback reads the cloud at the normal interval."""
+    await setup_entry(hass, hub_entry())
+    thermostat = _thermostat(hass)
+    coordinator = thermostat.cloud
+    controller.aliases[HKID].available = False
+    await thermostat.local.async_poll()
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.living_room_connection_path").state == "cloud"
+    await coordinator.async_refresh()
+    assert cloud.live_mode == []
+    assert coordinator.update_interval.total_seconds() == 60
 
 
 @pytest.mark.usefixtures("controller")
@@ -314,7 +332,7 @@ async def test_fallback_from_startup(
 ) -> None:
     """A thermostat that's unreachable at startup gets live mode right away."""
     controller.aliases[HKID].available = False
-    await setup_entry(hass, hub_entry())
+    await setup_entry(hass, hub_entry(options={CONF_LIVE_MODE: True}))
     assert hass.states.get("sensor.living_room_connection_path").state == "cloud"
     assert cloud.live_mode == [{"timeout": 300}]
     assert _thermostat(hass).cloud.update_interval.total_seconds() == 10

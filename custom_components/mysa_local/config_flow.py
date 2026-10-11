@@ -83,6 +83,7 @@ from .const import (
     CONF_DEVICE_ID,
     CONF_FIRMWARE_INSTALL,
     CONF_HEATER_WATTS,
+    CONF_LIVE_MODE,
     CONF_MIGRATE_FROM,
     CONF_MODEL,
     CONF_PAIRING,
@@ -1117,6 +1118,7 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
             options={
                 CONF_CLOUD_ENABLED: True,
                 CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+                CONF_LIVE_MODE: False,
             },
             subentries=self._pending,
         )
@@ -1632,6 +1634,8 @@ class MysaOptionsFlow(OptionsFlow):
                 unit_of_measurement="s",
             )
         )
+        if self.config_entry.data.get(CONF_REFRESH_TOKEN):
+            fields[vol.Required(CONF_LIVE_MODE)] = BooleanSelector()
         fields[vol.Required("advanced")] = section(
             vol.Schema({vol.Required(CONF_FIRMWARE_INSTALL): BooleanSelector()}),
             {"collapsed": True},
@@ -1645,6 +1649,7 @@ class MysaOptionsFlow(OptionsFlow):
                     CONF_SCAN_INTERVAL: options.get(
                         CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                     ),
+                    CONF_LIVE_MODE: options.get(CONF_LIVE_MODE, False),
                     "advanced": {
                         CONF_FIRMWARE_INSTALL: options.get(CONF_FIRMWARE_INSTALL, False)
                     },

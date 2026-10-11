@@ -94,6 +94,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         device_ids: Iterable[str],
         scan_interval: int,
         usage_device_ids: Iterable[str] = (),
+        live_mode: bool = False,
     ) -> None:
         """Create the coordinator; nothing is fetched until the first refresh."""
         self._base_interval = timedelta(seconds=scan_interval)
@@ -107,6 +108,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         self.client = client
         self.device_ids: set[str] = set(device_ids)
         self.usage_device_ids: set[str] = set(usage_device_ids)
+        self.live_mode = live_mode
         self._refresh_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
         self._last_write = 0.0
@@ -129,7 +131,9 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         self._due.pop(what, None)
 
     def _normal_interval(self) -> timedelta:
-        return CLOUD_FALLBACK_INTERVAL if self.fallback else self._base_interval
+        if self.fallback and self.live_mode:
+            return CLOUD_FALLBACK_INTERVAL
+        return self._base_interval
 
     def _backoff(self) -> None:
         current = self.update_interval or self._normal_interval()
@@ -139,8 +143,8 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
     def set_fallback(self, device_id: str, active: bool) -> None:
         """Track whether a thermostat currently relies on the cloud.
 
-        While any does, its home gets live mode and the poll speeds up; both
-        stop as soon as every LAN path is back.
+        With the live mode option on, its home gets live mode and the poll
+        speeds up while any does; both stop as soon as every LAN path is back.
         """
         if active == (device_id in self.fallback) or device_id not in self.device_ids:
             return
@@ -212,7 +216,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             data.records = await self.client.get_devices()
             self._mark_done("records", CLOUD_RECORDS_INTERVAL)
 
-        for home in self._fallback_homes(data.records):
+        for home in self._fallback_homes(data.records) if self.live_mode else ():
             if self._is_due(f"live:{home}"):
                 await self._best_effort(self._start_live_mode, data, home)
 

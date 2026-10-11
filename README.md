@@ -84,7 +84,7 @@ Choose **Move a thermostat from the HomeKit Device integration**. Mysa Local add
 
 ## Options
 
-The integration options have the cloud switch, the cloud poll interval (30–300 s, default 60) and Mysa sign-in or sign-out. With the cloud off, the cloud-only entities are disabled but keep their names, areas and history; turning it back on brings them back. Under *Advanced* there's **Allow firmware installs**, off by default: a firmware install is untested with this integration and can't be undone.
+The integration options have the cloud switch, the cloud poll interval (30–300 s, default 60), **Live mode during local outages** (off by default; see [How local-first works](#how-local-first-works)) and Mysa sign-in or sign-out. With the cloud off, the cloud-only entities are disabled but keep their names, areas and history; turning it back on brings them back. Under *Advanced* there's **Allow firmware installs**, off by default: a firmware install is untested with this integration and can't be undone.
 
 The options page also says which Mysa account is signed in and whether its password is saved. The save-password choice is made at sign-in; to change it, sign out and sign in again. Signing out deletes a saved password too.
 
@@ -128,7 +128,7 @@ These need the cloud. If you'd rather keep schedules in Home Assistant, plain au
 - HomeKit pushes every change, so there's no local polling beyond a light health check every 30 s.
 - The cloud is read with **one request for all thermostats** every 60 s (configurable). While the local connection is healthy, cloud values for the same fields are ignored, so the two never fight.
 - A change goes to HomeKit first, with a 5 s timeout. If HomeKit is down or fails, the same change goes through the cloud. If a local write times out with an unknown outcome, the integration reads the current value back (locally, then from the cloud) before trying anywhere else, so a change is never applied twice.
-- While a thermostat runs on the cloud, the integration asks Mysa for "live mode" (a fresh reading every ~5 s instead of every few minutes) and polls every 10 s. Both stop as soon as the local connection is back, and never run while it's healthy.
+- **Live mode during local outages** (optional, off by default; in the integration's **Cloud and polling** options): while a thermostat runs on the cloud, the integration asks Mysa for "live mode" (a fresh reading every ~5 s instead of every few minutes) and polls every 10 s. Both stop as soon as the local connection is back, and never run while it's healthy. With it off, a thermostat on the cloud is read at the normal poll interval, and its readings can be a few minutes old.
 - The **Connection path** sensor shows which path is active. If the local connection stays down for 15 minutes, a repair issue explains what to check (Wi-Fi, a DHCP reservation, power). It clears itself.
 - The integration backs off on rate limits and server errors, spaces out its writes and names itself in the User-Agent.
 
