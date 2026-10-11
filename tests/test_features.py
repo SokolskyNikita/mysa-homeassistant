@@ -252,6 +252,8 @@ async def test_diagnostics_redacted(
         "user@example.com",
         "SERIAL0001",
         HOME_ID,
+        DEVICE_ID,
+        HKID,
     ):
         assert secret not in blob
     thermostat = diag["thermostats"][0]

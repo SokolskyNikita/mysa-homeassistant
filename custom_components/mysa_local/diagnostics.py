@@ -28,6 +28,10 @@ TO_REDACT = {
     "iOSDeviceLTPK",
     "AccessoryLTPK",
     "iOSPairingId",
+    "AccessoryPairingID",
+    "deviceId",
+    "Id",
+    "Device",
     "AccessoryIP",
     "AccessoryIPs",
     "serial",
@@ -112,7 +116,9 @@ async def async_get_config_entry_diagnostics(
             firmware = cloud.data.firmware.get(dev)
             item["cloud"] = {
                 "state": async_redact_data(state.raw, TO_REDACT) if state else None,
-                "capabilities": caps.raw if caps else None,
+                "capabilities": async_redact_data(caps.raw, TO_REDACT)
+                if caps
+                else None,
                 "record": async_redact_data(record.raw, TO_REDACT) if record else None,
                 "firmware": asdict(firmware) if firmware else None,
                 "hold": thermostat.hold is not None,

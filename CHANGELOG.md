@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 (2026-10-11)
+
+- Diagnostics also redact the thermostat's Mysa device ID (its Wi-Fi MAC) and HomeKit ID.
+
 ## 0.1.0 (2026-10-11)
 
 First release. Tested on a Mysa Baseboard Lite (BB-V2-0-L), firmware 3.17.5.13.
