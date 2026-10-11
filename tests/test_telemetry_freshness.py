@@ -19,7 +19,11 @@ from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
-from custom_components.mysa_local.const import CONF_CLOUD_RUNTIME, DOMAIN
+from custom_components.mysa_local.const import (
+    CLOUD_TELEMETRY_MAX_AGE,
+    CONF_CLOUD_RUNTIME,
+    DOMAIN,
+)
 
 from .common import (
     HKID,
@@ -29,6 +33,9 @@ from .common import (
     update_fake_characteristic,
 )
 from .conftest import setup_entry
+
+# Just past the freshness limit.
+STALE = CLOUD_TELEMETRY_MAX_AGE + timedelta(minutes=1)
 
 
 def _thermostat(hass: HomeAssistant) -> Any:
@@ -54,12 +61,14 @@ def _set_cloud_usage(cloud: FakeCloud, seconds: float) -> None:
 @pytest.mark.parametrize(
     "scenario",
     [
-        pytest.param((timedelta(minutes=11), True, False), id="stale"),
+        pytest.param((STALE, True, False), id="stale"),
         pytest.param((None, True, False), id="missing-timestamp"),
         pytest.param((-timedelta(minutes=2), True, False), id="future-timestamp"),
         pytest.param((timedelta(), None, False), id="unknown-connectivity"),
         pytest.param((timedelta(), False, False), id="offline"),
         pytest.param((timedelta(minutes=5), True, True), id="fresh-online"),
+        # Outside live mode, uploads come in batches every 12-30 minutes.
+        pytest.param((timedelta(minutes=30), True, True), id="batch-upload"),
     ],
 )
 async def test_cloud_fallback_requires_fresh_online_telemetry(
@@ -98,7 +107,7 @@ async def test_cloud_fallback_recovers_after_fresh_reading(
     freezer.move_to("2026-10-11T12:00:00-07:00")
     cloud.auto_telemetry = False
     reading = _reading(cloud)
-    reading["timestamp"] = (dt_util.utcnow() - timedelta(minutes=11)).timestamp()
+    reading["timestamp"] = (dt_util.utcnow() - STALE).timestamp()
     await setup_entry(hass, hub_entry())
     thermostat = _thermostat(hass)
     assert not thermostat.cloud_ok
@@ -130,13 +139,11 @@ async def test_successful_refresh_does_not_make_stale_cloud_data_available(
     assert climate.state != "unavailable"
     assert thermostat.runtime_today == pytest.approx(240)
 
-    freezer.tick(timedelta(minutes=11))
+    freezer.tick(STALE)
     await thermostat.cloud.async_refresh()
 
     assert thermostat.cloud.last_update_success is True
-    assert thermostat.cloud_state.reading_time == dt_util.utcnow() - timedelta(
-        minutes=11
-    )
+    assert thermostat.cloud_state.reading_time == dt_util.utcnow() - STALE
     assert thermostat.cloud_ok is False
     assert thermostat.available is False
     climate = hass.states.get("climate.living_room")
@@ -158,9 +165,7 @@ async def test_stale_telemetry_keeps_connected_cloud_settings_available(
     """Stale readings block fallback but do not hide connected cloud controls."""
     freezer.move_to("2026-10-11T12:00:00-07:00")
     cloud.auto_telemetry = False
-    _reading(cloud)["timestamp"] = (
-        dt_util.utcnow() - timedelta(minutes=11)
-    ).timestamp()
+    _reading(cloud)["timestamp"] = (dt_util.utcnow() - STALE).timestamp()
     await setup_entry(hass, hub_entry())
 
     thermostat = _thermostat(hass)

@@ -25,6 +25,7 @@ from custom_components.mysa_local.const import (
     CONF_REFRESH_TOKEN,
     CONF_SAVE_PASSWORD,
     CONF_USER_ID,
+    DEFAULT_LIVE_MODE,
     DEFAULT_SCAN_INTERVAL,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
@@ -187,7 +188,7 @@ class MysaOptionsFlow(OptionsFlow):
                     CONF_SCAN_INTERVAL: options.get(
                         CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                     ),
-                    CONF_LIVE_MODE: options.get(CONF_LIVE_MODE, False),
+                    CONF_LIVE_MODE: options.get(CONF_LIVE_MODE, DEFAULT_LIVE_MODE),
                     "advanced": {
                         CONF_FIRMWARE_INSTALL: options.get(CONF_FIRMWARE_INSTALL, False)
                     },

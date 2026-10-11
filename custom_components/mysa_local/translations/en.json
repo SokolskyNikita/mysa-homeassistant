@@ -311,7 +311,7 @@
         "data_description": {
           "cloud_enabled": "Off: no calls to Mysa's servers at all, and the cloud-only entities are disabled (they keep their names and history, and come back when you turn the cloud on). Your sign-in is kept, so turning it back on needs no password.",
           "scan_interval": "How often to read all thermostats from the cloud (one request per poll). Local HomeKit updates are instant regardless.",
-          "live_mode": "While a thermostat can't be reached on your network, ask Mysa to have it report every ~5 s, and read the cloud every 10 s. Never used while the local connection works. Off: the cloud is read at the interval above, and its readings can be a few minutes old."
+          "live_mode": "While a thermostat can't be reached on your network, ask Mysa to have it report every ~5 s, and read the cloud every 10 s. Never used while the local connection works. Off: the cloud is read at the interval above, and its readings are often 15–30 minutes old."
         },
         "sections": {
           "advanced": {

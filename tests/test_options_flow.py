@@ -190,11 +190,11 @@ async def test_options_cloud_off_hides_cloud_entities(
 
 @pytest.mark.usefixtures("controller", "cloud")
 async def test_options_live_mode(hass: HomeAssistant) -> None:
-    """Live mode is off by default and is switched on in the settings form."""
+    """Live mode is on by default and is switched off in the settings form."""
     entry = hub_entry()
     await setup_entry(hass, entry)
     assert entry.runtime_data.cloud is not None
-    assert entry.runtime_data.cloud.live_mode is False
+    assert entry.runtime_data.cloud.live_mode is True
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
     result = await hass.config_entries.options.async_configure(
@@ -202,22 +202,22 @@ async def test_options_live_mode(hass: HomeAssistant) -> None:
     )
     schema = result["data_schema"].schema
     field = next(key for key in schema if key == CONF_LIVE_MODE)
-    assert field.description == {"suggested_value": False}
+    assert field.description == {"suggested_value": True}
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         {
             CONF_CLOUD_ENABLED: True,
             CONF_SCAN_INTERVAL: 60,
-            CONF_LIVE_MODE: True,
+            CONF_LIVE_MODE: False,
             "advanced": {CONF_FIRMWARE_INSTALL: False},
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
-    assert entry.options[CONF_LIVE_MODE] is True
+    assert entry.options[CONF_LIVE_MODE] is False
     assert entry.state is ConfigEntryState.LOADED
     assert entry.runtime_data.cloud is not None
-    assert entry.runtime_data.cloud.live_mode is True
+    assert entry.runtime_data.cloud.live_mode is False
 
 
 @pytest.mark.usefixtures("controller")

@@ -42,6 +42,7 @@ from .const import (
     CONF_PAIRING,
     CONF_REFRESH_TOKEN,
     CONF_USER_ID,
+    DEFAULT_LIVE_MODE,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     ISSUES_URL,
@@ -178,7 +179,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
                 for s in subentries
                 if s.data.get(CONF_CLOUD_RUNTIME, True)
             ],
-            live_mode=entry.options.get(CONF_LIVE_MODE, False),
+            live_mode=entry.options.get(CONF_LIVE_MODE, DEFAULT_LIVE_MODE),
         )
 
     runtime = MysaRuntimeData(

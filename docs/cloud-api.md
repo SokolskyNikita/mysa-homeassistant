@@ -152,7 +152,7 @@ App 4.20.1 hard-codes the legacy baseboard, AC and in-floor migration selectors 
 
 App 4.20.1 polled the batch endpoint about every 2.9 seconds while open and read the individual endpoint twice after each write. Python `get_states()` keeps entries with a `data` object and skips per-device errors. The coordinator replaces its state map with that result, so an errored device loses its previous cached state.
 
-Both endpoints return Mysa's stored state. Live reads showed `isConnected: true` with telemetry more than ten minutes old while commands still worked. Check `latestTelemetry.reading.timestamp` when freshness matters. HA requires a successful poll, `isConnected: true`, and a reading no more than ten minutes old or one minute in the future for cloud climate readings, humidity and RSSI. Cloud settings controls require the successful poll and explicit online status, independently of the telemetry timestamp.
+Both endpoints return Mysa's stored state. Live reads showed `isConnected: true` with telemetry more than ten minutes old while commands still worked. Check `latestTelemetry.reading.timestamp` when freshness matters. HA requires a successful poll, `isConnected: true`, and a reading no more than 90 minutes old or one minute in the future for cloud climate readings, humidity and RSSI. Cloud settings controls require the successful poll and explicit online status, independently of the telemetry timestamp.
 
 ### State structure
 
@@ -207,7 +207,7 @@ The app's `CONTROL_SHADOW_TYPE` names include `latestTelemetry`, `targetHeat`, `
 
 ### Live mode and liveness
 
-Without live mode, Lite readings drifted to roughly 40 seconds apart and sometimes stopped for minutes. This request made the home's thermostats report about every five seconds:
+Without live mode, Lite readings drifted to roughly 40 seconds apart and sometimes stopped for minutes. On October 11, 2026, two idle Lites outside live mode kept sampling about every 31 seconds, but uploaded the samples in batches. `latestTelemetry` and the usage endpoint's `rawReadings` both advanced only when a batch arrived, 12–30 minutes apart, and the newest raw sample always matched `latestTelemetry`. No endpoint had a fresher reading between batches. This request made the home's thermostats report about every five seconds:
 
 ```http
 POST /mysa-legacy/stream/home/{home}
@@ -731,7 +731,7 @@ The older app also defines `/energy/device|zone|home/{id}`, `/batchReadings/v2/{
 
 Cloud state polling defaults to 60 seconds and is configurable from 30 to 300 seconds. Records refresh every ten minutes, holds every five minutes, usage every 15 minutes when enabled, firmware every six hours and capabilities every 24 hours. Optional-read failures keep the previous values. Main polling failures double the interval up to ten minutes; a successful poll restores the normal interval.
 
-The live-mode option is off by default. When enabled and a paired thermostat loses its LAN path, HA requests 300 seconds of live reporting for that home, renews it every 240 seconds and polls every ten seconds. When all local paths recover, renewal stops and normal polling resumes. The already-requested stream expires on its own.
+The live-mode option is on by default. When enabled and a paired thermostat loses its LAN path, HA requests 300 seconds of live reporting for that home, renews it every 240 seconds and polls every ten seconds. When all local paths recover, renewal stops and normal polling resumes. The already-requested stream expires on its own.
 
 Cloud writes are serialized with at least 0.5 seconds between calls and followed by a refresh after two seconds. Setpoint, mode and display-unit writes use HomeKit first when available. After a local write timeout, HA reads the local value back and, for setpoint or mode, can check cloud-reported state before retrying through HTTPS. A device rejection is reported as a rejection. Cloud-only controls go directly to their cloud endpoint.
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Cloud readings now count as current for up to 90 minutes instead of ten. Outside live mode, Mysa thermostats upload their readings in batches 12–30 minutes apart, so humidity, Wi-Fi signal and the humidity on the climate entity were unavailable for most of each interval. Cloud fallback uses the same limit.
+- Live mode during local outages is on by default for new setups. Existing setups keep their saved choice; change it under integration options → Cloud and polling.
+
 ## 0.4.3 (2026-10-11)
 
 - Separated initial setup, thermostat subentry management, and integration options/account management into focused flow modules. Existing setup steps, settings, and credential formats are preserved.

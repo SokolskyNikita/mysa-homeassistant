@@ -31,6 +31,7 @@ CONF_SAVE_PASSWORD: Final = "save_password"  # noqa: S105
 CONF_CLOUD_ENABLED: Final = "cloud_enabled"
 CONF_FIRMWARE_INSTALL: Final = "allow_firmware_install"
 CONF_LIVE_MODE: Final = "live_mode"
+DEFAULT_LIVE_MODE: Final = True
 DEFAULT_SCAN_INTERVAL: Final = 60
 MIN_SCAN_INTERVAL: Final = 30
 MAX_SCAN_INTERVAL: Final = 300
@@ -58,15 +59,17 @@ CLOUD_CAPABILITIES_INTERVAL: Final = timedelta(hours=24)
 CLOUD_REFRESH_AFTER_WRITE: Final = 2.0
 CLOUD_WRITE_SPACING: Final = 0.5
 CLOUD_MAX_BACKOFF: Final = timedelta(minutes=10)
-# Normal telemetry arrives every few minutes. Allow missed reports, but never
-# treat an old shadow or an implausibly future-dated reading as live data.
-CLOUD_TELEMETRY_MAX_AGE: Final = timedelta(minutes=10)
+# Outside live mode the thermostat samples every ~30 s but uploads them in
+# batches 12-30 minutes apart, so the cloud's latest reading can be ~30 minutes
+# old (two Lites, 2026-10-11). Allow a missed batch, but never treat an old
+# shadow or an implausibly future-dated reading as live data.
+CLOUD_TELEMETRY_MAX_AGE: Final = timedelta(minutes=90)
 CLOUD_TELEMETRY_FUTURE_TOLERANCE: Final = timedelta(minutes=1)
 
-# With the live mode option on (off by default): while a paired thermostat's LAN
+# With the live mode option on (the default): while a paired thermostat's LAN
 # path is down and the cloud stands in, ask Mysa for "live mode" (a reading every
-# ~5 s instead of every few minutes) and poll faster. Never while the LAN path
-# is healthy or the cloud is off.
+# ~5 s instead of batches every 12-30 minutes) and poll faster. Never while the
+# LAN path is healthy or the cloud is off.
 CLOUD_FALLBACK_INTERVAL: Final = timedelta(seconds=10)
 CLOUD_LIVE_MODE_TIMEOUT: Final = 300
 CLOUD_LIVE_MODE_RENEW: Final = timedelta(seconds=240)

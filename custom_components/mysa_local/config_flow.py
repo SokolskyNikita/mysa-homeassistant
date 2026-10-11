@@ -38,6 +38,7 @@ from .const import (
     CONF_MODEL,
     CONF_PAIRING,
     CONF_SAVE_PASSWORD,
+    DEFAULT_LIVE_MODE,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     LOGGER,
@@ -437,7 +438,7 @@ class MysaConfigFlow(ThermostatSteps, MysaReauthFlow, domain=DOMAIN):
             options={
                 CONF_CLOUD_ENABLED: True,
                 CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
-                CONF_LIVE_MODE: False,
+                CONF_LIVE_MODE: DEFAULT_LIVE_MODE,
             },
             subentries=self._pending,
         )

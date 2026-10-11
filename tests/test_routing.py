@@ -258,8 +258,8 @@ async def test_cloud_backoff(
 async def test_live_mode_only_during_fallback(
     hass: HomeAssistant, controller: FakeController, cloud: FakeCloud
 ) -> None:
-    """Live mode and fast polling run only while the LAN path is down."""
-    await setup_entry(hass, hub_entry(options={CONF_LIVE_MODE: True}))
+    """Live mode (on by default) and fast polling run only while the LAN is down."""
+    await setup_entry(hass, hub_entry())
     thermostat = _thermostat(hass)
     coordinator = thermostat.cloud
     await coordinator.async_refresh()
@@ -288,11 +288,11 @@ async def test_live_mode_only_during_fallback(
     assert len(cloud.live_mode) == 2
 
 
-async def test_live_mode_off_by_default(
+async def test_live_mode_turned_off(
     hass: HomeAssistant, controller: FakeController, cloud: FakeCloud
 ) -> None:
-    """Without the option, fallback reads the cloud at the normal interval."""
-    await setup_entry(hass, hub_entry())
+    """With the option off, fallback reads the cloud at the normal interval."""
+    await setup_entry(hass, hub_entry(options={CONF_LIVE_MODE: False}))
     thermostat = _thermostat(hass)
     coordinator = thermostat.cloud
     controller.aliases[HKID].available = False

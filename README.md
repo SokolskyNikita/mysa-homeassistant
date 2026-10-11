@@ -102,7 +102,7 @@ Open Mysa Local's options, then Cloud and polling.
 |---|---|---|
 | Use Mysa cloud | Enabled after sign-in | Allows cloud settings, data and fallback control |
 | Cloud poll interval | 60 seconds | Reads state for all thermostats; accepts 30–300 seconds |
-| Live mode during local outages | Off | Requests faster readings while a locally paired thermostat's LAN connection is down |
+| Live mode during local outages | On | Requests faster readings while a locally paired thermostat's LAN connection is down |
 | Advanced → Allow firmware installs | Off | Allows the Firmware update entity to start an offered update |
 
 Turning cloud access off disables cloud-only entities while keeping their entity IDs, names, areas and history. Your sign-in is retained. Turning it back on restores entities disabled by the integration; entities you disabled yourself stay disabled. A thermostat configured only through the cloud is unavailable while cloud access is off.
@@ -188,9 +188,9 @@ HomeKit supplies push updates and a health check runs every 30 seconds. While th
 
 Setpoint, screen-unit and HomeKit-supported mode changes try HomeKit first. Modes without a HomeKit equivalent, including fan-only and dry, go directly through the cloud. A local write has a five-second timeout. After a timeout, the integration reads back the local value before retrying through the cloud. For setpoint and mode changes, it also checks cloud-reported state. A device rejection is reported directly.
 
-Cloud state uses one batch request for all thermostats per poll. Settings records, capabilities and other data refresh less often. Mysa can return readings more than ten minutes old even when it reports the thermostat as connected and accepts commands. Cloud climate readings, humidity and Wi-Fi signal require an explicit online status and a telemetry timestamp no more than ten minutes old or one minute ahead of Home Assistant's clock. Settings controls remain available when the cloud responds and reports the thermostat online; they do not depend on the temperature-report timestamp. Local climate control is unaffected by stale cloud telemetry.
+Cloud state uses one batch request for all thermostats per poll. Settings records, capabilities and other data refresh less often. Outside live mode, a thermostat samples about every 30 seconds but uploads the samples to Mysa in batches, so the latest cloud reading is often 15–30 minutes old even while the thermostat is connected and accepts commands. Cloud climate readings, humidity and Wi-Fi signal require an explicit online status and a telemetry timestamp no more than 90 minutes old or one minute ahead of Home Assistant's clock. Settings controls remain available when the cloud responds and reports the thermostat online; they do not depend on the temperature-report timestamp. Local climate control is unaffected by stale cloud telemetry.
 
-With Live mode during local outages enabled, a lost LAN connection triggers a request for readings about every five seconds and changes cloud polling to ten seconds. Normal polling resumes when local control returns. This option applies to thermostats with a local pairing; thermostats added only from the account use the normal poll interval.
+With Live mode during local outages enabled (the default), a lost LAN connection triggers a request for readings about every five seconds and changes cloud polling to ten seconds. Normal polling resumes when local control returns. This option applies to thermostats with a local pairing; thermostats added only from the account use the normal poll interval.
 
 The Connection path sensor shows the active route. If a paired thermostat's LAN path stays down for 15 minutes, a repair notice appears and clears after recovery. Cloud errors and rate limits cause polling to back off; writes are spaced apart.
 
