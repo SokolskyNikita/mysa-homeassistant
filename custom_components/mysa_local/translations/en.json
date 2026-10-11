@@ -308,7 +308,7 @@
           "scan_interval": "Cloud poll interval"
         },
         "data_description": {
-          "cloud_enabled": "Off: no calls to Mysa's servers at all, and the cloud-only entities are removed. Your sign-in is kept, so turning it back on needs no password.",
+          "cloud_enabled": "Off: no calls to Mysa's servers at all, and the cloud-only entities are disabled (they keep their names and history, and come back when you turn the cloud on). Your sign-in is kept, so turning it back on needs no password.",
           "scan_interval": "How often to read all thermostats from the cloud (one request per poll). Local HomeKit updates are instant regardless."
         },
         "sections": {
@@ -337,7 +337,7 @@
       },
       "sign_out": {
         "title": "Sign out of Mysa",
-        "description": "Deletes the stored Mysa sign-in, and the saved password if there is one. Cloud-only entities are removed, and thermostats added from the account stop working until you sign in again."
+        "description": "Deletes the stored Mysa sign-in, and the saved password if there is one. Cloud-only entities are disabled until you sign in again, and thermostats added from the account stop working until then."
       },
       "account": {
         "title": "Your Mysa account",

@@ -221,7 +221,30 @@ class RuntimeExtraData(ExtraStoredData):
         return {"day": self.day.isoformat(), "seconds": self.seconds}
 
 
-class HeatingRuntimeSensor(MysaEntity, RestoreSensor):
+class _EveryMinute(MysaEntity):
+    """Writes its state once a minute, not on every thermostat update.
+
+    Runtime and energy move with every update while heating (several a
+    minute), and statistics only need them once a minute.
+    """
+
+    async def async_added_to_hass(self) -> None:
+        """Start the minute timer."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_track_time_interval(self.hass, self._refresh, RUNTIME_REFRESH)
+        )
+
+    @callback
+    def _handle_update(self) -> None:
+        """Nothing to do: the minute timer writes the state."""
+
+    @callback
+    def _refresh(self, _now: datetime) -> None:
+        self.async_write_ha_state()
+
+
+class HeatingRuntimeSensor(_EveryMinute, RestoreSensor):
     """Hours of heating since local midnight; resets daily."""
 
     _attr_device_class = SensorDeviceClass.DURATION
@@ -240,7 +263,7 @@ class HeatingRuntimeSensor(MysaEntity, RestoreSensor):
         return True
 
     async def async_added_to_hass(self) -> None:
-        """Restore today's local count and refresh every minute."""
+        """Restore today's local count."""
         await super().async_added_to_hass()
         if (stored := await self.async_get_last_extra_data()) is not None:
             data = stored.as_dict()
@@ -251,13 +274,6 @@ class HeatingRuntimeSensor(MysaEntity, RestoreSensor):
                 pass
             else:
                 self.thermostat.runtime.restore(day, seconds)
-        self.async_on_remove(
-            async_track_time_interval(self.hass, self._refresh, RUNTIME_REFRESH)
-        )
-
-    @callback
-    def _refresh(self, _now: datetime) -> None:
-        self.async_write_ha_state()
 
     @property
     def extra_restore_state_data(self) -> SensorExtraStoredData | RuntimeExtraData:  # type: ignore[override]
@@ -298,7 +314,7 @@ class HeaterPowerSensor(MysaEntity, SensorEntity):
         return self.thermostat.heater_watts if heating else 0.0
 
 
-class EnergySensor(MysaEntity, SensorEntity):
+class EnergySensor(_EveryMinute, SensorEntity):
     """Heater energy today: runtime x the wattage set for this thermostat."""
 
     _attr_device_class = SensorDeviceClass.ENERGY
@@ -315,17 +331,6 @@ class EnergySensor(MysaEntity, SensorEntity):
     def available(self) -> bool:
         """Derived from the runtime, so always available."""
         return True
-
-    async def async_added_to_hass(self) -> None:
-        """Refresh every minute while heating."""
-        await super().async_added_to_hass()
-        self.async_on_remove(
-            async_track_time_interval(self.hass, self._refresh, RUNTIME_REFRESH)
-        )
-
-    @callback
-    def _refresh(self, _now: datetime) -> None:
-        self.async_write_ha_state()
 
     @property
     def native_value(self) -> float:

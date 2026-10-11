@@ -190,6 +190,31 @@ async def test_local_runtime_and_energy(
     ) == pytest.approx(0.5, abs=0.02)
 
 
+async def test_runtime_and_energy_write_once_a_minute(
+    hass: HomeAssistant, controller: FakeController, freezer: FrozenDateTimeFactory
+) -> None:
+    """Thermostat updates don't write runtime/energy; the minute timer does."""
+    freezer.move_to("2026-10-10T12:00:00-07:00")
+    await setup_entry(
+        hass, hub_entry(signed_in=False, subentries=[thermostat_subentry(watts=2000)])
+    )
+    ids = (
+        "sensor.living_room_heating_runtime_today",
+        "sensor.living_room_heater_energy_today",
+    )
+    first = [hass.states.get(i).state for i in ids]
+    for _ in range(3):  # the relay stays on; HomeKit keeps reporting
+        freezer.tick(timedelta(seconds=15))
+        _thermostat(hass).notify()
+        await hass.async_block_till_done()
+    assert [hass.states.get(i).state for i in ids] == first
+    freezer.tick(timedelta(seconds=15))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert float(hass.states.get(ids[0]).state) == pytest.approx(1 / 60, abs=0.002)
+    assert float(hass.states.get(ids[1]).state) > float(first[1])
+
+
 @pytest.mark.usefixtures("controller")
 async def test_cloud_runtime(
     hass: HomeAssistant, cloud: FakeCloud, freezer: FrozenDateTimeFactory
@@ -235,6 +260,9 @@ async def test_runtime_never_drops(
     # The cloud catches up past the local count (heating while HA was down).
     cloud.usage[0]["summary"]["a"]["oH1"] = 3 * 3600
     freezer.tick(timedelta(minutes=15))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    freezer.tick(timedelta(minutes=1))  # shown at the next minute write
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
     assert runtime() == pytest.approx(3.0, abs=0.01)
