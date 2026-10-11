@@ -348,6 +348,9 @@
     "limits_invalid": {
       "message": "The lowest setpoint must stay below the highest setpoint."
     },
+    "hold_needs_schedule": {
+      "message": "{name} has no Mysa schedule, so there's nothing to hold over. Set a schedule first (mysa_local.set_schedule), or just change the setpoint."
+    },
     "hold_in_past": {
       "message": "The hold's end time is in the past."
     },
@@ -377,7 +380,7 @@
   "services": {
     "hold": {
       "name": "Hold",
-      "description": "Holds a setpoint over the thermostat's Mysa schedule, permanently or until a time.",
+      "description": "Holds a setpoint over the thermostat's Mysa schedule, permanently or until a time. Needs a Mysa schedule on the thermostat.",
       "fields": {
         "temperature": {
           "name": "Temperature",

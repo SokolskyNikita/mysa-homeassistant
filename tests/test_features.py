@@ -50,6 +50,22 @@ async def test_hold_and_resume(hass: HomeAssistant, cloud: FakeCloud) -> None:
     """Hold until a time, then resume the schedule."""
     await setup_entry(hass, hub_entry())
     until = dt_util.utcnow() + timedelta(hours=2)
+    with pytest.raises(HomeAssistantError, match="no Mysa schedule"):
+        await hass.services.async_call(
+            DOMAIN,
+            "hold",
+            {ATTR_ENTITY_ID: CLIMATE, "temperature": 19.5},
+            blocking=True,
+        )
+    await hass.services.async_call(
+        DOMAIN,
+        "set_schedule",
+        {
+            ATTR_ENTITY_ID: CLIMATE,
+            "events": [{"days": ["wed"], "time": "03:00", "temperature": 21}],
+        },
+        blocking=True,
+    )
     await hass.services.async_call(
         DOMAIN,
         "hold",
@@ -63,6 +79,8 @@ async def test_hold_and_resume(hass: HomeAssistant, cloud: FakeCloud) -> None:
         "modes": {"mode": 4},
         "targetHeat": {"setpoint": 19.5},
     }
+    # Applied right away (over HomeKit), not only when Mysa's hold starts.
+    assert hass.states.get(CLIMATE).attributes["temperature"] == 19.5
 
     await hass.services.async_call(
         DOMAIN, "resume_schedule", {ATTR_ENTITY_ID: CLIMATE}, blocking=True

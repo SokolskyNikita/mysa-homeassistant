@@ -129,6 +129,11 @@ async def test_holds_and_schedules(hass: HomeAssistant, cloud: FakeCloud) -> Non
     """Hold, resume, create and delete schedules."""
     client = _client(hass)
     assert await client.get_hold(DEVICE_ID) is None
+    with pytest.raises(MysaNotFoundError):  # no schedule to hold over
+        await client.set_hold(DEVICE_ID, {"targetHeat": {"setpoint": 20}})
+    await client.create_schedule(
+        home_id="home", device_id=DEVICE_ID, device_type="BB", events=[]
+    )
     until = datetime(2026, 10, 11, 7, 30, tzinfo=UTC)
     await client.set_hold(DEVICE_ID, {"targetHeat": {"setpoint": 20}}, until=until)
     assert cloud.hold is not None
@@ -141,13 +146,14 @@ async def test_holds_and_schedules(hass: HomeAssistant, cloud: FakeCloud) -> Non
     assert cloud.hold is None
     await client.resume_schedule(DEVICE_ID)  # nothing to resume: fine
 
-    assert await client.get_schedules("home") == []
+    assert len(await client.get_schedules("home")) == 1
     schedule_id = await client.create_schedule(
         home_id="home", device_id=DEVICE_ID, device_type="BB", events=[]
     )
-    assert schedule_id == "s1"
-    assert len(await client.get_schedules("home")) == 1
+    assert schedule_id == "s2"
+    assert len(await client.get_schedules("home")) == 2
     await client.delete_schedule("s1", DEVICE_ID)
+    await client.delete_schedule("s2", DEVICE_ID)
     assert cloud.schedules == []
 
 

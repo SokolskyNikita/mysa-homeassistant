@@ -253,7 +253,7 @@ class FakeCloud:
         mock.post(f"{b}/devices/{d}/firmware-update", side_effect=self._record_post)
         mock.get(f"{b}/schedule/hold/{d}", side_effect=self._get_hold)
         mock.delete(f"{b}/schedule/hold/{d}", side_effect=self._delete_hold)
-        mock.post(f"{b}/schedule/hold", side_effect=self._set_hold)
+        mock.post(f"{b}/schedule/hold", side_effect=self._set_hold_checked)
         mock.get(f"{b}/schedule", side_effect=self._get_schedules)
         mock.post(f"{b}/schedule", side_effect=self._create_schedule)
         mock.delete(
@@ -454,6 +454,20 @@ class FakeCloud:
                 method, url, status=404, body={"message": "No active hold"}
             )
         return self._resp(method, url, body=self.hold)
+
+    async def _set_hold_checked(
+        self, method: str, url: URL, data: Any
+    ) -> AiohttpClientMockResponse:
+        if not self.schedules:
+            return self._resp(
+                method,
+                url,
+                status=404,
+                body={
+                    "message": "Device is not following any schedule. Cannot create a hold."
+                },
+            )
+        return await self._set_hold(method, url, data)
 
     async def _set_hold(
         self, method: str, url: URL, data: Any

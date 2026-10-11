@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .api import Mode
+from .api import Mode, MysaNotFoundError
 from .api.const import SETPOINT_SECTION_BY_MODE
 from .cloud import translated_error
 from .const import VERSION
@@ -58,12 +58,22 @@ async def async_hold(
         if until <= dt_util.utcnow():
             raise translated_error("hold_in_past")
     device_id = thermostat.device_id
-    await cloud.async_call(
-        lambda: cloud.client.set_hold(
-            device_id, _state_body(mode, temperature), until=until
-        ),
-        stale=[f"hold:{device_id}"],
-    )
+    state = _state_body(mode, temperature)
+
+    async def _hold() -> None:
+        try:
+            await cloud.client.set_hold(device_id, state, until=until)
+        except MysaNotFoundError as err:
+            # "Device ... is not following any schedule. Cannot create a hold."
+            raise translated_error("hold_needs_schedule", name=thermostat.name) from err
+
+    await cloud.async_call(_hold, stale=[f"hold:{device_id}"])
+    # Mysa applies the held state from its own scheduler once the hold starts;
+    # apply it now as well (local first), so the thermostat changes right away.
+    if thermostat.mode != mode:
+        await thermostat.async_set_mode(mode)
+    if temperature is not None and thermostat.target_temperature != temperature:
+        await thermostat.async_set_temperature(temperature)
 
 
 async def async_resume_schedule(thermostat: Thermostat) -> None:
