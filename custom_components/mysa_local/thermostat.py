@@ -83,13 +83,18 @@ class RuntimeTracker:
             self.day = day
             self.seconds = max(self.seconds, seconds)
 
+    def raise_to(self, seconds: float) -> None:
+        """Count at least `seconds` today (the thermostat's own, fuller figure)."""
+        shortfall = seconds - self.total()
+        if shortfall > 0:
+            self.seconds += shortfall
+
     def _roll(self, now: datetime) -> None:
         if now.date() == self.day:
             return
-        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        # A heating cycle that runs past midnight counts from midnight today.
         if self._since is not None:
-            self.seconds += max(0.0, (midnight - self._since).total_seconds())
-            self._since = midnight
+            self._since = now.replace(hour=0, minute=0, second=0, microsecond=0)
         self.day = now.date()
         self.seconds = 0.0
 
@@ -182,15 +187,23 @@ class Thermostat:
 
     @property
     def runtime_today(self) -> float:
-        """Seconds of heating today: the thermostat's own figure if enabled."""
+        """Seconds of heating today; never goes down within a day.
+
+        The larger of the local count and the thermostat's own figure (cloud).
+        The cloud figure lags by up to ~20 min but also covers time Home
+        Assistant was down. Switching between them could otherwise lower the
+        total, which statistics read as a meter reset and count twice. When the
+        cloud is ahead, the local count is raised to match, so losing the cloud
+        later can't lower it either.
+        """
         cloud_value = self.cloud_runtime_today
         if cloud_value is not None:
-            return cloud_value
+            self.runtime.raise_to(cloud_value)
         return self.runtime.total()
 
     @property
     def runtime_source(self) -> str:
-        """Cloud or local, whichever feeds runtime_today."""
+        """Cloud while the thermostat's own figure feeds runtime_today, else local."""
         return (
             CONNECTION_CLOUD
             if self.cloud_runtime_today is not None

@@ -204,6 +204,53 @@ async def test_cloud_runtime(
     assert float(state.state) == pytest.approx(3600.5 / 3600, abs=0.001)
 
 
+@pytest.mark.usefixtures("controller")
+async def test_runtime_never_drops(
+    hass: HomeAssistant, cloud: FakeCloud, freezer: FrozenDateTimeFactory
+) -> None:
+    """Runtime is the larger of the local count and the cloud figure, and never dips.
+
+    A dip makes statistics see a meter reset and count the day twice.
+    """
+    freezer.move_to("2026-10-10T12:00:00-07:00")
+    midnight = dt_util.start_of_local_day()
+    cloud.usage[0]["T"] = int(midnight.timestamp())
+    await setup_entry(hass, hub_entry())
+
+    def runtime() -> float:
+        return float(hass.states.get("sensor.living_room_heating_runtime_today").state)
+
+    assert runtime() == pytest.approx(1.0, abs=0.01)  # the cloud's figure
+
+    # The relay stays on; the cloud figure lags behind, so the local count leads.
+    seen = [runtime()]
+    for _ in range(4):
+        freezer.tick(timedelta(minutes=15))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+        seen.append(runtime())
+    assert seen == sorted(seen)
+    assert seen[-1] == pytest.approx(2.0, abs=0.02)
+
+    # The cloud catches up past the local count (heating while HA was down).
+    cloud.usage[0]["summary"]["a"]["oH1"] = 3 * 3600
+    freezer.tick(timedelta(minutes=15))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert runtime() == pytest.approx(3.0, abs=0.01)
+
+    # Without the cloud figure the local count carries on from there.
+    _thermostat(hass).use_cloud_runtime = False
+    freezer.tick(timedelta(minutes=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert runtime() >= 3.0
+    assert (
+        hass.states.get("sensor.living_room_heating_runtime_today").attributes["source"]
+        == "local"
+    )
+
+
 async def test_local_down_repair_issue(
     hass: HomeAssistant, controller: FakeController, freezer: FrozenDateTimeFactory
 ) -> None:
