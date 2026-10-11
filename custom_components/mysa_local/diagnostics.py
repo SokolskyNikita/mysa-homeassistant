@@ -8,7 +8,7 @@ from typing import Any
 
 from aiohomekit.model.characteristics import CharacteristicsTypes
 from homeassistant.components.diagnostics import async_redact_data
-from homeassistant.const import CONF_EMAIL
+from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 
 from .const import (
@@ -24,6 +24,7 @@ TO_REDACT = {
     CONF_REFRESH_TOKEN,
     CONF_USER_ID,
     CONF_EMAIL,
+    CONF_PASSWORD,
     "iOSDeviceLTSK",
     "iOSDeviceLTPK",
     "AccessoryLTPK",
@@ -130,6 +131,7 @@ async def async_get_config_entry_diagnostics(
         "entry": {
             "options": dict(entry.options),
             "signed_in": bool(entry.data.get(CONF_REFRESH_TOKEN)),
+            "password_saved": CONF_PASSWORD in entry.data,
             "cloud_enabled": runtime.cloud_enabled,
             "cloud_last_update_success": (
                 runtime.cloud.last_update_success if runtime.cloud else None

@@ -107,6 +107,11 @@ class MysaClimate(MysaEntity, ClimateEntity):
         return self.thermostat.current_temperature
 
     @property
+    def current_humidity(self) -> float | None:
+        """Room humidity, while the cloud reports it."""
+        return self.thermostat.humidity if self.thermostat.cloud_ok else None
+
+    @property
     def target_temperature(self) -> float | None:
         """Setpoint."""
         return self.thermostat.target_temperature

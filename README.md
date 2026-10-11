@@ -6,10 +6,10 @@
 
 Control **Mysa smart thermostats** from Home Assistant **over your own network**, with Mysa's cloud as an optional extra.
 
-- **Local first.** Setpoint, mode, room temperature and the real heating state go over HomeKit on your LAN: instant, and they keep working without internet.
-- **Cloud optional.** Sign in to your Mysa account to add what HomeKit doesn't expose: button lock, display brightness, setpoint limits, temperature offset, heater type, schedules and holds, firmware updates and the thermostat's own heating runtime. The cloud also takes over while the local connection is down.
-- **Cloud off switch.** Turn the cloud off and the integration makes zero calls to Mysa's servers.
-- **Easy setup.** HACS, UI setup, no YAML. New thermostats are discovered automatically, and there's a link to a [browser-based Wi-Fi setup page](https://sokolskynikita.github.io/mysa-wifi-setup/) for thermostats that aren't on Wi-Fi yet.
+- Setpoint, mode, room temperature and the real heating state go over HomeKit on your LAN. A change reaches the thermostat in about 0.2 s, and none of it needs the internet.
+- Signing in to your Mysa account is optional. It adds what HomeKit doesn't expose: button lock, display brightness, setpoint limits, temperature offset, heater type, humidity, schedules and holds, firmware updates and the thermostat's own heating runtime. The cloud also takes over while the local connection is down.
+- Turn the cloud off and the integration makes zero calls to Mysa's servers.
+- Install it from HACS and set it up in the UI; there's no YAML. New thermostats are discovered automatically, and there's a link to a [browser-based Wi-Fi setup page](https://sokolskynikita.github.io/mysa-wifi-setup/) for thermostats that aren't on Wi-Fi yet.
 
 > [!IMPORTANT]
 > **Tested on the Mysa Baseboard Lite (BB-V2-0-L), firmware 3.17.5.13.** Other Mysa models are supported through Mysa's own capability data but haven't been tested yet. If you try one, please [send a model report](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=model_report.yml) with your diagnostics.
@@ -39,7 +39,9 @@ Not affiliated with or endorsed by Mysa (Empowered Homes Inc.). Mysa is a tradem
 | HomeKit pairing sensor | — | `paired`, or `not_paired` for a thermostat that's only connected through the cloud. |
 | Mysa account sensor | Cloud | `on_account` or `not_on_account` (only while signed in). |
 | Heating runtime today | Cloud or local | The thermostat's own measured on-time (cloud), or counted from the heating state (local). Resets at midnight. |
+| Heater power | Derived | The wattage you enter while the heater is on, 0 W while it's off. |
 | Heater energy today | Derived | Runtime × the wattage you enter. Works in the Energy dashboard. |
+| Humidity sensor | Cloud | Room humidity. Also shown on the climate entity. |
 | Button lock switch | Cloud | |
 | Wake / sleep brightness | Cloud | |
 | Lowest / highest setpoint | Cloud | The thermostat's hardware limits. |
@@ -50,7 +52,7 @@ Not affiliated with or endorsed by Mysa (Empowered Homes Inc.). Mysa is a tradem
 | Wi-Fi signal | Cloud | Disabled by default. |
 | Schedule hold | Cloud | On while a hold overrides the Mysa schedule. |
 
-Each model only gets the entities its capability data says it supports. Humidity isn't exposed on the Lite: Mysa's own data says it has no humidity sensor.
+Each model only gets the entities its capability data says it supports. Humidity is the exception: it's added whenever the cloud reports it. Mysa's capability data says the Lite has no humidity sensor, yet the Lite reports a reading that matched a separate sensor in the same room.
 
 ## Installation
 
@@ -62,9 +64,9 @@ Requires Home Assistant 2026.9 or newer.
 
 ## Setup
 
-1. **Thermostat not on Wi-Fi yet?** A new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the [Wi-Fi setup page](https://sokolskynikita.github.io/mysa-wifi-setup/) (Chrome or Edge on a computer with Bluetooth; no Mysa app, no phone).
+1. **Thermostat not on Wi-Fi yet?** A new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the [Wi-Fi setup page](https://sokolskynikita.github.io/mysa-wifi-setup/) (it runs in Chrome or Edge on a computer with Bluetooth and doesn't need the Mysa app or a phone).
 2. **Pair.** Home Assistant discovers the thermostat. Click **Add** and enter the 8-digit HomeKit code from the back of the faceplate (spaces and dashes are fine). **Press a button on the thermostat first:** while a Mysa is unpaired, its HomeKit service dozes off after a while, and pairing can't reach it until it's woken. A thermostat can only be paired to one HomeKit controller, so remove it from Apple Home first if it's there.
-3. **Mysa sign-in [optional].** Sign in to add the cloud features. Your password is used once to sign in (with SRP, so it isn't even sent to Mysa in plain form) and isn't stored; Home Assistant keeps only a sign-in token. You can skip this and sign in later from the options.
+3. **Mysa sign-in [optional].** Sign in to add the cloud features. Your password is used to sign in with SRP, so it isn't even sent to Mysa in plain form. By default it isn't stored and Home Assistant keeps only a sign-in token. That token seems to last about a month, and then Home Assistant asks you to sign in again. Tick **Save my password** to have Mysa Local sign in again by itself instead; the password is then stored unencrypted in Home Assistant's configuration, as most integrations store theirs. You can skip all this and sign in later from the options.
 
 More thermostats: they're discovered too, or use **Add thermostat** on the integration's page. Thermostats without a local path can be added from your Mysa account (cloud control only).
 
@@ -81,13 +83,17 @@ Choose **Move a thermostat from the HomeKit Device integration**. Mysa Local add
 
 ## Options
 
-- **Integration options:** cloud on/off, cloud poll interval (30–300 s, default 60), sign in or out, and under *Advanced*, **Allow firmware installs** (off by default; a firmware install is untested with this integration and can't be undone).
-- **Integration options → Thermostats on my Mysa account:** a table of every thermostat on the account, with its name in Home Assistant and in the Mysa app, and whether it's in Home Assistant (local and cloud, cloud only, or not added). View only.
-- **Per thermostat (⋮ → Settings and status):** whether it's on your Mysa account (and its name there) and paired locally, then:
-  - **Settings:** heater wattage (adds the energy sensor) and whether to use the thermostat's own measured runtime.
-  - **Pair locally** with the HomeKit code, for a thermostat added from the account.
-  - **Add to / Remove from my Mysa account.** This is the only place a thermostat is removed from the account. Removing first takes it out of the account's Home/Away/Vacation shortcuts and deletes its Mysa schedule, like the Mysa app does. Mysa keeps its settings, so adding it back restores them.
-  - **Names:** when the Mysa app calls it something else, use that name in Home Assistant, or rename it in the Mysa app to match.
+The integration options have the cloud switch, the cloud poll interval (30–300 s, default 60) and Mysa sign-in or sign-out. Under *Advanced* there's **Allow firmware installs**, off by default: a firmware install is untested with this integration and can't be undone.
+
+The options page also says which Mysa account is signed in and whether its password is saved. The save-password choice is made at sign-in; to change it, sign out and sign in again. Signing out deletes a saved password too.
+
+**Thermostats on my Mysa account**, also in the integration options, is a view-only table of every thermostat on the account. It has each one's name in Home Assistant and in the Mysa app, and whether it's in Home Assistant (local and cloud, cloud only or not added).
+
+Each thermostat's **Settings and status** (⋮ → Settings and status) shows whether it's on your Mysa account, its name there and whether it's paired locally. From there you can:
+- set the heater wattage (adds the power and energy sensors) and choose whether to use the thermostat's own measured runtime, under **Settings**
+- **Pair locally** with the HomeKit code, for a thermostat added from the account
+- **Add to** or **Remove from my Mysa account**. This is the only place a thermostat is removed from the account. Removing first takes it out of the account's Home/Away/Vacation shortcuts and deletes its Mysa schedule, like the Mysa app does. Mysa keeps its settings, so adding it back restores them.
+- use the Mysa app's name in Home Assistant, or rename it in the Mysa app to match, when the two names differ
 
 The device's model line shows the thermostat's Mysa ID (its Wi-Fi MAC, which Mysa's app and API use) and, when it differs, its name in the Mysa app: for example *Mysa Baseboard Lite · Mysa ID a1b2c3d4e5f6 · Mysa app: Bedroom*. Home Assistant's device lists and device page only show a device's name and model, so that's where they fit.
 
@@ -123,20 +129,21 @@ These need the cloud. If you'd rather keep schedules in Home Assistant, plain au
 - A change goes to HomeKit first, with a 5 s timeout. If HomeKit is down or fails, the same change goes through the cloud. If a local write times out with an unknown outcome, the integration reads the current value back (locally, then from the cloud) before trying anywhere else, so a change is never applied twice.
 - While a thermostat runs on the cloud, the integration asks Mysa for "live mode" (a fresh reading every ~5 s instead of every few minutes) and polls every 10 s. Both stop as soon as the local connection is back, and never run while it's healthy.
 - The **Connection path** sensor shows which path is active. If the local connection stays down for 15 minutes, a repair issue explains what to check (Wi-Fi, a DHCP reservation, power). It clears itself.
-- Being a good API citizen: polling stays gentle, it backs off on rate limits and server errors, writes are spaced out, and the User-Agent names this integration.
+- The integration backs off on rate limits and server errors, spaces out its writes and names itself in the User-Agent.
 
 ## Privacy
 
-- Stored: the thermostats' HomeKit pairing keys and, if you signed in, your Mysa email and a refresh token. Your password is never stored.
+- Stored: the thermostats' HomeKit pairing keys and, if you signed in, your Mysa email and a refresh token. Your password is stored only if you ticked **Save my password**, unencrypted in Home Assistant's configuration.
 - With the cloud off (or never signed in), nothing is sent to Mysa.
 - Diagnostics redact tokens, keys, addresses, serial numbers and account IDs.
 
 ## Troubleshooting
 
-- **Not discovered, or "Couldn't reach the thermostat's HomeKit service" while pairing:** press a button on the thermostat. An unpaired Mysa stops advertising and answering HomeKit after a while (seen on the Baseboard Lite, firmware 3.17.5.13) and wakes up on a button press. Otherwise check it's on the same network as Home Assistant (mDNS has to work between them), on Wi-Fi, and not paired to Apple Home.
+- **Not discovered, or "Couldn't reach the thermostat's HomeKit service" while pairing:** press a button on the thermostat. An unpaired Mysa stops advertising and answering HomeKit after a while (seen on the Baseboard Lite, firmware 3.17.5.13) and wakes up on a button press. Otherwise check it's on the same network as Home Assistant (mDNS has to work between them), on Wi-Fi and not paired to Apple Home.
 - **Keeps dropping to `cloud`:** give the thermostat a DHCP reservation and check its Wi-Fi signal (enable the *Wi-Fi signal* sensor).
 - **Re-pairing:** deleting a thermostat (or the integration) removes Mysa Local's HomeKit pairing from it. If the thermostat was offline at the time, reset its HomeKit pairing on the device before pairing again.
 - **Debug logs:** enable debug logging on the integration's page.
+- For an overview, Settings → System → Repairs → ⋮ → System information has a Mysa Local section: how many thermostats are on the local path, on the cloud or offline, whether you're signed in, whether the password is saved and whether Mysa's server can be reached.
 
 ## Development
 

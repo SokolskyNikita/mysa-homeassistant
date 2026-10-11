@@ -109,15 +109,19 @@ def hub_entry(
     cloud_enabled: bool = True,
     subentries: list[dict[str, Any]] | None = None,
     options: dict[str, Any] | None = None,
+    password: str | None = None,
+    refresh_token: str = REFRESH_TOKEN,
 ) -> MockConfigEntry:
-    """The Mysa Local entry with one thermostat."""
+    """The Mysa Local entry with one thermostat (and a saved password if given)."""
     data: dict[str, Any] = {}
     if signed_in:
         data = {
             "email": EMAIL,
-            CONF_REFRESH_TOKEN: REFRESH_TOKEN,
+            CONF_REFRESH_TOKEN: refresh_token,
             CONF_USER_ID: USER_ID,
         }
+        if password is not None:
+            data["password"] = password
     return MockConfigEntry(
         domain=DOMAIN,
         title="Mysa",

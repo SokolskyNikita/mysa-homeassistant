@@ -11,7 +11,12 @@ from datetime import datetime, timedelta
 from functools import partial
 import json
 
-from homeassistant.const import CONF_SCAN_INTERVAL, Platform
+from homeassistant.const import (
+    CONF_EMAIL,
+    CONF_PASSWORD,
+    CONF_SCAN_INTERVAL,
+    Platform,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import (
     config_validation as cv,
@@ -74,6 +79,7 @@ CLOUD_ONLY_KEYS = frozenset(
         "heater_type",
         "firmware",
         "wifi_signal",
+        "humidity",
         "cloud_online",
         "schedule_hold",
         "mysa_account",
@@ -130,7 +136,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
 
         session = async_get_clientsession(hass)
         auth = MysaAuth(
-            session, token, user_agent=USER_AGENT, on_refresh_token=_save_token
+            session,
+            token,
+            user_agent=USER_AGENT,
+            on_refresh_token=_save_token,
+            email=entry.data.get(CONF_EMAIL),
+            password=entry.data.get(CONF_PASSWORD),
         )
         client = MysaClient(session, auth, user_agent=USER_AGENT)
         cloud = MysaCloudCoordinator(

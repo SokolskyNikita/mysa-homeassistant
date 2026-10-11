@@ -24,7 +24,7 @@ Everything below was actually observed unless marked *not captured*. Account dat
 - `POST /state/batch` `{"deviceIds":["{dev}"]}` → `{"{dev}": {"data": <state>}}`. The app polls this **every ~2.9 s** while open.
 - `GET /state/{dev}` → `<state>` (the app reads it twice right after each write).
 - `<state>` (shadow style: `desired` = last command, `reported` = what the thermostat confirmed; timestamps are Unix seconds):
-  - `latestTelemetry.isConnected`, `lastConnected`, and `reading`: `roomTemperature`, **`humidity`**, `rawTemperature`, `coreTemperature`, `heatSetpoint`, `effectiveSetpoint`, `mode` (3 while heating mode was on), `dutyCycle`, `onTime`, `rssi`, `freeHeap`, `voltage` (240, configured, not measured), `maxCurrent` 0, `powerConsumed` 0, `instantLoad`.
+  - `latestTelemetry.isConnected`, `lastConnected` and `reading`: `roomTemperature`, **`humidity`**, `rawTemperature`, `coreTemperature`, `heatSetpoint`, `effectiveSetpoint`, `mode` (3 while heating mode was on), `dutyCycle`, `onTime`, `rssi`, `freeHeap`, `voltage` (240, configured, not measured), `maxCurrent` 0, `powerConsumed` 0, `instantLoad`.
   - `targetHeat.{desired,reported}.setpoint`; `reported.lockoutMin`/`lockoutMax` (hardware setpoint limits, 5/30).
   - `modes.{desired,reported}.mode` (4 = heat here; note `reading.mode` was 3 at the same time).
   - `physicalInterface.{desired,reported}`: `lockout` (button lock), `activeIntensity` (wake brightness %), `idleIntensity` (sleep brightness %), `format` ("C"), `intensityMode`.
@@ -91,7 +91,7 @@ Some settings still go through the older device record. The reply echoes the bod
 ## Read-only extras that work for the Lite (direct calls, 2026-10-10)
 - **Firmware check:** `GET /devices/update_available/{dev}` (on either host) → `{"update":false,"installedVersion":"3.17.5.13","allowedVersion":"3.17.5.13"}`. `GET app-prod/devices/firmware` → installed version per device. The newer `GET /ota/update/available/{dev}` → 404 "No fleet found containing device" (the Lite isn't in the new OTA system).
 - **`GET /capabilities/{dev}`** (the app calls it with `?includeLegacyBaseboard=true&includeLegacyAc=true&includeLegacyInfloor=true`; it works without too) returns a full capability document for the Lite: mode off/heat; setpoint 5–30 in 0.5 steps; controlType 8/9; offset −5…+5; lockout 0/3; unit C/F; `humiditySensor: false`, `proximitySensor: false`, `ambientLightSensor: false`; connectivity homekit/googleHome/alexa true, matter false; smart: scheduling, geofence and shortcuts true; energyReporting, earlyOn, zoning and savedSchedules false.
-  So the `humidity` value in the state (35–37 %) isn't from a real humidity sensor; don't expose it as one.
+  Despite `humiditySensor: false`, the Lite's `humidity` (35–37 %) looks real (checked 2026-10-11). Its readings gave a dew point of 6.4–6.5 °C at 01:29 and 01:48, against 5.6 °C from an Apollo AIR-1 (SEN55) in the same room. The value went from 36 to 37 % as the room cooled from 22.2 to 21.8 °C, as a constant dew point predicts. It's compensated for the board's self-heating: uncompensated, the 27 °C `rawTemperature` would read about 25 %. Mysa Local exposes it. A longer comparison could use the usage endpoint's ~30 s `rawReadings` `h` values.
 - **`GET /devices`** (legacy settings record): `ButtonState`, `Format`, `DutyCycleOpt`, `HeaterType` "radiant", `MinBrightness`/`MaxBrightness`, `MinSetpoint`/`MaxSetpoint`, `TimeZone`, `UserTempOffset`, `ecoMode` 1, `Animation` "off", `ButtonThreshold` and other button-timing values, `LastPaired`, `Voltage`, `MaxCurrent`.
 - **`GET app-prod/devices/state`** (legacy state, value+timestamp per key): `CorrectedTemp`, `SensorTemp`, `HeatSink`, `Humidity`, `SetPoint`, `Duty` (0/1 = relay), `OnTime`/`OffTime`, `Lock`, `Brightness`, `Mode`, `TstatMode`, `ScheduleMode`, `HoldTime`, `Rssi`, `Connected`, `Current`, `Voltage`, `FreeHeap`.
 - `GET /devices/{dev}/telemetry_alerts` → `{"Items":[]}`. `GET /smart-early-on/{dev}/availability` → `available:false`, `model-not-eligible:BB-V2-0-L` (server-enforced). `GET /homes` → home with `Zones: []`.
@@ -141,7 +141,7 @@ From both app bundles, decompiled with `hermes-dec`. Only `/devices/purgeadd` ha
   - **409: the thermostat is already on *this* account** (confirmed live; see the test below).
     - 3.54.1 said so in a dialog: "This thermostat was previously added to your account, would you like to use the same name, schedule and settings?"
     - **Keep** used the existing record as is. **Overwrite** sent the same body to **`POST /devices/purgeadd`** (`app-prod`), which replaces the old record.
-    - 4.20.1 has no dialog and no `purgeadd`. On 409 it always keeps the old record, only sets `ecoMode: 1` (`POST /devices/{dev}/` on `mysa-backend`), and logs the pairing as "re-paired".
+    - 4.20.1 has no dialog and no `purgeadd`. On 409 it always keeps the old record, only sets `ecoMode: 1` (`POST /devices/{dev}/` on `mysa-backend`) and logs the pairing as "re-paired".
     - `/devices/purgeadd` still answers: checked by hand on 2026-10-11.
   - **On another account:** if the error text contains "User is not allowed to access the specified home", the app shows "Can Not Pair This Mysa: This Mysa is associated with another user's account…" with a Contact Support button. That's the only ownership check the app knows about, and the server does it.
   - "No Internet Connection" is retried up to 3 times, 3 s × attempt number apart. Any other error shows "Failed To Add Mysa to Account".
@@ -159,7 +159,7 @@ From both app bundles, decompiled with `hermes-dec`. Only `/devices/purgeadd` ha
 - Deleting only removes the account's access. The thermostat's state (setpoint, mode, limits, brightness, heater type) survives, and so do the record fields the claim body doesn't name. The fields the body does name replace the stored ones (live tests below).
 
 ### Live test: delete, then re-add (2026-10-11)
-On a Baseboard Lite that was on the account, online, and paired to HA over HomeKit. It had no schedule, no hold, no shortcut actions and no alerts, so the app's cleanup steps had nothing to do. Everything was snapshotted first.
+On a Baseboard Lite that was on the account, online and paired to HA over HomeKit. It had no schedule, no hold, no shortcut actions and no alerts, so the app's cleanup steps had nothing to do. Everything was snapshotted first.
 - `DELETE app-prod /devices/{dev}` → **204**, no body.
   - It disappeared from `GET /devices` on both hosts and from bootstrap `AllowedDevices`.
   - `GET /state/{dev}` → 404 "User does not have access to this device". `/state/batch` → `{"{dev}": {"error": {"code": "PERMISSION_DENIED", …}}}`.

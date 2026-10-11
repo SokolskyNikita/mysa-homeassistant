@@ -26,6 +26,7 @@ from custom_components.mysa_local.const import (
     CONF_MIGRATE_FROM,
     CONF_PAIRING,
     CONF_REFRESH_TOKEN,
+    CONF_SAVE_PASSWORD,
     CONF_USER_ID,
     DOMAIN,
     SUBENTRY_THERMOSTAT,
@@ -317,6 +318,91 @@ async def test_reauth(hass: HomeAssistant, cloud: FakeCloud) -> None:
     assert entry.data[CONF_REFRESH_TOKEN] == REFRESH_TOKEN
 
 
+async def test_sign_in_saves_password_when_asked(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """Ticking "Save my password" stores it with the sign-in; it's off by default."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "cloud_login"}
+    )
+    assert (
+        result["data_schema"]({CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD})[
+            CONF_SAVE_PASSWORD
+        ]
+        is False
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD, CONF_SAVE_PASSWORD: True},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"devices": [DEVICE_ID]}
+    )
+    with patch("custom_components.mysa_local.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "local_skip"}
+        )
+    assert result["data"] == {
+        CONF_EMAIL: EMAIL,
+        CONF_PASSWORD: PASSWORD,
+        CONF_REFRESH_TOKEN: REFRESH_TOKEN,
+        CONF_USER_ID: USER_ID,
+    }
+
+
+@pytest.mark.usefixtures("controller")
+async def test_saved_password_renews_expired_sign_in(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """With the password saved, an expired refresh token is replaced silently."""
+    cloud.refresh_ok = False
+    entry = hub_entry(password=PASSWORD, refresh_token="expired-token")
+    await setup_entry(hass, entry)
+    assert hass.config_entries.flow.async_progress_by_handler(DOMAIN) == []
+    assert entry.data[CONF_REFRESH_TOKEN] == REFRESH_TOKEN  # from the new sign-in
+    assert entry.data[CONF_PASSWORD] == PASSWORD
+    assert hass.states.get("switch.living_room_button_lock").state == "off"
+
+
+@pytest.mark.usefixtures("controller")
+async def test_saved_password_that_stopped_working(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """A changed password still ends in reauth, which saves the new one."""
+    cloud.refresh_ok = False
+    cloud.password = "changed-in-the-app"
+    entry = hub_entry(password=PASSWORD, refresh_token="expired-token")
+    await setup_entry(hass, entry)
+    (flow,) = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    assert flow["context"]["source"] == "reauth"
+
+    result = await hass.config_entries.flow.async_configure(
+        flow["flow_id"], {CONF_EMAIL: EMAIL, CONF_PASSWORD: "changed-in-the-app"}
+    )
+    assert result["reason"] == "reauth_successful"
+    assert entry.data[CONF_PASSWORD] == "changed-in-the-app"
+    assert entry.data[CONF_REFRESH_TOKEN] == REFRESH_TOKEN
+
+
+@pytest.mark.usefixtures("controller")
+async def test_reauth_keeps_password_unsaved(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """Without a saved password, reauth doesn't start saving one."""
+    cloud.refresh_ok = False
+    entry = hub_entry()
+    await setup_entry(hass, entry)
+    (flow,) = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    cloud.refresh_ok = True
+    await hass.config_entries.flow.async_configure(
+        flow["flow_id"], {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD}
+    )
+    assert CONF_PASSWORD not in entry.data
+
+
 @pytest.mark.usefixtures("controller")
 async def test_options_cloud_off_removes_cloud_entities(
     hass: HomeAssistant, cloud: FakeCloud
@@ -375,11 +461,24 @@ async def test_options_sign_out_and_in(hass: HomeAssistant, cloud: FakeCloud) ->
         result["flow_id"], {"next_step_id": "sign_in"}
     )
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD}
+        result["flow_id"],
+        {CONF_EMAIL: EMAIL, CONF_PASSWORD: PASSWORD, CONF_SAVE_PASSWORD: True},
     )
     await hass.async_block_till_done()
     assert entry.data[CONF_REFRESH_TOKEN] == REFRESH_TOKEN
+    assert entry.data[CONF_PASSWORD] == PASSWORD
     assert hass.states.get("switch.living_room_button_lock") is not None
+
+    # The options page shows the choice; signing out forgets the password too.
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert "☑ **Password saved.**" in result["description_placeholders"]["account"]
+    assert "sign out and sign in again" in result["description_placeholders"]["account"]
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "sign_out"}
+    )
+    await hass.config_entries.options.async_configure(result["flow_id"], {})
+    await hass.async_block_till_done()
+    assert CONF_PASSWORD not in entry.data
 
 
 @pytest.mark.usefixtures("controller")
@@ -406,6 +505,9 @@ async def test_subentry_reconfigure_wattage(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     assert subentry.data[CONF_HEATER_WATTS] == 1500
     assert hass.states.get("sensor.living_room_heater_energy_today").state == "0.0"
+    power = hass.states.get("sensor.living_room_heater_power")
+    assert power.attributes["unit_of_measurement"] == "W"
+    assert power.state in ("0.0", "1500.0")  # follows the relay; see test_features
 
 
 @pytest.mark.usefixtures("unpaired_controller")

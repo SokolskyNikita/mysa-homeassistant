@@ -1,4 +1,4 @@
-"""Sensors: temperature, connection path, Wi-Fi signal, heating runtime, energy."""
+"""Sensors: climate readings, connection diagnostics, runtime, power and energy."""
 
 from __future__ import annotations
 
@@ -13,9 +13,11 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    PERCENTAGE,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
     UnitOfEnergy,
+    UnitOfPower,
     UnitOfTemperature,
     UnitOfTime,
 )
@@ -51,11 +53,12 @@ async def async_setup_entry(
         if thermostat.cloud is not None:
             entities.append(MysaAccountSensor(thermostat))
         if thermostat.heater_watts > 0:
+            entities.append(HeaterPowerSensor(thermostat))
             entities.append(EnergySensor(thermostat))
-        if (
-            thermostat.cloud_state is not None
-            and thermostat.cloud_state.rssi is not None
-        ):
+        state = thermostat.cloud_state
+        if state is not None and state.humidity is not None:
+            entities.append(HumiditySensor(thermostat))
+        if state is not None and state.rssi is not None:
             entities.append(WifiSignalSensor(thermostat))
         return entities
 
@@ -78,6 +81,30 @@ class TemperatureSensor(MysaEntity, SensorEntity):
     def native_value(self) -> float | None:
         """Room temperature in °C."""
         return self.thermostat.current_temperature
+
+
+class HumiditySensor(MysaCloudEntity, SensorEntity):
+    """Room humidity, as the thermostat reports it to the cloud.
+
+    Created whenever the cloud reports a value, whatever the capability data
+    says: the Baseboard Lite's capabilities claim no humidity sensor, yet it
+    reports a temperature-compensated reading that matched a separate sensor in
+    the same room (dew point within 1 °C, 2026-10-11).
+    """
+
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, thermostat: Thermostat) -> None:
+        """Create the entity."""
+        super().__init__(thermostat, "humidity")
+
+    @property
+    def native_value(self) -> float | None:
+        """Relative humidity in %."""
+        return self.thermostat.humidity
 
 
 class ConnectionPathSensor(MysaEntity, SensorEntity):
@@ -247,6 +274,28 @@ class HeatingRuntimeSensor(MysaEntity, RestoreSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Where the number comes from."""
         return {"source": self.thermostat.runtime_source}
+
+
+class HeaterPowerSensor(MysaEntity, SensorEntity):
+    """Heater power now: the wattage set for this thermostat while it heats."""
+
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
+    _attr_translation_key = "heater_power"
+
+    def __init__(self, thermostat: Thermostat) -> None:
+        """Create the entity."""
+        super().__init__(thermostat, "heater_power")
+
+    @property
+    def native_value(self) -> float | None:
+        """W: the heater's wattage while the relay is on, else 0."""
+        heating = self.thermostat.heating
+        if heating is None:
+            return None
+        return self.thermostat.heater_watts if heating else 0.0
 
 
 class EnergySensor(MysaEntity, SensorEntity):

@@ -50,10 +50,14 @@
       },
       "cloud_login": {
         "title": "Sign in to Mysa [optional]",
-        "description": "Signing in to Mysa is optional: everything local works without it. It adds:\n- Button lock, display brightness, setpoint limits, temperature offset and heater type\n- Mysa schedules and holds\n- Firmware update checks\n- The thermostat's own measured heating runtime\n- Control through Mysa's cloud while the local connection is down\n\nYour password isn't stored; Home Assistant keeps only a sign-in token.",
+        "description": "Signing in to Mysa is optional: everything local works without it. It adds:\n- Button lock, display brightness, setpoint limits, temperature offset and heater type\n- Mysa schedules and holds\n- Firmware update checks\n- The thermostat's own measured heating runtime\n- Control through Mysa's cloud while the local connection is down\n\nYour password is stored only if you tick **Save my password**. Otherwise Home Assistant keeps just a sign-in token.",
         "data": {
           "email": "Email",
-          "password": "Password"
+          "password": "Password",
+          "save_password": "Save my password"
+        },
+        "data_description": {
+          "save_password": "Stored unencrypted in Home Assistant's configuration, as most integrations store theirs. Mysa Local then signs in again by itself when the Mysa sign-in expires (it seems to last about a month). Without it, Home Assistant asks you to sign in again. To change this later, sign out and sign in again."
         }
       },
       "cloud_devices": {
@@ -69,7 +73,7 @@
       },
       "reauth_confirm": {
         "title": "Sign in to Mysa again",
-        "description": "The stored Mysa sign-in stopped working. Local control keeps working in the meantime.",
+        "description": "The stored Mysa sign-in stopped working. Local control keeps working in the meantime. If you saved your password at sign-in, the one you enter here replaces it.",
         "data": {
           "email": "Email",
           "password": "Password"
@@ -321,15 +325,19 @@
       },
       "sign_in": {
         "title": "Sign in to Mysa [optional]",
-        "description": "Signing in to Mysa is optional: everything local works without it. It adds:\n- Button lock, display brightness, setpoint limits, temperature offset and heater type\n- Mysa schedules and holds\n- Firmware update checks\n- The thermostat's own measured heating runtime\n- Control through Mysa's cloud while the local connection is down\n\nYour password isn't stored; Home Assistant keeps only a sign-in token.",
+        "description": "Signing in to Mysa is optional: everything local works without it. It adds:\n- Button lock, display brightness, setpoint limits, temperature offset and heater type\n- Mysa schedules and holds\n- Firmware update checks\n- The thermostat's own measured heating runtime\n- Control through Mysa's cloud while the local connection is down\n\nYour password is stored only if you tick **Save my password**. Otherwise Home Assistant keeps just a sign-in token.",
         "data": {
           "email": "Email",
-          "password": "Password"
+          "password": "Password",
+          "save_password": "Save my password"
+        },
+        "data_description": {
+          "save_password": "Stored unencrypted in Home Assistant's configuration, as most integrations store theirs. Mysa Local then signs in again by itself when the Mysa sign-in expires (it seems to last about a month). Without it, Home Assistant asks you to sign in again. To change this later, sign out and sign in again."
         }
       },
       "sign_out": {
         "title": "Sign out of Mysa",
-        "description": "Deletes the stored Mysa sign-in. Cloud-only entities are removed, and thermostats added from the account stop working until you sign in again."
+        "description": "Deletes the stored Mysa sign-in, and the saved password if there is one. Cloud-only entities are removed, and thermostats added from the account stop working until you sign in again."
       },
       "account": {
         "title": "Your Mysa account",
@@ -408,6 +416,9 @@
       },
       "energy_today": {
         "name": "Heater energy today"
+      },
+      "heater_power": {
+        "name": "Heater power"
       },
       "mysa_account": {
         "name": "Mysa account",
@@ -622,6 +633,21 @@
     "clear_schedule": {
       "name": "Clear schedule",
       "description": "Deletes the thermostat's Mysa schedule."
+    }
+  },
+  "system_health": {
+    "info": {
+      "version": "Version",
+      "thermostats": "Thermostats",
+      "local": "Thermostats on the local path",
+      "cloud": "Thermostats on the cloud",
+      "offline": "Thermostats offline",
+      "signed_in": "Signed in to Mysa",
+      "password_saved": "Password saved",
+      "cloud_enabled": "Cloud enabled",
+      "cloud_last_update": "Last cloud update",
+      "cloud_poll_interval": "Cloud poll interval",
+      "can_reach_server": "Reach Mysa's server"
     }
   }
 }

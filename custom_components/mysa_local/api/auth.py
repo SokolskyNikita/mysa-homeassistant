@@ -1,7 +1,9 @@
 """Sign-in and token handling for Mysa's AWS Cognito user pool.
 
-Only the refresh token is meant to be stored. ID tokens last an hour and are
-renewed shortly before they expire.
+Normally only the refresh token is stored. ID tokens last an hour and are
+renewed shortly before they expire. Mysa doesn't rotate refresh tokens, so a
+refresh token stops working after its lifetime (about a month); callers that
+were given the email and password sign in again by themselves at that point.
 """
 
 from __future__ import annotations
@@ -75,13 +77,20 @@ class MysaAuth:
         *,
         user_agent: str,
         on_refresh_token: Callable[[str], None] | None = None,
+        email: str | None = None,
+        password: str | None = None,
     ) -> None:
-        """Start from a stored refresh token, or from nothing before sign-in."""
+        """Start from a stored refresh token, or from nothing before sign-in.
+
+        With `email` and `password`, a refresh token that stops working (expired
+        or revoked) is replaced by signing in again instead of failing.
+        """
         self._session = session
         self._user_agent = user_agent
         self._on_refresh_token = on_refresh_token
         self._tokens: Tokens | None = None
         self._refresh_token = refresh_token
+        self._credentials = (email, password) if email and password else None
         self._lock = asyncio.Lock()
 
     @property
@@ -160,6 +169,12 @@ class MysaAuth:
 
     async def sign_in(self, email: str, password: str) -> Tokens:
         """Sign in with email and password (SRP; the password never leaves here)."""
+        result = await self._srp_sign_in(email, password)
+        async with self._lock:
+            return self._store(result, None)
+
+    async def _srp_sign_in(self, email: str, password: str) -> dict[str, Any]:
+        """Run the SRP exchange; return Cognito's AuthenticationResult."""
         srp = CognitoSrp(email, password, COGNITO_USER_POOL_ID)
         start = await self._cognito(
             "InitiateAuth",
@@ -183,20 +198,32 @@ class MysaAuth:
         if start.get("Session"):
             body["Session"] = start["Session"]
         answer = await self._cognito("RespondToAuthChallenge", body)
-        if "AuthenticationResult" not in answer:
+        result = answer.get("AuthenticationResult")
+        if not isinstance(result, dict):
             raise MysaUnsupportedChallengeError(str(answer.get("ChallengeName")))
-        async with self._lock:
-            return self._store(answer["AuthenticationResult"], None)
+        return result
 
     async def _refresh(self) -> Tokens:
         if not self._refresh_token:
-            msg = "Not signed in"
-            raise MysaAuthError(msg)
+            if self._credentials is None:
+                msg = "Not signed in"
+                raise MysaAuthError(msg)
+            return self._store(await self._srp_sign_in(*self._credentials), None)
         _LOGGER.debug("Refreshing the Mysa ID token")
-        result = await self._cognito(
-            "GetTokensFromRefreshToken",
-            {"ClientId": COGNITO_CLIENT_ID, "RefreshToken": self._refresh_token},
-        )
+        try:
+            result = await self._cognito(
+                "GetTokensFromRefreshToken",
+                {"ClientId": COGNITO_CLIENT_ID, "RefreshToken": self._refresh_token},
+            )
+        except MysaAuthError as err:
+            if self._credentials is None:
+                raise
+            _LOGGER.info(
+                "The Mysa sign-in stopped working (%s); signing in again with the "
+                "saved password",
+                err,
+            )
+            return self._store(await self._srp_sign_in(*self._credentials), None)
         auth = result.get("AuthenticationResult")
         if not isinstance(auth, dict):
             msg = "Token refresh returned no tokens"

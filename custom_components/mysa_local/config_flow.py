@@ -85,6 +85,7 @@ from .const import (
     CONF_MODEL,
     CONF_PAIRING,
     CONF_REFRESH_TOKEN,
+    CONF_SAVE_PASSWORD,
     CONF_USER_ID,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -155,7 +156,7 @@ def account_line(status: str | None, ha_name: str, cloud_name: str | None) -> st
     if status == ACCOUNT_ON:
         line = "✅ **Mysa account:** on your account"
         if cloud_name and names_differ(ha_name, cloud_name):
-            line += f", named “{md(cloud_name)}” in the Mysa app"
+            line += f', named "{md(cloud_name)}" in the Mysa app'
         return line
     if status == ACCOUNT_OFF:
         return "⚠️ **Mysa account:** not on your account"
@@ -305,6 +306,26 @@ CREDENTIALS_SCHEMA = vol.Schema(
         ),
     }
 )
+
+# A first sign-in also asks whether to save the password. The choice holds
+# until the user signs out; re-authentication keeps it.
+SIGN_IN_SCHEMA = CREDENTIALS_SCHEMA.extend(
+    {vol.Optional(CONF_SAVE_PASSWORD, default=False): BooleanSelector()}
+)
+
+
+def sign_in_data(
+    user_input: Mapping[str, Any], token: str, user_id: str | None, *, save: bool
+) -> dict[str, Any]:
+    """Entry data for a successful sign-in, with the password only if saved."""
+    data: dict[str, Any] = {
+        CONF_EMAIL: user_input[CONF_EMAIL],
+        CONF_REFRESH_TOKEN: token,
+        CONF_USER_ID: user_id,
+    }
+    if save:
+        data[CONF_PASSWORD] = user_input[CONF_PASSWORD]
+    return data
 
 
 class ThermostatSteps(FlowHandler[Any, Any, Any]):
@@ -754,6 +775,8 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
         self._discoveries = {}
         self._pending: list[ConfigSubentryData] = []
         self._cloud: tuple[str, str, str | None, Bootstrap] | None = None
+        # Entry data from the sign-in (email, token, user ID, saved password).
+        self._cloud_data: dict[str, Any] = {}
         self._cloud_client: MysaClient | None = None
         # Thermostats still to offer for the account / for local pairing.
         self._account_queue: list[ConfigSubentryData] = []
@@ -991,6 +1014,12 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
                 errors["base"] = sign_in_error(err)
             else:
                 self._cloud = (user_input[CONF_EMAIL], token, user_id, bootstrap)
+                self._cloud_data = sign_in_data(
+                    user_input,
+                    token,
+                    user_id,
+                    save=bool(user_input.get(CONF_SAVE_PASSWORD)),
+                )
                 self._homes = bootstrap.homes or None
                 # Name paired thermostats after their Mysa name.
                 for item in self._pending:
@@ -1011,9 +1040,7 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
                 return await self.async_step_cloud_devices()
         return self.async_show_form(
             step_id="cloud_login",
-            data_schema=self.add_suggested_values_to_schema(
-                CREDENTIALS_SCHEMA, user_input
-            ),
+            data_schema=self.add_suggested_values_to_schema(SIGN_IN_SCHEMA, user_input),
             errors=errors,
         )
 
@@ -1073,10 +1100,7 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
             return self._untested_form("finish", untested)
         await self.async_set_unique_id(DOMAIN, raise_on_progress=False)
         self._abort_if_unique_id_configured()
-        data: dict[str, Any] = {}
-        if self._cloud is not None:
-            email, token, user_id, _ = self._cloud
-            data = {CONF_EMAIL: email, CONF_REFRESH_TOKEN: token, CONF_USER_ID: user_id}
+        data = dict(self._cloud_data) if self._cloud is not None else {}
         return self.async_create_entry(
             title="Mysa",
             data=data,
@@ -1110,13 +1134,16 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
                 stored = entry.data.get(CONF_USER_ID)
                 if stored and user_id and stored != user_id:
                     return self.async_abort(reason="wrong_account")
+                # Keep the sign-in's save-password choice; a saved password is
+                # replaced by the one just entered.
                 return self.async_update_reload_and_abort(
                     entry,
-                    data_updates={
-                        CONF_EMAIL: user_input[CONF_EMAIL],
-                        CONF_REFRESH_TOKEN: token,
-                        CONF_USER_ID: user_id,
-                    },
+                    data_updates=sign_in_data(
+                        user_input,
+                        token,
+                        user_id,
+                        save=CONF_PASSWORD in entry.data,
+                    ),
                 )
         return self.async_show_form(
             step_id="reauth_confirm",
@@ -1486,6 +1513,19 @@ class MysaOptionsFlow(OptionsFlow):
             )
             if not self.config_entry.options.get(CONF_CLOUD_ENABLED, True):
                 account += " The Mysa cloud is turned off."
+            if CONF_PASSWORD in self.config_entry.data:
+                account += (
+                    "\n\n☑ **Password saved.** When the Mysa sign-in expires (it "
+                    "seems to last about a month), Mysa Local signs in again by "
+                    "itself."
+                )
+            else:
+                account += (
+                    "\n\n☐ **Password not saved.** When the Mysa sign-in expires "
+                    "(it seems to last about a month), Home Assistant asks you to "
+                    "sign in again."
+                )
+            account += " To change this, sign out and sign in again."
         return self.async_show_menu(
             step_id="init",
             menu_options=menu,
@@ -1613,35 +1653,41 @@ class MysaOptionsFlow(OptionsFlow):
             except MysaError as err:
                 errors["base"] = sign_in_error(err)
             else:
+                data = {
+                    k: v
+                    for k, v in self.config_entry.data.items()
+                    if k != CONF_PASSWORD
+                }
+                data.update(
+                    sign_in_data(
+                        user_input,
+                        token,
+                        user_id,
+                        save=bool(user_input.get(CONF_SAVE_PASSWORD)),
+                    )
+                )
                 self.hass.config_entries.async_update_entry(
-                    self.config_entry,
-                    data={
-                        **self.config_entry.data,
-                        CONF_EMAIL: user_input[CONF_EMAIL],
-                        CONF_REFRESH_TOKEN: token,
-                        CONF_USER_ID: user_id,
-                    },
+                    self.config_entry, data=data
                 )
                 return self.async_create_entry(
                     data={**self.config_entry.options, CONF_CLOUD_ENABLED: True}
                 )
         return self.async_show_form(
             step_id="sign_in",
-            data_schema=self.add_suggested_values_to_schema(
-                CREDENTIALS_SCHEMA, user_input
-            ),
+            data_schema=self.add_suggested_values_to_schema(SIGN_IN_SCHEMA, user_input),
             errors=errors,
         )
 
     async def async_step_sign_out(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Forget the stored Mysa sign-in."""
+        """Forget the stored Mysa sign-in (and the password, if saved)."""
         if user_input is not None:
             data = {
                 k: v
                 for k, v in self.config_entry.data.items()
-                if k not in (CONF_REFRESH_TOKEN, CONF_USER_ID, CONF_EMAIL)
+                if k
+                not in (CONF_REFRESH_TOKEN, CONF_USER_ID, CONF_EMAIL, CONF_PASSWORD)
             }
             self.hass.config_entries.async_update_entry(self.config_entry, data=data)
             return self.async_create_entry(data=dict(self.config_entry.options))

@@ -20,9 +20,12 @@ ISSUES_URL: Final = "https://github.com/SokolskyNikita/mysa-homeassistant/issues
 
 SUBENTRY_THERMOSTAT: Final = "thermostat"
 
-# Hub entry data
+# Hub entry data (plus CONF_EMAIL, and CONF_PASSWORD only if the user chose to
+# save it at sign-in)
 CONF_REFRESH_TOKEN: Final = "refresh_token"  # noqa: S105
 CONF_USER_ID: Final = "user_id"
+# Sign-in form field: keep the password so an expired sign-in renews itself.
+CONF_SAVE_PASSWORD: Final = "save_password"  # noqa: S105
 
 # Hub entry options
 CONF_CLOUD_ENABLED: Final = "cloud_enabled"

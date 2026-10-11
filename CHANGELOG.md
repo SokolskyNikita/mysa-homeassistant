@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Save my password** (optional, off by default) on the Mysa sign-in. Mysa's sign-in token seems to last about a month and isn't renewed. With the password saved, Mysa Local signs in again by itself when the token stops working; without it, Home Assistant asks you to sign in again as before. The password is stored unencrypted in Home Assistant's configuration. The options page shows whether it's saved; to change that, sign out and sign in again. Re-authentication keeps the choice and replaces a saved password with the new one. Signing out deletes it, and diagnostics redact it.
+- Cloud client: `MysaAuth(email=..., password=...)` signs in again when the refresh token is refused.
+- A **Humidity** sensor, and the climate entity's current humidity, from the cloud. They're added whenever the cloud reports humidity: the Baseboard Lite does, although its capability data says it has no humidity sensor. Its readings matched a separate sensor in the same room (dew point within 1 °C).
+- A **Heater power** sensor (W): the heater wattage while the relay is on, 0 W while it's off. Added with the energy sensor when a wattage is set.
+- A Mysa Local section in Settings → System → Repairs → ⋮ → System information: thermostats per connection path, sign-in, saved password, cloud status, poll interval and whether Mysa's server can be reached (only checked with the cloud on).
+
 ## 0.2.1 (2026-10-11)
 
 - Repairs warnings: a fixable warning's text now lives only in its fix flow, and the ones Home Assistant can't fix (models it can't add to an account) get their own text-only version. Home Assistant's translation check (hassfest) rejected 0.2.0 for having both.
@@ -15,7 +23,7 @@
   - New diagnostic sensors: **Mysa account** and **HomeKit pairing**.
   - Adding a thermostat to the account keeps its stored settings: the cloud client's `add_device(app_defaults=False)` sends the older app's smaller claim. (The current app's claim reset a returning thermostat's heater type to Baseboard.)
   - The options menu says which Mysa account is signed in.
-- Cloud client: `add_device` (claim a thermostat for the account; returns False on 409, already on the account), `delete_device`, `replace_device` (`purgeadd`; not used by the integration), `get_shortcuts`/`update_shortcut`, and home names in `Bootstrap.homes`. The flow is in `docs/cloud-api.md`, "Adding and removing a thermostat".
+- Cloud client: `add_device` (claim a thermostat for the account; returns False on 409, already on the account), `delete_device`, `replace_device` (`purgeadd`; not used by the integration), `get_shortcuts`/`update_shortcut` and home names in `Bootstrap.homes`. The flow is in `docs/cloud-api.md`, "Adding and removing a thermostat".
   - The claim body carries the defaults Mysa's app sends per model (Baseboard V1/V2/Lite, In-floor, AC). Models that need a credential file over Bluetooth to join (Baseboard V3, Central HVAC, Climate Sensor) and unknown models raise `ValueError`; the client doesn't add them.
   - New constants: `ModelFamily`, `MODEL_FAMILIES` (every model string the app accepts), `model_family()`, `WIFI_ONLY_FAMILIES`, `DutyCycleOpt`.
 
@@ -25,7 +33,7 @@
 
 ## 0.1.3 (2026-10-11)
 
-- The HomeKit code field accepts any spacing or punctuation ("1234 5678", "123-45-678", ...): only the 8 digits count. The error messages are clearer.
+- The HomeKit code field accepts any spacing or punctuation ("1234 5678", "123-45-678", ...): only the 8 digits count. A code with the wrong number of digits gets a message saying it has 8 and is printed on the back of the faceplate, and trivial codes like 11111111 get their own message.
 
 ## 0.1.2 (2026-10-11)
 
@@ -46,7 +54,7 @@ First release. Tested on a Mysa Baseboard Lite (BB-V2-0-L), firmware 3.17.5.13.
 - While a thermostat runs on the cloud, Mysa's live mode is requested and the poll speeds up to 10 s. Both stop as soon as the local connection is back.
 - One cloud request polls all thermostats. Polling backs off on errors and rate limits.
 - A cloud off switch makes zero calls to Mysa's servers.
-- Heating runtime today (from the thermostat, or counted locally) and heater energy today from a wattage you set, ready for the Energy dashboard.
+- Heating runtime today (from the thermostat, or counted locally) and heater energy today from a wattage you set, for the Energy dashboard.
 - Actions: `hold`, `resume_schedule`, `set_schedule`, `clear_schedule`, plus a schedule-hold sensor.
 - Firmware update entity: checking is always on, and installing is opt-in under Advanced options.
 - Diagnostics with redaction, translations and brand images.

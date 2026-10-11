@@ -344,7 +344,10 @@ async def test_options_account_page_is_view_only(
     )
     assert result["step_id"] == "init"
     assert result["description_placeholders"]["account"] == (
-        f"Signed in to Mysa as **{EMAIL.replace('@', '&#64;')}**."
+        f"Signed in to Mysa as **{EMAIL.replace('@', '&#64;')}**.\n\n"
+        "☐ **Password not saved.** When the Mysa sign-in expires (it seems to "
+        "last about a month), Home Assistant asks you to sign in again. To "
+        "change this, sign out and sign in again."
     )
     assert cloud.deleted == []
 
@@ -394,7 +397,7 @@ async def test_names_shown_and_synced_both_ways(
         "account_remove",
     ]
     assert (
-        "named “Living Room” in the Mysa app"
+        'named "Living Room" in the Mysa app'
         in (result["description_placeholders"]["account"])
     )
     result = await hass.config_entries.subentries.async_configure(

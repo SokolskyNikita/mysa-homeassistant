@@ -336,3 +336,78 @@ async def test_remove_entry_unpairs(
         await hass.async_block_till_done()
     unpair.assert_awaited_once()
     assert unpair.await_args.args[1]["iOSPairingId"] == PAIRING_DATA["iOSPairingId"]
+
+
+@pytest.mark.usefixtures("controller")
+async def test_humidity(hass: HomeAssistant, cloud: FakeCloud) -> None:
+    """The cloud's humidity becomes a sensor and the climate's current humidity."""
+    await setup_entry(hass, hub_entry())
+    state = hass.states.get("sensor.living_room_humidity")
+    assert state.state == "40.0"
+    assert state.attributes["device_class"] == "humidity"
+    assert hass.states.get(CLIMATE).attributes["current_humidity"] == 40.0
+
+
+@pytest.mark.usefixtures("controller")
+async def test_no_humidity_without_cloud(hass: HomeAssistant) -> None:
+    """HomeKit has no humidity, so local-only setups don't get the sensor."""
+    await setup_entry(hass, hub_entry(signed_in=False))
+    assert hass.states.get("sensor.living_room_humidity") is None
+    assert "current_humidity" not in hass.states.get(CLIMATE).attributes
+
+
+@pytest.mark.usefixtures("controller")
+async def test_heater_power(hass: HomeAssistant) -> None:
+    """Heater power is the set wattage while the relay is on, else 0 W."""
+    sub = thermostat_subentry()
+    sub["data"] = {**sub["data"], "heater_watts": 1500}
+    await setup_entry(hass, hub_entry(signed_in=False, subentries=[sub]))
+    thermostat = _thermostat(hass)
+    assert thermostat.local is not None
+    from custom_components.mysa_local.local import CURRENT_STATE
+
+    for relay, watts in ((1, "1500.0"), (0, "0.0")):
+        thermostat.local.values[CURRENT_STATE] = relay
+        thermostat.notify()
+        await hass.async_block_till_done()
+        assert hass.states.get("sensor.living_room_heater_power").state == watts
+
+
+@pytest.mark.usefixtures("controller")
+async def test_system_health(
+    hass: HomeAssistant, cloud: FakeCloud, aioclient_mock: Any
+) -> None:
+    """System health shows the paths, the sign-in and whether Mysa is reachable."""
+    from homeassistant.setup import async_setup_component
+    from pytest_homeassistant_custom_component.common import get_system_health_info
+
+    aioclient_mock.get("https://mysa-backend.mysa.cloud", text="")
+    await setup_entry(hass, hub_entry(password="saved"))
+    assert await async_setup_component(hass, "system_health", {})
+    info = await get_system_health_info(hass, DOMAIN)
+    for key, value in info.items():
+        if hasattr(value, "__await__"):
+            info[key] = await value
+    assert info["thermostats"] == 1
+    assert info["local"] == 1
+    assert info["offline"] == 0
+    assert info["signed_in"] is True
+    assert info["password_saved"] is True
+    assert info["cloud_last_update"] == "ok"
+    assert info["can_reach_server"] == "ok"
+
+
+@pytest.mark.usefixtures("controller")
+async def test_system_health_cloud_off_makes_no_calls(
+    hass: HomeAssistant, aioclient_mock: Any
+) -> None:
+    """With the cloud off, system health doesn't contact Mysa either."""
+    from homeassistant.setup import async_setup_component
+    from pytest_homeassistant_custom_component.common import get_system_health_info
+
+    await setup_entry(hass, hub_entry(signed_in=False))
+    assert await async_setup_component(hass, "system_health", {})
+    info = await get_system_health_info(hass, DOMAIN)
+    assert "can_reach_server" not in info
+    assert info["signed_in"] is False
+    assert aioclient_mock.call_count == 0

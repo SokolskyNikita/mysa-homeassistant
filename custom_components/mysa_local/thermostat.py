@@ -348,6 +348,12 @@ class Thermostat:
         return state.room_temperature if state else None
 
     @property
+    def humidity(self) -> float | None:
+        """Room humidity in % (cloud only; HomeKit doesn't expose it)."""
+        state = self.cloud_state
+        return state.humidity if state else None
+
+    @property
     def mode(self) -> Mode | None:
         """Current mode."""
         if self.local_ok:

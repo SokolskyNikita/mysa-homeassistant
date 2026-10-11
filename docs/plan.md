@@ -3,31 +3,30 @@
 Written 2026-10-10. Background research: the feature map in `README.md`, request formats in `cloud-api.md`.
 
 ## Goals
-- **One integration for every Mysa model.** It's built from Mysa's own capability data, so most models should work without special-casing. **Only the Mysa Baseboard Lite (BB-V2-0-L, firmware 3.17.5.13) has been tested so far**, and the README and setup screens say so.
-- **Local first.** Every feature that exists locally (HomeKit) uses it. The cloud is used only for features with no local equivalent, and as a fallback when the local connection fails.
-- **The cloud can be switched off completely.** With it off, the integration makes zero calls to Mysa's servers.
-- **Easy for anyone to install:** HACS, UI setup, no YAML.
-- **Quick onboarding of new thermostats.** Setup links to the browser-based Wi-Fi setup page (https://sokolskynikita.github.io/mysa-wifi-setup/, repo https://github.com/SokolskyNikita/mysa-wifi-setup), so a thermostat can be put on Wi-Fi from the computer without the Mysa app or a phone.
+- One integration for every Mysa model. It's built from Mysa's own capability data, so most models should work without special-casing. **Only the Mysa Baseboard Lite (BB-V2-0-L, firmware 3.17.5.13) has been tested so far**, and the README and setup screens say so.
+- Every feature that exists locally (HomeKit) uses the local path. The cloud is used only for features with no local equivalent, and as a fallback when the local connection fails.
+- The cloud can be switched off completely. With it off, the integration makes zero calls to Mysa's servers.
+- Installed from HACS and set up in the UI, with no YAML.
+- Setup links to the browser-based Wi-Fi setup page (https://sokolskynikita.github.io/mysa-wifi-setup/, repo https://github.com/SokolskyNikita/mysa-wifi-setup), so a new thermostat can be put on Wi-Fi from the computer without the Mysa app or a phone.
 
 ## Non-goals (for now)
 - MQTT. Mysa's broker refused a connection made with regular app credentials (2026-10-10), and HomeKit already pushes changes locally.
 - Features HA already does better: Home/Away/Vacation shortcuts, geofencing, Smart Alerts, sharing, voice assistants. See the "Likely redundant" table in `README.md`.
-- Humidity on the Lite. Mysa's own capability data says it has no humidity sensor.
 - Adding Baseboard V3, Central HVAC and Climate Sensor thermostats (decided 2026-10-11). To join, they need a credential file from Mysa's cloud sent over Bluetooth, plus fleet registration and a finalize step. A web page can't call Mysa's API (no CORS), so the Wi-Fi setup page can't do it alone either; it now says so. The cloud client refuses these models. The flow and the options for later are in `cloud-api.md`, "Newer models".
 
 ## Stack
-- **Python, async** (required by HA).
-- **Local:** `aiohomekit`, the library behind HA's built-in HomeKit support (already installed in every HA).
-- **Cloud:** `aiohttp` only. Mysa's AWS Cognito SRP sign-in is implemented in `api/srp.py` (no boto3/pycognito at runtime); the tests check it against pycognito and a simulated Cognito server.
-- **HA building blocks:**
+- Python, async (HA requires both).
+- `aiohomekit` for the local side. It's the library behind HA's built-in HomeKit support, so every HA already has it.
+- `aiohttp` only for the cloud. Mysa's AWS Cognito SRP sign-in is implemented in `api/srp.py` (no boto3/pycognito at runtime); the tests check it against pycognito and a simulated Cognito server.
+- From HA:
   - config flow, options flow and reauth flow
   - `DataUpdateCoordinator` for cloud polling
   - entity platforms
   - diagnostics with redaction
   - repairs
   - `strings.json` translations
-- **Repo:** one GitHub repo with the integration in `custom_components/<domain>/`. The cloud client is a self-contained package inside it (`api/`), with no HA imports, so it can be published to PyPI later if we aim for HA core.
-- **Tooling:**
+- One GitHub repo with the integration in `custom_components/<domain>/`. The cloud client is a self-contained package inside it (`api/`), with no HA imports, so it can be published to PyPI later if we aim for HA core.
+- Tools:
   - the `integration_blueprint` template, which includes a dev container
   - `pytest-homeassistant-custom-component`, and aiohomekit's fake controller for HomeKit tests
   - `ruff` and `mypy`
@@ -54,10 +53,10 @@ Mysa_HA already uses the domain `mysa`. Using the same domain would make the two
 For models whose local protocol is Matter (Baseboard V3 and newer; the capability data says `matter: true`), local control comes from HA's own Matter integration. Ours then adds only the cloud extras to the same device (later milestone).
 
 ### Cloud setting (options flow)
-- **Use Mysa cloud: On** (default when the user signed in). Cloud powers the cloud-only features and acts as the fallback.
+- **Use Mysa cloud: On** (default when the user signed in). Cloud powers the cloud-only features and is the fallback.
 - **Off.** No calls to Mysa's servers at all, and cloud-only entities are removed. The stored sign-in is kept, so turning it back on doesn't require signing in again. "Sign out" deletes it.
 - Users who skip the Mysa sign-in at setup are local-only automatically.
-- Open question: should there be a middle option, "cloud only as fallback, no cloud-only features"? Not in v1 unless someone asks for it.
+- A middle option, "cloud only as fallback, no cloud-only features", stays out of v1 unless someone asks for it.
 
 ### Reads
 - HomeKit pushes changes for temperature, setpoint, mode, heating state and units, so there's no polling locally.
@@ -75,7 +74,7 @@ Measured on a Baseboard Lite, 10 setpoint changes per path, times from send:
 
 - Room temperature: HomeKit pushes it the moment it changes. The cloud's `latestTelemetry.reading` updates about every 5 s only while "live mode" is on (after the app opens or after commands), then slows to ~40 s and then stops: one test went 2.5+ minutes without a new reading, and the cloud still said 21.5 °C while HomeKit already showed 21.4 °C. So a polled cloud temperature can be minutes old.
 - Rule: while a paired thermostat's local connection is down and the cloud is on, request live mode for its home (`POST /mysa-legacy/stream/home/{home}` `{"timeout":300}`), renew it every 4 minutes (the app renews about every 4.2 min) and poll `/state/batch` every 10 s. Stop both as soon as local is back: the poll returns to the normal interval and live mode lapses on its own after 300 s.
-- Never request live mode while local is healthy, for thermostats without a local path (cloud-only), or with the cloud off.
+- Never request live mode while local is healthy, for thermostats without a local path (cloud-only) or with the cloud off.
 
 ### Writes and fallback
 1. Send the change over HomeKit with a short timeout (about 5 s).
@@ -89,20 +88,20 @@ Measured on a Baseboard Lite, 10 setpoint changes per path, times from send:
 - Back off on 429 and 5xx responses.
 - Never run two refreshes at once, and spread out bursts of writes.
 - Send an honest User-Agent that names the integration and its version.
-- Refresh the token only when it's about to expire. Mysa may rotate refresh tokens, so on failure go to re-authentication instead of retrying in a loop.
+- Refresh the token only when it's about to expire. Mysa doesn't rotate refresh tokens, and they seem to expire after about a month (mysa2mqtt's changelog: its process "died after about a month" until it signed in again with the password). On failure, sign in again with the saved password if the user chose to save it; otherwise go to re-authentication instead of retrying in a loop.
 
 ## Setup flow
 1. **Discovery.** The manifest lists Mysa's HomeKit model names under `"homekit": {"models": [...]}`, so HA offers a discovered Mysa to this integration, not to its generic HomeKit Device integration.
    Known model strings from the app: `BB-V1-0`, `BB-V1-1`, `BB-V2-0`, `BB-V2-0-L`, `BB-V3-0`, `INF-V1-0`, `AC-V1-0`, `ST-V1-0`, `CS-V1-0`. The list needs checking per model; only `BB-V2-0-L` is confirmed to advertise HomeKit.
    Manual add is also possible (IP or pick from a list).
-2. **Not on Wi-Fi yet?** The first step explains it and links to the Wi-Fi setup page. It works in Chrome or Edge on a computer with Bluetooth, with no Mysa app and no phone. After that, discovery picks the thermostat up.
+2. **Not on Wi-Fi yet?** The first step explains it and links to the Wi-Fi setup page. It works in Chrome or Edge on a computer with Bluetooth and doesn't need the Mysa app or a phone. After that, discovery picks the thermostat up.
 3. **Pair.** The user enters the 8-digit HomeKit code from the faceplate (only the digits count; spaces and dashes are ignored).
    Observed 2026-10-10 on the Lite (fw 3.17.5.13): **an unpaired Mysa's HomeKit service dozes off.** About 30 minutes after it was unpaired it had stopped advertising `_hap._tcp` and closed its HAP port (Wi-Fi and the cloud connection stayed up). A pair attempt then failed with "couldn't reach". A press of a button on the thermostat brought HomeKit back (same port, `sf=1`, `c#` bumped). The pair screen, the "couldn't reach" error and the README tell users to press a button first, and a connection failure keeps the form open for a retry instead of ending the flow. The thermostat can only be paired with one HomeKit controller at a time, so if it's in HA's HomeKit Device integration or Apple Home, the flow says to remove it there first.
    Nice-to-have: offer to move an existing HomeKit Device entry over without re-entering the code.
-4. **Optional Mysa sign-in,** for the cloud-only extras. Thermostats are matched across the two paths by Wi-Fi MAC: Mysa's device ID is the MAC, and HomeKit exposes the MAC in a hidden accessory-info field. The integration stores only the refresh token.
+4. **Optional Mysa sign-in,** for the cloud-only extras. Thermostats are matched across the two paths by Wi-Fi MAC: Mysa's device ID is the MAC, and HomeKit exposes the MAC in a hidden accessory-info field. The integration stores the refresh token, plus the password only if the user ticks **Save my password** (off by default; changing it later means signing out and in again).
    Cloud-only devices (no local path) can also be added from the account.
 5. **Untested model notice.** For any model other than BB-V2-0-L, the confirm step says the model hasn't been tested yet and asks the user to share diagnostics.
-6. **Options:** cloud on/off, poll interval, heater wattage (for kWh), and whether to use the cloud's runtime numbers.
+6. **Options:** cloud on/off, poll interval, heater wattage (for kWh) and whether to use the cloud's runtime numbers.
 
 ## Entities
 Created from Mysa's capability data (`GET /capabilities/{dev}`), so each model gets only what it supports. Without the cloud, local-only entities come from HomeKit.
@@ -137,7 +136,7 @@ The energy sensor is shaped for HA's Energy dashboard (device consumption).
 ## Testing
 - Unit tests for the cloud client with redacted fixtures made from the 2026-10-10 captures.
 - HomeKit tests with aiohomekit's fake controller.
-- Routing tests covering local OK; local down (cloud takes over); cloud off; and an unknown write outcome (no double apply).
+- Routing tests: local OK, local down (cloud takes over), cloud off and an unknown write outcome (no double apply).
 - Manual matrix on a Baseboard Lite:
   - local only (cloud off)
   - cloud fallback, by temporarily blocking HA → thermostat on the router
@@ -166,3 +165,5 @@ The energy sensor is shaped for HA's Energy dashboard (device consumption).
 - No "cloud only as fallback" middle option in v1.
 - A thermostat in HA's HomeKit Device integration can be moved over: the flow uses the existing pairing to add a second admin pairing with our own keys (no setup code), then moves the old entities (keeping entity IDs, names and area) and removes the HomeKit Device entry, which removes its own pairing from the thermostat.
 - Firmware install stays off by default, behind an advanced option.
+- (2026-10-11) Humidity is exposed whenever the cloud reports it, the Lite included; its capability data says otherwise, but the readings are real (see `cloud-api.md`).
+- (2026-10-11) Saving the Mysa password is an opt-in at sign-in, so an expired sign-in can renew itself. Most HA integrations store passwords the same way, unencrypted.
