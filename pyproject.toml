@@ -1,6 +1,6 @@
 [project]
 name = "mysa-homeassistant"
-version = "0.4.0"
+version = "0.4.1"
 description = "Local-first Home Assistant integration for Mysa smart thermostats"
 readme = "README.md"
 license = "MIT"

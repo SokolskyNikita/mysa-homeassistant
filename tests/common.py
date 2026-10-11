@@ -242,6 +242,7 @@ class FakeCloud:
         self.password = PASSWORD
         self._srp: dict[str, Any] = {}
         self.apply_updates = True
+        self.auto_telemetry = True
 
         b = API_BASE
         d = DEVICE_ID
@@ -504,6 +505,8 @@ class FakeCloud:
     async def _batch(
         self, method: str, url: URL, data: Any
     ) -> AiohttpClientMockResponse:
+        if self.auto_telemetry:
+            self.state["latestTelemetry"]["reading"]["timestamp"] = time.time()
         if not self.on_account:
             error = {
                 "message": "User does not have access",

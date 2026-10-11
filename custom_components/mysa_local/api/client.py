@@ -543,17 +543,24 @@ class MysaClient:
         device_id: str,
         device_type: str,
         events: list[dict[str, Any]],
+        name: str | None = None,
+        reusable: bool = False,
+        device_ids: list[str] | None = None,
     ) -> str | None:
-        """Create a weekly schedule for one thermostat and return its id."""
+        """Create a weekly schedule and return its id.
+
+        The optional metadata allows recovery to recreate a schedule without
+        silently changing its name, reuse behavior, or attached thermostats.
+        """
         data = await self._request(
             "POST",
             "/schedule",
             body={
-                "name": f"Schedule-{device_id}",
+                "name": name or f"Schedule-{device_id}",
                 "deviceType": device_type,
                 "homeId": home_id,
-                "reusable": False,
-                "deviceIds": [device_id],
+                "reusable": reusable,
+                "deviceIds": device_ids or [device_id],
                 "events": events,
             },
         )

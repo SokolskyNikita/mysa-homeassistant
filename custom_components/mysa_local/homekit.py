@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 import uuid
 
@@ -57,7 +57,10 @@ async def async_get_controller(hass: HomeAssistant) -> Controller:
 
 
 async def async_copy_pairing(
-    hass: HomeAssistant, source: Mapping[str, Any]
+    hass: HomeAssistant,
+    source: Mapping[str, Any],
+    *,
+    on_pairing_saved: Callable[[Mapping[str, Any]], Awaitable[None]],
 ) -> tuple[dict[str, Any], AccessoryInfo]:
     """Add a new admin pairing for us, using another controller's pairing.
 
@@ -73,13 +76,34 @@ async def async_copy_pairing(
         if not isinstance(old, ip.IpPairing):
             raise HomeKitException("Only HomeKit over IP is supported")
         pairing_id, ltsk, ltpk = generate_controller_keys()
-        async with asyncio.timeout(30):
-            await old.add_pairing(pairing_id, ltpk, "Admin")
-        await old.close()
-        data = dict(source)
-        data.update(
-            {"iOSPairingId": pairing_id, "iOSDeviceLTSK": ltsk, "iOSDeviceLTPK": ltpk}
-        )
+        try:
+            async with asyncio.timeout(30):
+                await old.add_pairing(pairing_id, ltpk, "Admin")
+            data = dict(source)
+            data.update(
+                {
+                    "iOSPairingId": pairing_id,
+                    "iOSDeviceLTSK": ltsk,
+                    "iOSDeviceLTPK": ltpk,
+                }
+            )
+            try:
+                # The accessory has accepted our controller key. Save it before
+                # the next network request, which can fail after pairing works.
+                await asyncio.shield(on_pairing_saved(data))
+            except Exception:
+                # The caller could not persist our credentials; do not leave a
+                # new admin pairing on the accessory where it cannot be reused.
+                try:
+                    await old.remove_pairing(pairing_id)
+                except LOCAL_ERRORS as err:
+                    LOGGER.warning("Couldn't roll back copied HomeKit pairing: %s", err)
+                raise
+        finally:
+            try:
+                await old.close()
+            except LOCAL_ERRORS as err:
+                LOGGER.debug("Closing source pairing failed: %s", err)
         new = controller.load_pairing(f"copy-new-{uuid.uuid4()}", dict(data))
         async with asyncio.timeout(30):
             await new.list_accessories_and_characteristics()

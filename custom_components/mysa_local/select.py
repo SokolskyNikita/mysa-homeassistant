@@ -58,6 +58,11 @@ class DisplayUnitSelect(MysaEntity, SelectEntity):
         super().__init__(thermostat, "display_unit")
 
     @property
+    def available(self) -> bool:
+        """Available through HomeKit or a connected cloud path."""
+        return self.thermostat.local_ok or self.thermostat.cloud_connected
+
+    @property
     def current_option(self) -> str | None:
         """Celsius or fahrenheit."""
         unit = self.thermostat.display_unit

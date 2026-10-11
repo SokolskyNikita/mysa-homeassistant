@@ -8,11 +8,17 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from aiohomekit.exceptions import MalformedPinError
+from aiohomekit.exceptions import AccessoryDisconnectedError, MalformedPinError
+from aiohomekit.testing import FakePairing
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, CONF_SCAN_INTERVAL
+from homeassistant.const import (
+    CONF_EMAIL,
+    CONF_PASSWORD,
+    CONF_SCAN_INTERVAL,
+    EVENT_HOMEASSISTANT_STARTED,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -23,7 +29,18 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
-from custom_components.mysa_local.config_flow import InsecureCodeError, format_pin
+from custom_components.mysa_local import async_setup
+from custom_components.mysa_local.config_flow import (
+    _PAIRING_SESSION,
+    _PENDING_PAIRINGS_STORE,
+    InsecureCodeError,
+    _async_clear_configured_pairing_backups,
+    _async_load_pending_pairings,
+    _async_save_pending_pairing,
+    _pairing_session_id,
+    configured_hkids,
+    format_pin,
+)
 from custom_components.mysa_local.const import (
     CONF_CLOUD_ENABLED,
     CONF_CLOUD_RUNTIME,
@@ -53,6 +70,7 @@ from .common import (
     USER_ID,
     FakeCloud,
     hub_entry,
+    thermostat_subentry,
 )
 from .conftest import setup_entry
 
@@ -170,6 +188,115 @@ async def test_discovery_pair_and_sign_in(
     (subentry,) = result["result"].subentries.values()
     # Named after the thermostat's Mysa name.
     assert subentry.title == "Living Room"
+
+
+@pytest.mark.usefixtures("unpaired_controller")
+async def test_pairing_recovers_after_flow_cancellation_and_store_reload(
+    hass: HomeAssistant,
+) -> None:
+    """A completed HomeKit pairing survives canceling optional cloud setup."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_HOMEKIT}, data=discovery()
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"pairing_code": PAIRING_CODE}
+    )
+    assert result["step_id"] == "cloud_offer"
+    assert (await _async_load_pending_pairings(hass))[HKID.lower()][
+        "pairing"
+    ] == PAIRING_DATA
+
+    hass.config_entries.flow.async_abort(result["flow_id"])
+    # A new Store and session ID simulate HA restarting after flow cancellation.
+    hass.data.pop(_PENDING_PAIRINGS_STORE)
+    old_session = (await _async_load_pending_pairings(hass))[HKID.lower()]["session"]
+    hass.data.pop(_PAIRING_SESSION)
+    assert _pairing_session_id(hass) != old_session
+    assert (await _async_load_pending_pairings(hass))[HKID.lower()][
+        "pairing"
+    ] == PAIRING_DATA
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_HOMEKIT},
+        data=discovery(paired=True),
+    )
+    assert result["step_id"] == "cloud_offer", result
+
+    # Resume completed without asking for the HomeKit code again.
+    hass.config_entries.flow.async_abort(result["flow_id"])
+    assert (await _async_load_pending_pairings(hass))[HKID.lower()][
+        "pairing"
+    ] == PAIRING_DATA
+
+
+@pytest.mark.usefixtures("unpaired_controller")
+async def test_pairing_recovers_after_accessory_discovery_failure(
+    hass: HomeAssistant,
+) -> None:
+    """Persist credentials before the post-pair accessory read can fail."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_HOMEKIT}, data=discovery()
+    )
+    with patch.object(
+        FakePairing,
+        "list_accessories_and_characteristics",
+        new_callable=AsyncMock,
+        side_effect=AccessoryDisconnectedError("device restarted"),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"pairing_code": PAIRING_CODE}
+        )
+    assert result["errors"] == {"base": "cannot_connect_device"}
+    assert (await _async_load_pending_pairings(hass))[HKID.lower()][
+        "pairing"
+    ] == PAIRING_DATA
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"pairing_code": PAIRING_CODE}
+    )
+    assert result["step_id"] == "cloud_offer"
+
+    hass.config_entries.flow.async_abort(result["flow_id"])
+
+
+@pytest.mark.usefixtures("unpaired_controller")
+async def test_pairing_backup_is_pruned_after_startup_loads_entry(
+    hass: HomeAssistant,
+) -> None:
+    """Prune only old backups for pairings in entries loaded from storage."""
+    await _async_save_pending_pairing(
+        hass,
+        HKID.lower(),
+        PAIRING_DATA,
+        name="Living Room",
+        model="BB-V2-0-L",
+    )
+    other_hkid = "11:11:11:11:11:11"
+    await _async_save_pending_pairing(
+        hass,
+        other_hkid,
+        {**PAIRING_DATA, "AccessoryPairingID": other_hkid},
+        name="Other Room",
+        model="BB-V2-0-L",
+    )
+    entry = hub_entry(subentries=[thermostat_subentry()])
+    # Represent the entry as it was loaded from HA's already persisted storage.
+    entry.add_to_hass(hass)
+    assert configured_hkids(entry) == {HKID.lower(): next(iter(entry.subentries))}
+    pending = await _async_load_pending_pairings(hass)
+    old_session = pending[HKID.lower()]["session"]
+    await _async_clear_configured_pairing_backups(hass, set(configured_hkids(entry)))
+    assert set(await _async_load_pending_pairings(hass)) == {HKID.lower(), other_hkid}
+
+    hass.data.pop(_PAIRING_SESSION)
+    assert _pairing_session_id(hass) != old_session
+
+    assert await async_setup(hass, {})
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+
+    assert set(await _async_load_pending_pairings(hass)) == {other_hkid}
 
 
 @pytest.mark.usefixtures("unpaired_controller")
@@ -721,9 +848,19 @@ async def test_takeover_from_homekit_device(
     )
     assert result["step_id"] == "takeover_confirm"
     info = AccessoryInfo(name="Mysa-d4e5f6", model="BB-V2-0-L", mac=DEVICE_ID)
+
+    async def _copy_pairing_with_backup(
+        _hass: HomeAssistant,
+        _source: dict[str, object],
+        *,
+        on_pairing_saved: object,
+    ) -> tuple[dict[str, object], AccessoryInfo]:
+        await on_pairing_saved(PAIRING_DATA)  # type: ignore[operator]
+        return dict(PAIRING_DATA), info
+
     with patch(
         "custom_components.mysa_local.config_flow.async_copy_pairing",
-        AsyncMock(return_value=(dict(PAIRING_DATA), info)),
+        AsyncMock(side_effect=_copy_pairing_with_backup),
     ):
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["step_id"] == "cloud_offer"
@@ -735,6 +872,9 @@ async def test_takeover_from_homekit_device(
         )
         await hass.async_block_till_done()
     assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert (await _async_load_pending_pairings(hass))[HKID.lower()][
+        "pairing"
+    ] == PAIRING_DATA
     entry = result["result"]
     (subentry,) = entry.subentries.values()
     assert CONF_MIGRATE_FROM not in subentry.data

@@ -53,6 +53,8 @@ Home Assistant must be able to reach the thermostat and discover it through mDNS
 
 To add another thermostat, use its discovery card or Add thermostat on the Mysa Local integration page.
 
+Pairing credentials are saved as soon as the thermostat accepts them. If setup is interrupted, start it again and choose the saved pairing to continue without another HomeKit code.
+
 ### Move from HomeKit Device
 
 Choose Move a thermostat from the HomeKit Device integration during setup or when adding a thermostat. The existing pairing must be reachable. Mysa Local uses it to add its own pairing, so the setup code is not required.
@@ -141,6 +143,8 @@ These actions require a Mysa sign-in, cloud access and a thermostat on that acco
 | `mysa_local.set_schedule` | Replaces the thermostat's weekly Mysa schedule |
 | `mysa_local.clear_schedule` | Removes the thermostat's Mysa schedule |
 
+Schedule replacement saves a private backup before changing the cloud schedule. If a request fails, the integration checks what Mysa actually applied and restores the original when necessary. Unfinished recovery survives an HA restart and retries after cloud updates. Recovery preserves shared schedules and avoids overwriting unrelated changes made in the Mysa app.
+
 For a weekday schedule:
 
 ```yaml
@@ -174,7 +178,7 @@ A hold needs an existing Mysa schedule. For schedules managed entirely by Home A
 
 ## Runtime and energy
 
-Heating runtime today counts the time Home Assistant observes the heater running. The option "Use the thermostat's own heating runtime" is enabled by default. When cloud access is available, it supplements that count with Mysa's history, including periods when Home Assistant was down. Cloud runtime is fetched every 15 minutes. The displayed total keeps the larger count and does not decrease within a day.
+Heating runtime today counts the time HomeKit reports the heater running. The option "Use the thermostat's own heating runtime" is enabled by default. When cloud access is available, it supplements that count with Mysa's history, including periods when Home Assistant was down. Cloud runtime is fetched every 15 minutes. During cloud fallback, the total advances with these measured history updates; fractional duty-cycle readings do not extend the local relay count. Without cloud history, the count pauses until HomeKit recovers. The displayed total keeps the larger count and does not decrease within a day.
 
 Set Heater wattage to the combined rated wattage of the heaters controlled by that thermostat. A positive value adds power and energy sensors; zero turns them off. With local readings, power is that wattage while heating and zero while idle. With cloud readings, power uses Mysa's reported duty cycle, so it can show an average between zero and the configured wattage. Energy is runtime multiplied by wattage and can be used in the Energy dashboard. These are estimates, not electrical measurements. Runtime and energy update once a minute and reset at local midnight.
 
@@ -184,7 +188,7 @@ HomeKit supplies push updates and a health check runs every 30 seconds. While th
 
 Setpoint, screen-unit and HomeKit-supported mode changes try HomeKit first. Modes without a HomeKit equivalent, including fan-only and dry, go directly through the cloud. A local write has a five-second timeout. After a timeout, the integration reads back the local value before retrying through the cloud. For setpoint and mode changes, it also checks cloud-reported state. A device rejection is reported directly.
 
-Cloud state uses one batch request for all thermostats per poll. Settings records, capabilities and other data refresh less often. Mysa can return readings that are several minutes old even when it reports the thermostat as connected.
+Cloud state uses one batch request for all thermostats per poll. Settings records, capabilities and other data refresh less often. Mysa can return readings more than ten minutes old even when it reports the thermostat as connected and accepts commands. Cloud climate readings, humidity and Wi-Fi signal require an explicit online status and a telemetry timestamp no more than ten minutes old or one minute ahead of Home Assistant's clock. Settings controls remain available when the cloud responds and reports the thermostat online; they do not depend on the temperature-report timestamp. Local climate control is unaffected by stale cloud telemetry.
 
 With Live mode during local outages enabled, a lost LAN connection triggers a request for readings about every five seconds and changes cloud polling to ten seconds. Normal polling resumes when local control returns. This option applies to thermostats with a local pairing; thermostats added only from the account use the normal poll interval.
 

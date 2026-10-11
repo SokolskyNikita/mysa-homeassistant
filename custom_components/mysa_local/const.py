@@ -10,7 +10,7 @@ from typing import Final
 DOMAIN: Final = "mysa_local"
 LOGGER = logging.getLogger(__package__)
 
-VERSION: Final = "0.4.0"
+VERSION: Final = "0.4.1"
 USER_AGENT: Final = (
     f"mysa-homeassistant/{VERSION} "
     "(+https://github.com/SokolskyNikita/mysa-homeassistant)"
@@ -58,6 +58,10 @@ CLOUD_CAPABILITIES_INTERVAL: Final = timedelta(hours=24)
 CLOUD_REFRESH_AFTER_WRITE: Final = 2.0
 CLOUD_WRITE_SPACING: Final = 0.5
 CLOUD_MAX_BACKOFF: Final = timedelta(minutes=10)
+# Normal telemetry arrives every few minutes. Allow missed reports, but never
+# treat an old shadow or an implausibly future-dated reading as live data.
+CLOUD_TELEMETRY_MAX_AGE: Final = timedelta(minutes=10)
+CLOUD_TELEMETRY_FUTURE_TOLERANCE: Final = timedelta(minutes=1)
 
 # With the live mode option on (off by default): while a paired thermostat's LAN
 # path is down and the cloud stands in, ask Mysa for "live mode" (a reading every

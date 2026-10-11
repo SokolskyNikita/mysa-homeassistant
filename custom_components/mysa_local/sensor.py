@@ -102,6 +102,11 @@ class HumiditySensor(MysaCloudEntity, SensorEntity):
         super().__init__(thermostat, "humidity")
 
     @property
+    def available(self) -> bool:
+        """Only expose humidity while its telemetry reading is fresh."""
+        return self.thermostat.cloud_ok
+
+    @property
     def native_value(self) -> float | None:
         """Relative humidity in %."""
         return self.thermostat.humidity
@@ -200,6 +205,11 @@ class WifiSignalSensor(MysaCloudEntity, SensorEntity):
     def __init__(self, thermostat: Thermostat) -> None:
         """Create the entity."""
         super().__init__(thermostat, "wifi_signal")
+
+    @property
+    def available(self) -> bool:
+        """Only expose RSSI while its telemetry reading is fresh."""
+        return self.thermostat.cloud_ok
 
     @property
     def native_value(self) -> int | None:
@@ -307,11 +317,9 @@ class HeaterPowerSensor(MysaEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        """W: the heater's wattage while the relay is on, else 0."""
-        heating = self.thermostat.heating
-        if heating is None:
-            return None
-        return self.thermostat.heater_watts if heating else 0.0
+        """W: relay load locally, or average load over the cloud reading interval."""
+        fraction = self.thermostat.heat_fraction
+        return self.thermostat.heater_watts * fraction if fraction is not None else None
 
 
 class EnergySensor(_EveryMinute, SensorEntity):

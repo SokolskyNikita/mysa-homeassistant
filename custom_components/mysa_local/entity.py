@@ -69,8 +69,8 @@ class MysaCloudEntity(MysaEntity):
 
     @property
     def available(self) -> bool:
-        """Available while the cloud has fresh data for the thermostat."""
-        return self.thermostat.cloud_ok
+        """Available while the cloud poll succeeds and sees the thermostat online."""
+        return self.thermostat.cloud_connected
 
     @property
     def cloud_state(self) -> DeviceState | None:

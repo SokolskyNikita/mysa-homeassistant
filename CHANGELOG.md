@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.1 (2026-10-11)
+
+- Commands to each thermostat are serialized. A delayed local write is reconciled with newer commands after cloud fallback, including ambiguous responses and integration unload.
+- HomeKit pairing credentials are saved immediately after pairing succeeds. Interrupted setup can resume with those credentials after an HA restart.
+- Schedule replacement saves a persistent backup before detaching the original. Failed requests reconcile with the server and restore the original when needed; pending recovery survives restarts and protects newer Mysa app edits and shared schedules.
+- Cloud climate availability now requires an explicit online status and telemetry no more than ten minutes old. Missing timestamps and timestamps more than a minute in the future are rejected.
+- Cloud settings controls remain usable when telemetry is old but the cloud responds and reports the thermostat online. Humidity and Wi-Fi signal still require fresh telemetry.
+- HomeKit errors and missing values for essential thermostat characteristics mark the local connection unavailable until a successful read confirms recovery. Errors in optional display-unit reads do not disable climate control.
+- Cloud duty cycle is treated as an interval fraction: estimated power uses wattage multiplied by that fraction, and fallback runtime uses measured usage history instead of counting every nonzero duty cycle as continuously heating.
+- Hardware setpoint limits fall back to the cloud settings record when the reported state omits them, fixing unknown limit controls on a Baseboard Lite.
+- Schedule recovery recognizes the names, weekday types, event order and client metadata normalized by Mysa's legacy schedule API.
+
+Validated on two Baseboard Lite thermostats with firmware 3.17.5.13 and Home Assistant 2026.10.1: local setpoints and display units, concurrent commands, cloud brightness and setpoint writes, temporary schedule create/replace/clear, and relay power/runtime. Original settings were restored. Pairing interruption, induced outages and lost-response failure paths use automated simulations; no devices were unpaired, removed or network-blocked during live validation.
+
 ## 0.4.0 (2026-10-11)
 
 - Added cloud controls for Mini-Split AC fan speed and vertical and horizontal swing to the climate entity. Fan options follow the remote: named speeds (low/medium/high) or numbered speeds (1–7), with auto or sleep where available. Swing options include off, on, auto or fixed positions where supported.

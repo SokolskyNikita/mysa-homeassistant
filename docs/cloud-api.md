@@ -152,7 +152,7 @@ App 4.20.1 hard-codes the legacy baseboard, AC and in-floor migration selectors 
 
 App 4.20.1 polled the batch endpoint about every 2.9 seconds while open and read the individual endpoint twice after each write. Python `get_states()` keeps entries with a `data` object and skips per-device errors. The coordinator replaces its state map with that result, so an errored device loses its previous cached state.
 
-Both endpoints return Mysa's stored state. One read showed `isConnected: true` with telemetry already 305 seconds old. Check `latestTelemetry.reading.timestamp` when freshness matters. HA currently considers the cloud path usable after a successful poll when `isConnected` is not false; it does not impose a telemetry-age limit.
+Both endpoints return Mysa's stored state. Live reads showed `isConnected: true` with telemetry more than ten minutes old while commands still worked. Check `latestTelemetry.reading.timestamp` when freshness matters. HA requires a successful poll, `isConnected: true`, and a reading no more than ten minutes old or one minute in the future for cloud climate readings, humidity and RSSI. Cloud settings controls require the successful poll and explicit online status, independently of the telemetry timestamp.
 
 ### State structure
 
@@ -285,9 +285,13 @@ The newer state API and the older settings record are not interchangeable. Read 
 
 Read schedules with `GET /schedule?homeId={home}&includeLegacyBaseboard=true&includeLegacyAc=true&includeLegacyInfloor=true`. It returns a list of objects with `id`, `name`, `reusable`, `homeId`, `deviceType`, `deviceIds`, `events`, `createdAt` and `updatedAt`. No schedule returned 404; Python converts that to an empty list.
 
+On Baseboard Lite, live validation on October 11, 2026 found that the legacy schedule adapter returned the generated name as `Schedule`, weekdays as integers, events ordered Sunday-first, and event `clientKey` values as `v2-migration`. Recovery compares event behavior after normalizing these fields instead of requiring the POST and GET JSON to be identical. Custom schedule names and meaningful changes to event times or states still distinguish a different schedule.
+
 `DELETE /schedule/{scheduleId}/attach/{dev}` detached the tested schedule and returned "Schedule unattached from device and deleted".
 
-The app route table names `UPDATE_SCHEDULE /schedule/`, but an in-place edit was not captured. The HA implementation replaces a schedule by detaching the device's existing schedules, then creating a new one. Those calls are not atomic: if creation fails, the old schedule has already been detached.
+The app route table names `UPDATE_SCHEDULE /schedule/`, but an in-place edit was not captured. The HA implementation replaces a schedule by detaching the device's existing schedules, then creating a new one. Before detaching, it saves a private, persistent backup of the original events, metadata and attached devices. These API calls remain non-atomic: replacement briefly leaves the device without a schedule.
+
+If a request fails, recovery reads the server's schedules to determine whether the replacement succeeded despite a lost response. Otherwise it restores the original schedule. An unresolved backup survives an HA restart and is retried after successful cloud refreshes. Recovery preserves shared-device attachments and stops rather than overwriting an unrelated schedule edited in the Mysa app. Schedule replacement and clearing are serialized per thermostat.
 
 ### Holds
 

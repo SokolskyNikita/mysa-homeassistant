@@ -63,6 +63,14 @@ _THERMOSTAT_CHARS = (
     TARGET_STATE,
     DISPLAY_UNITS,
 )
+_ESSENTIAL_THERMOSTAT_CHARS = frozenset(
+    {
+        CURRENT_TEMPERATURE,
+        TARGET_TEMPERATURE,
+        CURRENT_STATE,
+        TARGET_STATE,
+    }
+)
 _INFO_CHARS = {
     CharacteristicsTypes.NAME: "name",
     CharacteristicsTypes.MODEL: "model",
@@ -73,8 +81,21 @@ _INFO_CHARS = {
 }
 
 
+def _has_status_error(payload: Mapping[str, Any]) -> bool:
+    """Whether aiohomekit returned a failed HAP status for a characteristic."""
+    status = payload.get("status", 0)
+    if isinstance(status, int):
+        return status != 0
+    value = getattr(status, "value", None)
+    return not isinstance(value, int) or value != 0
+
+
 class LocalWriteRejectedError(HomeKitException):
     """The thermostat answered but refused the write (bad value, read-only...)."""
+
+
+class LocalCharacteristicReadError(HomeKitException):
+    """The thermostat did not return one or more required characteristics."""
 
 
 @dataclass(slots=True)
@@ -173,6 +194,7 @@ class LocalThermostat:
         self._listeners: set[CALLBACK_TYPE] = set()
         self._unsubs: list[CALLBACK_TYPE] = []
         self._poll_lock = asyncio.Lock()
+        self._failed_essential_chars: set[str] = set()
         self._started = False
 
     @property
@@ -255,7 +277,10 @@ class LocalThermostat:
                 await self.pairing.subscribe(watch)
             except LOCAL_ERRORS as err:
                 LOGGER.debug("%s: subscribe failed: %s", self.name, err)
-        self._set_available(True)
+        if self._failed_essential_chars:
+            self._set_available(False, "waiting for a successful characteristic read")
+        else:
+            self._set_available(True)
         self._notify()
         return True
 
@@ -270,12 +295,20 @@ class LocalThermostat:
             if not self.chars:
                 await self._async_connect()
                 return
+            requested = [c for c in _THERMOSTAT_CHARS if c in self.chars]
+            required = _ESSENTIAL_THERMOSTAT_CHARS.intersection(requested)
             try:
                 values = await self.async_read(
-                    [c for c in _THERMOSTAT_CHARS if c in self.chars],
+                    requested,
                     limit=LOCAL_READ_TIMEOUT * 3,
                 )
+                if not _ESSENTIAL_THERMOSTAT_CHARS.intersection(values):
+                    self._failed_essential_chars.update(required)
+                    raise LocalCharacteristicReadError(
+                        "HomeKit returned no essential thermostat characteristics"
+                    )
             except LOCAL_ERRORS as err:
+                self._failed_essential_chars.update(required)
                 self._set_available(False, str(err) or type(err).__name__)
                 return
             changed = any(self.values.get(k) != v for k, v in values.items())
@@ -285,48 +318,121 @@ class LocalThermostat:
                 self._notify()
 
     @callback
-    def _handle_events(
-        self, events: Mapping[tuple[int, int], Mapping[str, Any]]
-    ) -> None:
+    def _handle_events(self, events: Mapping[tuple[int, int], Any]) -> None:
         """Values pushed by the thermostat (or echoed after our own writes).
 
         An empty dict means the connection was re-established.
         """
-        if events and (accessories := self.pairing.accessories) is not None:
-            # Keep aiohomekit's cached model in step, like homekit_controller.
-            accessories.process_changes({k: dict(v) for k, v in events.items()})
         by_iid = {(m.aid, m.iid): ctype for ctype, m in self.chars.items()}
         changed = False
+        successful_essential_value = False
+        essential_errors: list[str] = []
+        accessory_changes: dict[tuple[int, int], dict[str, Any]] = {}
         for aid_iid, payload in events.items():
             ctype = by_iid.get(aid_iid)
-            if ctype is None or "value" not in payload:
+            if not isinstance(payload, Mapping):
                 continue
+            failed = _has_status_error(payload)
+            model_payload = dict(payload)
+            if failed:
+                # A malformed response must not update aiohomekit's cached value.
+                model_payload.pop("value", None)
+                if ctype in _ESSENTIAL_THERMOSTAT_CHARS:
+                    essential_errors.append(f"{ctype}: {payload.get('status')}")
+                    self._failed_essential_chars.add(ctype)
+            accessory_changes[aid_iid] = model_payload
+            if ctype is None or failed or "value" not in payload:
+                continue
+            if ctype in _ESSENTIAL_THERMOSTAT_CHARS:
+                successful_essential_value = True
             if self.values.get(ctype) != payload["value"]:
                 self.values[ctype] = payload["value"]
                 changed = True
+        if events and (accessories := self.pairing.accessories) is not None:
+            # Keep aiohomekit's cached model in step, like homekit_controller.
+            # Failed value/status pairs are passed through without their value.
+            accessories.process_changes(accessory_changes)
+
+        if essential_errors:
+            was_available = self.available
+            self._set_available(False, ", ".join(essential_errors))
+            if changed and not was_available:
+                self._notify()
+            return
+
         if self.chars:
-            if not self.available:
+            if not events:
+                # An empty event is aiohomekit's signal that the connection was
+                # re-established. A status-only error event is not such a signal.
+                if not self._failed_essential_chars:
+                    self._set_available(True)
+            elif successful_essential_value and not self._failed_essential_chars:
+                # A valid, unchanged characteristic event still proves the
+                # local path can read climate state.
+                was_available = self.available
                 self._set_available(True)
-                return
-            if changed:
+                if changed and was_available:
+                    self._notify()
+            elif changed and self.available:
+                # Optional values (for example display units) still need to
+                # notify entities while the local path is healthy.
                 self._notify()
 
     async def async_read(
         self, ctypes: Iterable[str], *, limit: float | None = None
     ) -> dict[str, Any]:
-        """Read characteristics now. Raises CONNECTION_ERRORS on failure."""
+        """Read characteristics now; raise for transport or required-read errors."""
         wanted = {
             (self.chars[c].aid, self.chars[c].iid): c for c in ctypes if c in self.chars
         }
         if not wanted:
             return {}
-        async with asyncio.timeout(limit or LOCAL_READ_TIMEOUT):
-            result = await self.pairing.get_characteristics(list(wanted))
-        return {
-            wanted[aid_iid]: payload["value"]
-            for aid_iid, payload in result.items()
-            if aid_iid in wanted and "value" in payload
+        required = {
+            ctype for ctype in wanted.values() if ctype in _ESSENTIAL_THERMOSTAT_CHARS
         }
+        try:
+            async with asyncio.timeout(limit or LOCAL_READ_TIMEOUT):
+                result: Any = await self.pairing.get_characteristics(list(wanted))
+        except LOCAL_ERRORS:
+            self._failed_essential_chars.update(required)
+            raise
+        if not isinstance(result, Mapping):
+            self._failed_essential_chars.update(required)
+            raise LocalCharacteristicReadError(
+                "HomeKit returned an invalid characteristic response"
+            )
+
+        values: dict[str, Any] = {}
+        failures: list[str] = []
+        successful_required: set[str] = set()
+        for aid_iid, ctype in wanted.items():
+            payload = result.get(aid_iid)
+            if not isinstance(payload, Mapping) or _has_status_error(payload):
+                if ctype in _ESSENTIAL_THERMOSTAT_CHARS:
+                    status = (
+                        payload.get("status") if isinstance(payload, Mapping) else None
+                    )
+                    failures.append(
+                        f"{ctype}: {status if status is not None else 'missing'}"
+                    )
+                    self._failed_essential_chars.add(ctype)
+                continue
+            if "value" not in payload:
+                if ctype in _ESSENTIAL_THERMOSTAT_CHARS:
+                    failures.append(f"{ctype}: missing value")
+                    self._failed_essential_chars.add(ctype)
+                continue
+            values[ctype] = payload["value"]
+            if ctype in _ESSENTIAL_THERMOSTAT_CHARS:
+                successful_required.add(ctype)
+
+        if failures:
+            raise LocalCharacteristicReadError(
+                "HomeKit failed to read required characteristics: "
+                + ", ".join(failures)
+            )
+        self._failed_essential_chars.difference_update(successful_required)
+        return values
 
     def start_write(self, values: Mapping[str, Any]) -> asyncio.Task[None]:
         """Start writing characteristics; the caller decides how long to wait.
@@ -353,7 +459,8 @@ class LocalThermostat:
     @callback
     def mark_available(self) -> None:
         """Called by the router when a read-back proved the connection works."""
-        self._set_available(True)
+        if not self._failed_essential_chars:
+            self._set_available(True)
 
     @callback
     def mark_unavailable(self, error: str) -> None:

@@ -16,9 +16,11 @@ from homeassistant.const import (
     CONF_EMAIL,
     CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
+    EVENT_HOMEASSISTANT_STARTED,
     Platform,
 )
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import (
     config_validation as cv,
     device_registry as dr,
@@ -30,7 +32,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 
 from .account import async_delete_account_issues, async_update_account_issues
-from .api import MysaAuth, MysaClient
+from .api import MysaAuth, MysaClient, MysaError
 from .cloud import MysaCloudCoordinator
 from .const import (
     CONF_CLOUD_ENABLED,
@@ -53,6 +55,7 @@ from .data import MysaConfigEntry, MysaRuntimeData
 from .homekit import ENDPOINT_KEYS, async_get_controller, async_unpair
 from .local import LOCAL_ERRORS, LocalThermostat
 from .migration import async_migrate_homekit_controller
+from .schedule import async_recover_schedule
 from .services import async_setup_services
 from .thermostat import Thermostat
 
@@ -96,6 +99,25 @@ LOCAL_START_WAIT = 8.0
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register the integration's actions."""
     async_setup_services(hass)
+
+    async def _prune_pairing_backups_after_start(_event: Event) -> None:
+        """Prune backups only when persisted config entries have been loaded."""
+        from .config_flow import (
+            _async_clear_configured_pairing_backups,
+            configured_hkids,
+        )
+
+        configured: set[str] = set()
+        for entry in hass.config_entries.async_entries(DOMAIN, include_ignore=False):
+            configured.update(configured_hkids(entry))
+        await _async_clear_configured_pairing_backups(hass, configured)
+
+    # A flow-created entry may not yet be durably written by HA's delayed
+    # config-entry storage. Wait for the next full startup before deleting its
+    # pairing backup, so a crash during the current run remains recoverable.
+    hass.bus.async_listen_once(
+        EVENT_HOMEASSISTANT_STARTED, _prune_pairing_backups_after_start
+    )
     return True
 
 
@@ -184,6 +206,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
         runtime.thermostats[subentry.subentry_id] = Thermostat(
             hass, subentry, local, lambda: runtime.cloud
         )
+        entry.async_on_unload(runtime.thermostats[subentry.subentry_id].stop)
 
     # Give the LAN connections a few seconds; slow ones keep connecting in the
     # background and their entities turn available when they're up.
@@ -200,13 +223,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
     if cloud is not None:
         _async_restore_cloud_entities(hass, entry)
         await cloud.async_refresh()
+        recoveries = set(runtime.thermostats)
+        recovery_task: asyncio.Task[None] | None = None
+
+        async def _recover_schedules() -> None:
+            """Retry interrupted schedule changes once the cloud is reachable."""
+            for subentry_id in list(recoveries):
+                thermostat = runtime.thermostats[subentry_id]
+                try:
+                    await async_recover_schedule(thermostat)
+                except (HomeAssistantError, MysaError) as err:
+                    LOGGER.warning(
+                        "%s: schedule recovery is still pending: %s",
+                        thermostat.name,
+                        err,
+                    )
 
         @callback
         def _cloud_updated() -> None:
+            nonlocal recovery_task
             for thermostat in runtime.thermostats.values():
                 thermostat.notify()
             async_update_account_issues(hass, entry)
             _async_update_devices(hass, entry)
+            if (
+                recoveries
+                and cloud.last_update_success
+                and (recovery_task is None or recovery_task.done())
+            ):
+                recovery_task = entry.async_create_background_task(
+                    hass, _recover_schedules(), "mysa recover interrupted schedules"
+                )
 
         entry.async_on_unload(cloud.async_add_listener(_cloud_updated))
         # A thermostat that is unreachable from the start goes into cloud
@@ -375,11 +422,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> boo
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         await asyncio.gather(
-            *(
-                t.local.async_stop()
-                for t in entry.runtime_data.thermostats.values()
-                if t.local is not None
-            )
+            *(t.async_stop() for t in entry.runtime_data.thermostats.values())
         )
     return unloaded
 

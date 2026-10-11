@@ -171,7 +171,7 @@ class DeviceState:
 
     @property
     def heating(self) -> bool | None:
-        """True while the heater relay is on."""
+        """Whether the last telemetry interval recorded heating/cooling activity."""
         if self.duty_cycle is None:
             return None
         return self.duty_cycle > 0
@@ -271,6 +271,8 @@ class DeviceRecord:
     raw: dict[str, Any] = field(repr=False)
     name: str | None
     model: str | None
+    setpoint_min: float | None
+    setpoint_max: float | None
     home_id: str | None
     time_zone: str | None
     display_format: str | None
@@ -284,6 +286,8 @@ class DeviceRecord:
             raw=dict(data),
             name=_str(data.get("Name")),
             model=_str(data.get("Model")),
+            setpoint_min=_float(data.get("MinSetpoint")),
+            setpoint_max=_float(data.get("MaxSetpoint")),
             home_id=_str(data.get("Home")),
             time_zone=_str(data.get("TimeZone")),
             display_format=_str(data.get("Format")),

@@ -180,7 +180,13 @@ class MysaNumber(MysaCloudEntity, NumberEntity):
     def native_value(self) -> float | None:
         """Current value."""
         state = self.cloud_state
-        return self.entity_description.value(state) if state else None
+        if state is None:
+            return None
+        if self.entity_description.key == "setpoint_min":
+            return self.thermostat.setpoint_min
+        if self.entity_description.key == "setpoint_max":
+            return self.thermostat.setpoint_max
+        return self.entity_description.value(state)
 
     async def async_set_native_value(self, value: float) -> None:
         """Write the new value."""
@@ -188,16 +194,14 @@ class MysaNumber(MysaCloudEntity, NumberEntity):
         if state is None:
             raise translated_error("cloud_required", name=self.thermostat.name)
         key = self.entity_description.key
-        if (
-            key == "setpoint_min"
-            and state.setpoint_max is not None
-            and value >= state.setpoint_max
+        if key == "setpoint_min" and (
+            (setpoint_max := self.thermostat.setpoint_max) is not None
+            and value >= setpoint_max
         ):
             raise translated_error("limits_invalid")
-        if (
-            key == "setpoint_max"
-            and state.setpoint_min is not None
-            and value <= state.setpoint_min
+        if key == "setpoint_max" and (
+            (setpoint_min := self.thermostat.setpoint_min) is not None
+            and value <= setpoint_min
         ):
             raise translated_error("limits_invalid")
         await self.thermostat.async_cloud_update(
