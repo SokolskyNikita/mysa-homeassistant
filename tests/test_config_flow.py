@@ -5,6 +5,7 @@ from __future__ import annotations
 from ipaddress import ip_address
 from unittest.mock import AsyncMock, patch
 
+from aiohomekit.exceptions import MalformedPinError
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, CONF_SCAN_INTERVAL
@@ -15,6 +16,7 @@ from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.mysa_local.config_flow import InsecureCodeError, format_pin
 from custom_components.mysa_local.const import (
     CONF_CLOUD_ENABLED,
     CONF_CLOUD_RUNTIME,
@@ -90,10 +92,16 @@ async def test_user_pick_and_pair_local_only(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"pairing_code": "12345678"}
     )
-    assert result["errors"] == {"pairing_code": "invalid_code"}
+    assert result["errors"] == {"pairing_code": "insecure_code"}
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"pairing_code": PAIRING_CODE}
+        result["flow_id"], {"pairing_code": "111 22"}
+    )
+    assert result["errors"] == {"pairing_code": "invalid_code"}
+
+    # Typed with spaces, as people copy it off the faceplate.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"pairing_code": " 1112 2333 "}
     )
     assert result["type"] is FlowResultType.MENU
     assert result["step_id"] == "cloud_offer"
@@ -481,3 +489,32 @@ async def test_takeover_from_homekit_device(
     assert climate.unique_id == f"{DEVICE_ID}_climate"
     assert ent_reg.async_get(old_temp.entity_id).unique_id == f"{DEVICE_ID}_temperature"
     assert hass.states.get(old_climate.entity_id).state == "heat"
+
+
+@pytest.mark.parametrize(
+    ("typed", "expected"),
+    [
+        ("24680135", "246-80-135"),
+        ("246-80-135", "246-80-135"),
+        ("2468 0135", "246-80-135"),
+        (" 246 80 135 ", "246-80-135"),
+        ("246.80.135", "246-80-135"),
+        ("2468-0135", "246-80-135"),
+    ],
+)
+def test_format_pin_accepts_any_separators(typed: str, expected: str) -> None:
+    """Only the digits matter."""
+    assert format_pin(typed) == expected
+
+
+@pytest.mark.parametrize("typed", ["", "1234567", "123456789", "abc-de-fgh"])
+def test_format_pin_needs_eight_digits(typed: str) -> None:
+    """Anything other than 8 digits is rejected."""
+    with pytest.raises(MalformedPinError):
+        format_pin(typed)
+
+
+def test_format_pin_rejects_trivial_codes() -> None:
+    """HomeKit never uses codes like 111-11-111."""
+    with pytest.raises(InsecureCodeError):
+        format_pin("1111 1111")

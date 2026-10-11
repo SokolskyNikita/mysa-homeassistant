@@ -87,7 +87,6 @@ from .homekit import ENDPOINT_KEYS, async_copy_pairing, async_get_controller
 from .local import CONNECTION_ERRORS, AccessoryInfo, parse_accessories
 from .migration import HKC_DOMAIN
 
-PIN_FORMAT = re.compile(r"^(\d{3})-?(\d{2})-?(\d{3})$")
 INSECURE_CODES = {
     "00000000",
     "11111111",
@@ -108,12 +107,22 @@ CONF_ENTRY = "entry"
 CONF_DEVICES = "devices"
 
 
+class InsecureCodeError(ValueError):
+    """A trivial code like 11111111, which HomeKit never uses."""
+
+
 def format_pin(pin: str) -> str:
-    """Accept 12345678 or 123-45-678 and return 123-45-678."""
-    match = PIN_FORMAT.match(pin.strip())
-    if not match or "".join(match.groups()) in INSECURE_CODES:
+    """Return the code as 123-45-678, whatever spacing or dashes it was typed with.
+
+    Only the digits count. Raises MalformedPinError unless there are exactly 8,
+    and InsecureCodeError for the trivial codes HomeKit forbids.
+    """
+    digits = re.sub(r"\D", "", pin)
+    if len(digits) != 8:
         raise aiohomekit.exceptions.MalformedPinError(pin)
-    return "-".join(match.groups())
+    if digits in INSECURE_CODES:
+        raise InsecureCodeError(pin)
+    return f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
 
 
 def hub_entry(hass: HomeAssistant) -> ConfigEntry | None:
@@ -377,6 +386,8 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
                 code = format_pin(user_input[CONF_PAIRING_CODE])
             except aiohomekit.exceptions.MalformedPinError:
                 return self._show_pair_form({CONF_PAIRING_CODE: "invalid_code"})
+            except InsecureCodeError:
+                return self._show_pair_form({CONF_PAIRING_CODE: "insecure_code"})
 
         if self._finish_pairing is None:
             error, detail = await self._async_start_pairing()

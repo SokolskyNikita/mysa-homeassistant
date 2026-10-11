@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 (2026-10-11)
+
+- The HomeKit code field accepts any spacing or punctuation ("1234 5678", "123-45-678", ...): only the 8 digits count. The error messages are clearer.
+
 ## 0.1.2 (2026-10-11)
 
 - The setup and options menus mark the Mysa sign-in as [optional], and the sign-in form lists what it adds.

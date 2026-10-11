@@ -78,7 +78,7 @@
     },
     "error": {
       "no_devices": "No unpaired Mysa thermostats were found on your network.",
-      "invalid_code": "Enter the 8-digit code as 12345678 or 123-45-678. Trivial codes like 12345678 aren't accepted.",
+      "invalid_code": "The HomeKit code has 8 digits (printed on the back of the faceplate). Spaces and dashes are fine.",
       "wrong_code": "The thermostat rejected that code.",
       "max_peers": "The thermostat can't take another HomeKit controller. Remove one first.",
       "max_tries": "The thermostat got too many wrong codes. Restart it and try again.",
@@ -89,7 +89,8 @@
       "invalid_auth": "Wrong email or password.",
       "mfa_unsupported": "This Mysa account asks for an extra sign-in step that isn't supported.",
       "cannot_connect": "Couldn't reach Mysa's servers.",
-      "unknown": "Unexpected error."
+      "unknown": "Unexpected error.",
+      "insecure_code": "That isn't a valid HomeKit code. Check the back of the faceplate."
     },
     "abort": {
       "already_configured_hub": "Mysa Local is already set up. To add another thermostat, use **Add thermostat** on the integration's page.",
@@ -176,14 +177,15 @@
       },
       "error": {
         "no_devices": "No unpaired Mysa thermostats were found on your network.",
-        "invalid_code": "Enter the 8-digit code as 12345678 or 123-45-678. Trivial codes like 12345678 aren't accepted.",
+        "invalid_code": "The HomeKit code has 8 digits (printed on the back of the faceplate). Spaces and dashes are fine.",
         "wrong_code": "The thermostat rejected that code.",
         "max_peers": "The thermostat can't take another HomeKit controller. Remove one first.",
         "max_tries": "The thermostat got too many wrong codes. Restart it and try again.",
         "busy": "The thermostat is busy pairing with another controller. Try again in a minute.",
         "pairing_failed": "Pairing failed.",
         "cannot_connect_device": "Couldn't reach the thermostat on your network.",
-        "takeover_failed": "The thermostat refused the new pairing."
+        "takeover_failed": "The thermostat refused the new pairing.",
+        "insecure_code": "That isn't a valid HomeKit code. Check the back of the faceplate."
       },
       "abort": {
         "already_configured": "This thermostat is already set up.",
@@ -238,7 +240,7 @@
       },
       "sign_out": {
         "title": "Sign out of Mysa",
-        "description": "Deletes the stored sign-in. Cloud-only entities are removed and thermostats added from the account stop working until you sign in again."
+        "description": "Deletes the stored Mysa sign-in. Cloud-only entities are removed, and thermostats added from the account stop working until you sign in again."
       }
     },
     "error": {
