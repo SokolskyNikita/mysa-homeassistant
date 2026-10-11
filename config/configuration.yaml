@@ -1,0 +1,11 @@
+# Development instance started by scripts/develop.
+default_config:
+
+homeassistant:
+  debug: true
+
+logger:
+  default: info
+  logs:
+    custom_components.mysa_local: debug
+    aiohomekit: info

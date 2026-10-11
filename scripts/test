@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Run the test suite with coverage.
+set -e
+cd "$(dirname "$0")/.."
+python3 -m pytest --cov=custom_components.mysa_local --cov-report=term-missing "$@"

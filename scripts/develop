@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Run a development Home Assistant with this integration loaded.
+set -e
+cd "$(dirname "$0")/.."
+if [[ ! -d "${PWD}/config" ]]; then
+    mkdir -p "${PWD}/config"
+    hass --config "${PWD}/config" --script ensure_config
+fi
+# Keeps custom_components/ in the repo root while HA's config lives in config/.
+export PYTHONPATH="${PYTHONPATH}:${PWD}/custom_components"
+hass --config "${PWD}/config" --debug

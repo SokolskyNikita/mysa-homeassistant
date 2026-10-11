@@ -1,0 +1,83 @@
+"""Constants for the Mysa Local integration."""
+
+from __future__ import annotations
+
+from datetime import timedelta
+import logging
+from typing import Final
+
+DOMAIN: Final = "mysa_local"
+LOGGER = logging.getLogger(__package__)
+
+VERSION: Final = "0.1.0"
+USER_AGENT: Final = (
+    f"mysa-homeassistant/{VERSION} "
+    "(+https://github.com/SokolskyNikita/mysa-homeassistant)"
+)
+WIFI_SETUP_URL: Final = "https://sokolskynikita.github.io/mysa-wifi-setup/"
+ISSUES_URL: Final = "https://github.com/SokolskyNikita/mysa-homeassistant/issues"
+
+SUBENTRY_THERMOSTAT: Final = "thermostat"
+
+# Hub entry data
+CONF_REFRESH_TOKEN: Final = "refresh_token"  # noqa: S105
+CONF_USER_ID: Final = "user_id"
+
+# Hub entry options
+CONF_CLOUD_ENABLED: Final = "cloud_enabled"
+CONF_FIRMWARE_INSTALL: Final = "allow_firmware_install"
+DEFAULT_SCAN_INTERVAL: Final = 60
+MIN_SCAN_INTERVAL: Final = 30
+MAX_SCAN_INTERVAL: Final = 300
+
+# Thermostat subentry data
+CONF_DEVICE_ID: Final = "device_id"
+CONF_MODEL: Final = "model"
+CONF_PAIRING: Final = "pairing"
+CONF_HEATER_WATTS: Final = "heater_watts"
+CONF_CLOUD_RUNTIME: Final = "use_cloud_runtime"
+CONF_MIGRATE_FROM: Final = "migrate_from_entry"
+
+# Local (HomeKit) behaviour
+LOCAL_WRITE_TIMEOUT: Final = 5.0
+LOCAL_READ_TIMEOUT: Final = 3.0
+LOCAL_POLL_INTERVAL: Final = timedelta(seconds=30)
+LOCAL_DOWN_ISSUE_AFTER: Final = timedelta(minutes=15)
+
+# Cloud polling of the slower-moving data
+CLOUD_RECORDS_INTERVAL: Final = timedelta(minutes=10)
+CLOUD_USAGE_INTERVAL: Final = timedelta(minutes=15)
+CLOUD_HOLD_INTERVAL: Final = timedelta(minutes=5)
+CLOUD_FIRMWARE_INTERVAL: Final = timedelta(hours=6)
+CLOUD_CAPABILITIES_INTERVAL: Final = timedelta(hours=24)
+CLOUD_REFRESH_AFTER_WRITE: Final = 2.0
+CLOUD_WRITE_SPACING: Final = 0.5
+CLOUD_MAX_BACKOFF: Final = timedelta(minutes=10)
+
+# Mysa models that ship HomeKit. Discovery of these goes to this integration.
+HOMEKIT_MODELS: Final = (
+    "BB-V1-0",
+    "BB-V1-1",
+    "BB-V2-0",
+    "BB-V2-0-L",
+    "BB-V3-0",
+    "INF-V1-0",
+    "AC-V1-0",
+    "ST-V1-0",
+    "CS-V1-0",
+)
+MANUFACTURER: Final = "Mysa"
+HOMEKIT_MANUFACTURER: Final = "Empowered Homes Inc."
+
+# Hidden accessory-information characteristic that holds the Wi-Fi MAC, which is
+# also Mysa's cloud device ID.
+MAC_CHAR_UUID: Final = "22280E2C-9B79-43BD-8370-5A8F67777B29"
+
+ATTR_UNTIL: Final = "until"
+ATTR_EVENTS: Final = "events"
+
+CONNECTION_LOCAL: Final = "local"
+CONNECTION_CLOUD: Final = "cloud"
+CONNECTION_OFFLINE: Final = "offline"
+
+SIGNAL_CLOUD_UPDATED: Final = f"{DOMAIN}_cloud_updated"

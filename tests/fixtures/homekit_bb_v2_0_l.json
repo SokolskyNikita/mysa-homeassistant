@@ -1,0 +1,66 @@
+[
+  {
+    "aid": 1,
+    "services": [
+      {
+        "iid": 1,
+        "type": "0000003E-0000-1000-8000-0026BB765291",
+        "characteristics": [
+          {"iid": 2, "type": "00000014-0000-1000-8000-0026BB765291", "perms": ["pw"], "format": "bool", "description": "Identify"},
+          {"iid": 3, "type": "00000020-0000-1000-8000-0026BB765291", "perms": ["pr"], "format": "string", "value": "Empowered Homes Inc.", "maxLen": 64},
+          {"iid": 4, "type": "00000021-0000-1000-8000-0026BB765291", "perms": ["pr"], "format": "string", "value": "BB-V2-0-L", "maxLen": 64},
+          {"iid": 5, "type": "00000023-0000-1000-8000-0026BB765291", "perms": ["pr"], "format": "string", "value": "Mysa-d4e5f6", "maxLen": 64},
+          {"iid": 6, "type": "00000030-0000-1000-8000-0026BB765291", "perms": ["pr"], "format": "string", "value": "SERIAL0001", "maxLen": 64},
+          {"iid": 7, "type": "00000052-0000-1000-8000-0026BB765291", "perms": ["pr"], "format": "string", "value": "3.17.5", "maxLen": 64},
+          {"iid": 8, "type": "00000053-0000-1000-8000-0026BB765291", "perms": ["pr"], "format": "string", "value": "0", "maxLen": 64},
+          {"iid": 9, "type": "34AB8811-AC7F-4340-BAC3-FD6A85F9943B", "perms": ["pr", "hd"], "format": "string", "value": "\"6.3\"", "maxLen": 64},
+          {"iid": 10, "type": "22280E2C-9B79-43BD-8370-5A8F67777B29", "perms": ["pr", "hd"], "format": "string", "value": "a1b2c3d4e5f6", "maxLen": 64},
+          {"iid": 13, "type": "00000220-0000-1000-8000-0026BB765291", "perms": ["pr"], "format": "data", "value": "AAAAAAAAAAA="}
+        ]
+      },
+      {
+        "iid": 768,
+        "type": "3354EC82-AF38-4755-B4A4-4DB8E418F555",
+        "characteristics": [
+          {"iid": 770, "type": "E71D8348-BB33-4C34-8C50-A64B1136EDD2", "perms": ["pr", "pw", "hd"], "format": "bool", "value": false}
+        ]
+      },
+      {
+        "iid": 16,
+        "type": "000000A2-0000-1000-8000-0026BB765291",
+        "characteristics": [
+          {"iid": 18, "type": "00000037-0000-1000-8000-0026BB765291", "perms": ["pr"], "format": "string", "value": "1.1.0", "maxLen": 64}
+        ]
+      },
+      {
+        "iid": 256,
+        "type": "0000004A-0000-1000-8000-0026BB765291",
+        "primary": true,
+        "characteristics": [
+          {"iid": 258, "type": "00000023-0000-1000-8000-0026BB765291", "perms": ["pr"], "format": "string", "value": "Thermostat", "maxLen": 64},
+          {"iid": 261, "type": "00000011-0000-1000-8000-0026BB765291", "perms": ["pr", "ev"], "format": "float", "value": 21.4, "minValue": -40, "maxValue": 125, "minStep": 0.1, "unit": "celsius"},
+          {"iid": 262, "type": "00000035-0000-1000-8000-0026BB765291", "perms": ["pr", "pw", "ev"], "format": "float", "value": 21.5, "minValue": 5, "maxValue": 30, "minStep": 0.5, "unit": "celsius"},
+          {"iid": 263, "type": "00000036-0000-1000-8000-0026BB765291", "perms": ["pr", "pw", "ev"], "format": "uint8", "value": 0, "minValue": 0, "maxValue": 1, "minStep": 1, "valid-values": [0, 1]},
+          {"iid": 259, "type": "0000000F-0000-1000-8000-0026BB765291", "perms": ["pr", "ev"], "format": "uint8", "value": 1, "minValue": 0, "maxValue": 1, "minStep": 1, "valid-values": [0, 1]},
+          {"iid": 260, "type": "00000033-0000-1000-8000-0026BB765291", "perms": ["pr", "pw", "ev"], "format": "uint8", "value": 1, "minValue": 0, "maxValue": 1, "minStep": 1, "valid-values": [0, 1]}
+        ]
+      },
+      {
+        "iid": 1280,
+        "type": "0000022A-0000-1000-8000-0026BB765291",
+        "characteristics": [
+          {"iid": 1281, "type": "0000022B-0000-1000-8000-0026BB765291", "perms": ["pr"], "format": "bool", "value": true},
+          {"iid": 1282, "type": "0000022C-0000-1000-8000-0026BB765291", "perms": ["pr"], "format": "uint32", "value": 9, "minValue": 0, "maxValue": 15, "minStep": 1}
+        ]
+      },
+      {
+        "iid": 1536,
+        "type": "00000239-0000-1000-8000-0026BB765291",
+        "characteristics": [
+          {"iid": 1537, "type": "0000023C-0000-1000-8000-0026BB765291", "perms": ["pr"], "format": "data", "value": ""},
+          {"iid": 1538, "type": "0000024A-0000-1000-8000-0026BB765291", "perms": ["pr", "ev"], "format": "uint32", "value": 1, "minValue": 1, "maxValue": 65535, "minStep": 1}
+        ]
+      }
+    ]
+  }
+]

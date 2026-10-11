@@ -1,0 +1,33 @@
+{
+  "meta": {
+    "region": "us-east-1",
+    "primaryHomeId": "00000000-0000-4000-8000-0000000000a1",
+    "activeHomeId": "00000000-0000-4000-8000-0000000000a1"
+  },
+  "data": {
+    "user": {
+      "Id": "00000000-0000-4000-8000-0000000000b1",
+      "AllowedDevices": ["a1b2c3d4e5f6"],
+      "AllowedHomes": ["00000000-0000-4000-8000-0000000000a1"],
+      "PrimaryHome": "00000000-0000-4000-8000-0000000000a1"
+    },
+    "homes": [
+      {
+        "Id": "00000000-0000-4000-8000-0000000000a1",
+        "Name": "DefaultHome",
+        "Zones": []
+      }
+    ],
+    "devices": {
+      "a1b2c3d4e5f6": {
+        "DutyCycleOpt": 9,
+        "Format": "celsius",
+        "Home": "00000000-0000-4000-8000-0000000000a1",
+        "Id": "a1b2c3d4e5f6",
+        "Model": "BB-V2-0-L",
+        "Name": "Living Room",
+        "TimeZone": "America/Los_Angeles"
+      }
+    }
+  }
+}

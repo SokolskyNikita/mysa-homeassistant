@@ -1,0 +1,119 @@
+{
+  "a1b2c3d4e5f6": {
+    "data": {
+      "latestTelemetry": {
+        "isConnected": true,
+        "lastConnected": 1791700000,
+        "reading": {
+          "deviceId": "a1b2c3d4e5f6",
+          "timestamp": 1791700000,
+          "rawTemperature": 28.9,
+          "roomTemperature": 21.4,
+          "humidity": 40,
+          "heatSetpoint": 21.5,
+          "coolSetpoint": 21.5,
+          "onTime": 0,
+          "coreTemperature": 35.2,
+          "freeHeap": 70000,
+          "rssi": -55,
+          "mode": 3,
+          "dutyCycle": 0.4,
+          "voltage": 240,
+          "maxCurrent": 0,
+          "powerConsumed": 0,
+          "effectiveSetpoint": 21.5,
+          "instantLoad": 0,
+          "timestampEstimated": false
+        }
+      },
+      "targetHeat": {
+        "desired": {
+          "timestamp": 1791699000,
+          "setpoint": 21.5,
+          "lockoutMax": 30,
+          "lockoutMin": 5
+        },
+        "reported": {
+          "timestamp": 1791699002,
+          "setpoint": 21.5,
+          "lockoutMax": 30,
+          "lockoutMin": 5
+        }
+      },
+      "modes": {
+        "desired": {
+          "timestamp": 1791699000,
+          "mode": 4
+        },
+        "reported": {
+          "timestamp": 1791699002,
+          "mode": 4
+        }
+      },
+      "identity": {
+        "reported": {
+          "timestamp": 1791600000,
+          "family": "BB",
+          "model": "BB-V2-0-L",
+          "fw": "3.17.5.13"
+        }
+      },
+      "physicalInterface": {
+        "desired": {
+          "timestamp": 1791690000,
+          "activeIntensity": 100,
+          "idleIntensity": 50,
+          "lockout": 0,
+          "format": "C"
+        },
+        "reported": {
+          "timestamp": 1791690001,
+          "activeIntensity": 100,
+          "idleIntensity": 50,
+          "lockout": 0,
+          "format": "C",
+          "intensityMode": 0
+        }
+      },
+      "tracking": {
+        "desired": {
+          "timestamp": 1791690000,
+          "ambientOffset": 0
+        },
+        "reported": {
+          "timestamp": 1791690001,
+          "ambientOffset": 0
+        }
+      },
+      "diagnostics": {
+        "reported": {
+          "timestamp": 1791699002,
+          "freeHeap": 70000
+        }
+      },
+      "power": {
+        "reported": {
+          "timestamp": 1791700000,
+          "voltage": 240,
+          "current": 0,
+          "wattage": 0,
+          "dutyCycle": 0
+        }
+      },
+      "bbConfig": {
+        "desired": {
+          "timestamp": 1791690000,
+          "controlType": 9
+        },
+        "reported": {
+          "timestamp": 1791690004,
+          "controlType": 9
+        }
+      },
+      "drState": {
+        "inEvent": false,
+        "state": "none"
+      }
+    }
+  }
+}

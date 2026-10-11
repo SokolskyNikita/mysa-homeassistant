@@ -1,0 +1,55 @@
+hold:
+  target:
+    entity:
+      integration: mysa_local
+      domain: climate
+  fields:
+    temperature:
+      selector:
+        number:
+          min: 5
+          max: 35
+          step: 0.5
+          unit_of_measurement: "°C"
+          mode: box
+    hvac_mode:
+      selector:
+        select:
+          translation_key: hvac_mode
+          options:
+            - "off"
+            - heat
+            - cool
+    until:
+      selector:
+        datetime:
+
+resume_schedule:
+  target:
+    entity:
+      integration: mysa_local
+      domain: climate
+
+set_schedule:
+  target:
+    entity:
+      integration: mysa_local
+      domain: climate
+  fields:
+    events:
+      required: true
+      example: |
+        - days: [mon, tue, wed, thu, fri]
+          time: "06:30"
+          temperature: 21
+        - days: [mon, tue, wed, thu, fri]
+          time: "22:00"
+          temperature: 18
+      selector:
+        object:
+
+clear_schedule:
+  target:
+    entity:
+      integration: mysa_local
+      domain: climate

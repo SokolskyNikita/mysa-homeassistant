@@ -1,0 +1,11 @@
+{
+  "heatSetpoint": [
+    {"timestamp": 1791690000, "value": 22, "source": "device"},
+    {"timestamp": 1791690100, "value": 22.5, "source": "app"},
+    {"timestamp": 1791690200, "value": 21, "source": "schedule"}
+  ],
+  "mode": [
+    {"timestamp": 1791690050, "value": 0, "source": "app"},
+    {"timestamp": 1791690060, "value": 4, "source": "device"}
+  ]
+}

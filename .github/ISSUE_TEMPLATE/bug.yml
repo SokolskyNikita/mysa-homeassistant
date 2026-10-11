@@ -1,0 +1,44 @@
+name: Bug report
+description: Something doesn't work as described.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please attach diagnostics: Settings → Devices & services → Mysa Local → ⋮ → Download diagnostics. They're redacted (no tokens, keys, addresses or account IDs), but have a look before posting.
+  - type: input
+    id: model
+    attributes:
+      label: Thermostat model
+      description: For example BB-V2-0-L (shown on the device page).
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Mysa Local version, Home Assistant version, thermostat firmware.
+    validations:
+      required: true
+  - type: dropdown
+    id: cloud
+    attributes:
+      label: Mysa cloud
+      options:
+        - Signed in, cloud on
+        - Signed in, cloud off
+        - Local only (not signed in)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug log
+      description: Enable debug logging for Mysa Local on its integration page, reproduce, then disable it and paste the relevant part.
+      render: text

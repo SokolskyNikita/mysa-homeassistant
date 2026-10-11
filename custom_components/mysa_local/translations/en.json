@@ -1,0 +1,415 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Add a Mysa thermostat",
+        "description": "Mysa Local controls Mysa thermostats over your own network (HomeKit), with Mysa's cloud as an optional extra.\n\nTested so far on the Mysa Baseboard Lite (BB-V2-0-L). Other models are supported through Mysa's capability data but are untested.",
+        "menu_options": {
+          "pick": "Pair a thermostat on this network",
+          "takeover": "Move a thermostat from the HomeKit Device integration",
+          "cloud_login": "Sign in to Mysa and add thermostats from my account",
+          "wifi_help": "My thermostat isn't on Wi-Fi yet"
+        }
+      },
+      "wifi_help": {
+        "title": "Put the thermostat on Wi-Fi",
+        "description": "A new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the browser-based setup page: [{url}]({url}). It works in Chrome or Edge on a computer with Bluetooth, with no Mysa app and no phone.\n\nOnce it's on Wi-Fi, Home Assistant discovers it. Submit to go back."
+      },
+      "pick": {
+        "title": "Pick a thermostat",
+        "description": "Unpaired Mysa thermostats found on your network. If yours isn't listed, check it's on Wi-Fi ([setup page]({url})) and that it isn't paired to Apple Home or another controller.",
+        "data": {
+          "device": "Thermostat"
+        }
+      },
+      "pair": {
+        "title": "Pair {name}",
+        "description": "Enter the 8-digit HomeKit setup code for {name} ({model}). It's printed on the back of the faceplate.\n\nA thermostat can only be paired to one HomeKit controller. If it's in Apple Home, remove it there first. {error}",
+        "data": {
+          "pairing_code": "HomeKit setup code"
+        }
+      },
+      "takeover": {
+        "title": "Move from HomeKit Device",
+        "data": {
+          "entry": "Thermostat"
+        }
+      },
+      "takeover_confirm": {
+        "title": "Move {name} to Mysa Local",
+        "description": "Mysa Local adds its own HomeKit pairing to {name} through the existing one, so you don't need the setup code. Its entities keep their entity IDs, names and area, and the HomeKit Device entry is removed afterwards. {error}"
+      },
+      "cloud_offer": {
+        "title": "Mysa cloud (optional)",
+        "description": "Signing in to your Mysa account adds what HomeKit doesn't expose: button lock, display brightness, setpoint limits, temperature offset, heater type, schedules and holds, firmware updates and the thermostat's own heating runtime. It also keeps control working if the local connection drops.\n\nYou can skip this and sign in later from the integration's options.",
+        "menu_options": {
+          "cloud_login": "Sign in to Mysa",
+          "finish": "Skip, local only"
+        }
+      },
+      "cloud_login": {
+        "title": "Sign in to Mysa",
+        "description": "Your password is only used to sign in and isn't stored; Home Assistant keeps a sign-in token instead.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "cloud_devices": {
+        "title": "Thermostats from your account",
+        "description": "These are controlled through Mysa's cloud only. To add a thermostat locally later, pair it from the integration page.",
+        "data": {
+          "devices": "Thermostats"
+        }
+      },
+      "finish": {
+        "title": "Untested model",
+        "description": "The {model} hasn't been tested with Mysa Local yet. It should work through Mysa's capability data, but some features may be missing or wrong. After setup, please download the diagnostics and share them in an issue on GitHub, so it can be marked as tested."
+      },
+      "reauth_confirm": {
+        "title": "Sign in to Mysa again",
+        "description": "The stored Mysa sign-in stopped working. Local control keeps working in the meantime.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "no_devices": "No unpaired Mysa thermostats were found on your network.",
+      "invalid_code": "Enter the 8-digit code as 12345678 or 123-45-678. Trivial codes like 12345678 aren't accepted.",
+      "wrong_code": "The thermostat rejected that code.",
+      "max_peers": "The thermostat can't take another HomeKit controller. Remove one first.",
+      "max_tries": "The thermostat got too many wrong codes. Restart it and try again.",
+      "busy": "The thermostat is busy pairing with another controller. Try again in a minute.",
+      "pairing_failed": "Pairing failed.",
+      "cannot_connect_device": "Couldn't reach the thermostat on your network.",
+      "takeover_failed": "The thermostat refused the new pairing.",
+      "invalid_auth": "Wrong email or password.",
+      "mfa_unsupported": "This Mysa account asks for an extra sign-in step that isn't supported.",
+      "cannot_connect": "Couldn't reach Mysa's servers.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured_hub": "Mysa Local is already set up. To add another thermostat, use **Add thermostat** on the integration's page.",
+      "already_configured": "This thermostat is already set up.",
+      "already_in_progress": "This thermostat is already being set up.",
+      "already_paired": "This thermostat is paired to another HomeKit controller (for example Apple Home). Remove it there first.",
+      "cannot_connect": "Couldn't reach the thermostat on your network.",
+      "not_supported": "This device isn't a supported Mysa model.",
+      "invalid_discovery": "The discovery data was incomplete.",
+      "thermostat_added": "{name} was added to Mysa Local.",
+      "thermostat_updated": "The thermostat was updated.",
+      "no_homekit_device_entries": "No Mysa thermostats were found in the HomeKit Device integration.",
+      "wrong_account": "That's a different Mysa account from the one set up.",
+      "reauth_successful": "Signed in again."
+    }
+  },
+  "config_subentries": {
+    "thermostat": {
+      "entry_type": "Thermostat",
+      "initiate_flow": {
+        "user": "Add thermostat",
+        "reconfigure": "Settings"
+      },
+      "step": {
+        "user": {
+          "title": "Add a Mysa thermostat",
+          "menu_options": {
+            "pick": "Pair a thermostat on this network",
+            "takeover": "Move a thermostat from the HomeKit Device integration",
+            "cloud_pick": "Add a thermostat from my Mysa account (cloud only)",
+            "wifi_help": "My thermostat isn't on Wi-Fi yet"
+          }
+        },
+        "wifi_help": {
+          "title": "Put the thermostat on Wi-Fi",
+          "description": "A new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the browser-based setup page: [{url}]({url}). It works in Chrome or Edge on a computer with Bluetooth, with no Mysa app and no phone.\n\nOnce it's on Wi-Fi, Home Assistant discovers it. Submit to go back."
+        },
+        "pick": {
+          "title": "Pick a thermostat",
+          "description": "Unpaired Mysa thermostats found on your network. If yours isn't listed, check it's on Wi-Fi ([setup page]({url})) and that it isn't paired to Apple Home or another controller.",
+          "data": {
+            "device": "Thermostat"
+          }
+        },
+        "pair": {
+          "title": "Pair {name}",
+          "description": "Enter the 8-digit HomeKit setup code for {name} ({model}). It's printed on the back of the faceplate.\n\nA thermostat can only be paired to one HomeKit controller. If it's in Apple Home, remove it there first. {error}",
+          "data": {
+            "pairing_code": "HomeKit setup code"
+          }
+        },
+        "takeover": {
+          "title": "Move from HomeKit Device",
+          "data": {
+            "entry": "Thermostat"
+          }
+        },
+        "takeover_confirm": {
+          "title": "Move {name} to Mysa Local",
+          "description": "Mysa Local adds its own HomeKit pairing to {name} through the existing one, so you don't need the setup code. Its entities keep their entity IDs, names and area, and the HomeKit Device entry is removed afterwards. {error}"
+        },
+        "cloud_pick": {
+          "title": "Add from your Mysa account",
+          "description": "The thermostat will be controlled through Mysa's cloud only.",
+          "data": {
+            "device": "Thermostat"
+          }
+        },
+        "confirm": {
+          "title": "Untested model",
+          "description": "The {model} hasn't been tested with Mysa Local yet. It should work through Mysa's capability data, but some features may be missing or wrong. After setup, please download the diagnostics and share them in an issue on GitHub, so it can be marked as tested."
+        },
+        "reconfigure": {
+          "title": "{name} settings",
+          "data": {
+            "heater_watts": "Heater wattage",
+            "use_cloud_runtime": "Use the thermostat's own heating runtime (cloud)"
+          },
+          "data_description": {
+            "heater_watts": "Total wattage of the heaters this thermostat switches. Set it to get an energy sensor for the Energy dashboard; 0 turns it off.",
+            "use_cloud_runtime": "The thermostat measures its own on-time, which also covers periods when Home Assistant was down. Off: count it from the heating state that Home Assistant sees."
+          }
+        }
+      },
+      "error": {
+        "no_devices": "No unpaired Mysa thermostats were found on your network.",
+        "invalid_code": "Enter the 8-digit code as 12345678 or 123-45-678. Trivial codes like 12345678 aren't accepted.",
+        "wrong_code": "The thermostat rejected that code.",
+        "max_peers": "The thermostat can't take another HomeKit controller. Remove one first.",
+        "max_tries": "The thermostat got too many wrong codes. Restart it and try again.",
+        "busy": "The thermostat is busy pairing with another controller. Try again in a minute.",
+        "pairing_failed": "Pairing failed.",
+        "cannot_connect_device": "Couldn't reach the thermostat on your network.",
+        "takeover_failed": "The thermostat refused the new pairing."
+      },
+      "abort": {
+        "already_configured": "This thermostat is already set up.",
+        "already_paired": "This thermostat is paired to another HomeKit controller (for example Apple Home). Remove it there first.",
+        "cannot_connect": "Couldn't reach the thermostat on your network.",
+        "thermostat_updated": "The thermostat was updated.",
+        "no_homekit_device_entries": "No Mysa thermostats were found in the HomeKit Device integration.",
+        "no_cloud_devices": "Every thermostat on your Mysa account is already added (or the cloud is off).",
+        "reconfigure_successful": "Saved."
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Mysa Local options",
+        "menu_options": {
+          "settings": "Cloud and polling",
+          "sign_in": "Sign in to Mysa",
+          "sign_out": "Sign out of Mysa"
+        }
+      },
+      "settings": {
+        "title": "Cloud and polling",
+        "data": {
+          "cloud_enabled": "Use Mysa cloud",
+          "scan_interval": "Cloud poll interval"
+        },
+        "data_description": {
+          "cloud_enabled": "Off: no calls to Mysa's servers at all, and the cloud-only entities are removed. Your sign-in is kept, so turning it back on needs no password.",
+          "scan_interval": "How often to read all thermostats from the cloud (one request per poll). Local HomeKit updates are instant regardless."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced",
+            "data": {
+              "allow_firmware_install": "Allow firmware installs"
+            },
+            "data_description": {
+              "allow_firmware_install": "Lets the Firmware entity install updates Mysa offers. Untested, and an install can't be undone."
+            }
+          }
+        }
+      },
+      "sign_in": {
+        "title": "Sign in to Mysa",
+        "description": "Your password is only used to sign in and isn't stored; Home Assistant keeps a sign-in token instead.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "sign_out": {
+        "title": "Sign out of Mysa",
+        "description": "Deletes the stored sign-in. Cloud-only entities are removed and thermostats added from the account stop working until you sign in again."
+      }
+    },
+    "error": {
+      "invalid_auth": "Wrong email or password.",
+      "mfa_unsupported": "This Mysa account asks for an extra sign-in step that isn't supported.",
+      "cannot_connect": "Couldn't reach Mysa's servers.",
+      "unknown": "Unexpected error."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "cloud_online": {
+        "name": "Cloud connection"
+      },
+      "schedule_hold": {
+        "name": "Schedule hold"
+      }
+    },
+    "number": {
+      "brightness_active": {
+        "name": "Wake brightness"
+      },
+      "brightness_idle": {
+        "name": "Sleep brightness"
+      },
+      "setpoint_min": {
+        "name": "Lowest setpoint"
+      },
+      "setpoint_max": {
+        "name": "Highest setpoint"
+      },
+      "temperature_offset": {
+        "name": "Temperature offset"
+      }
+    },
+    "select": {
+      "display_unit": {
+        "name": "Display units",
+        "state": {
+          "celsius": "Celsius",
+          "fahrenheit": "Fahrenheit"
+        }
+      },
+      "heater_type": {
+        "name": "Heater type",
+        "state": {
+          "baseboard": "Baseboard",
+          "fan_forced": "Fan forced"
+        }
+      }
+    },
+    "sensor": {
+      "connection_path": {
+        "name": "Connection path",
+        "state": {
+          "local": "Local",
+          "cloud": "Cloud",
+          "offline": "Offline"
+        }
+      },
+      "wifi_signal": {
+        "name": "Wi-Fi signal"
+      },
+      "heating_runtime_today": {
+        "name": "Heating runtime today"
+      },
+      "energy_today": {
+        "name": "Heater energy today"
+      }
+    },
+    "switch": {
+      "button_lock": {
+        "name": "Button lock"
+      }
+    },
+    "update": {
+      "firmware": {
+        "name": "Firmware"
+      }
+    }
+  },
+  "exceptions": {
+    "auth_expired": {
+      "message": "The Mysa sign-in expired. Sign in again from the integration's page."
+    },
+    "cloud_rate_limited": {
+      "message": "Mysa's servers asked to slow down; retrying later."
+    },
+    "cloud_unavailable": {
+      "message": "Couldn't reach Mysa's servers: {error}"
+    },
+    "cloud_write_failed": {
+      "message": "Mysa's servers refused the change: {error}"
+    },
+    "local_write_rejected": {
+      "message": "The thermostat refused the change: {error}"
+    },
+    "thermostat_unreachable": {
+      "message": "{name} can't be reached locally, and the Mysa cloud isn't available to fall back on."
+    },
+    "local_required": {
+      "message": "{name} needs a working local (HomeKit) connection for this."
+    },
+    "cloud_required": {
+      "message": "{name} needs the Mysa cloud for this. Sign in, or turn the cloud on, in the integration's options."
+    },
+    "limits_invalid": {
+      "message": "The lowest setpoint must stay below the highest setpoint."
+    },
+    "hold_in_past": {
+      "message": "The hold's end time is in the past."
+    },
+    "firmware_timeout": {
+      "message": "{name} didn't report the new firmware within 6 minutes. Check it in a while."
+    }
+  },
+  "issues": {
+    "local_unreachable": {
+      "title": "{name} isn't reachable on your network",
+      "description": "Home Assistant hasn't reached {name} over HomeKit (last address {host}) for {minutes} minutes, and the Mysa cloud isn't available as a fallback.\n\nCheck that the thermostat has power and is on Wi-Fi, and give it a DHCP reservation on your router so its address doesn't change. This message clears itself once the thermostat is back."
+    },
+    "local_unreachable_cloud": {
+      "title": "{name} is running on the Mysa cloud",
+      "description": "Home Assistant hasn't reached {name} over HomeKit (last address {host}) for {minutes} minutes, so it's being controlled through Mysa's cloud for now.\n\nCheck that the thermostat is on the same network as Home Assistant, and give it a DHCP reservation on your router so its address doesn't change. This message clears itself once the local connection is back."
+    }
+  },
+  "selector": {
+    "hvac_mode": {
+      "options": {
+        "off": "Off",
+        "heat": "Heat",
+        "cool": "Cool"
+      }
+    }
+  },
+  "services": {
+    "hold": {
+      "name": "Hold",
+      "description": "Holds a setpoint over the thermostat's Mysa schedule, permanently or until a time.",
+      "fields": {
+        "temperature": {
+          "name": "Temperature",
+          "description": "Setpoint to hold. Defaults to the current setpoint."
+        },
+        "hvac_mode": {
+          "name": "Mode",
+          "description": "Mode to hold. Defaults to the current mode."
+        },
+        "until": {
+          "name": "Until",
+          "description": "End of the hold. Leave empty for a permanent hold."
+        }
+      }
+    },
+    "resume_schedule": {
+      "name": "Resume schedule",
+      "description": "Ends a hold, so the thermostat follows its Mysa schedule again."
+    },
+    "set_schedule": {
+      "name": "Set schedule",
+      "description": "Replaces the weekly schedule stored on Mysa's side. It keeps running even when Home Assistant or the internet is down.",
+      "fields": {
+        "events": {
+          "name": "Events",
+          "description": "List of events, each with days (mon to sun), time (HH:MM), temperature and optionally hvac_mode."
+        }
+      }
+    },
+    "clear_schedule": {
+      "name": "Clear schedule",
+      "description": "Deletes the thermostat's Mysa schedule."
+    }
+  }
+}

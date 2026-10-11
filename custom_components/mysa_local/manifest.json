@@ -1,0 +1,27 @@
+{
+  "domain": "mysa_local",
+  "name": "Mysa Local",
+  "codeowners": ["@SokolskyNikita"],
+  "config_flow": true,
+  "dependencies": ["zeroconf"],
+  "documentation": "https://github.com/SokolskyNikita/mysa-homeassistant",
+  "homekit": {
+    "models": [
+      "BB-V1-0",
+      "BB-V1-1",
+      "BB-V2-0",
+      "BB-V2-0-L",
+      "BB-V3-0",
+      "INF-V1-0",
+      "AC-V1-0",
+      "ST-V1-0",
+      "CS-V1-0"
+    ]
+  },
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/SokolskyNikita/mysa-homeassistant/issues",
+  "loggers": ["custom_components.mysa_local"],
+  "requirements": ["aiohomekit>=4.0.1"],
+  "version": "0.1.0"
+}

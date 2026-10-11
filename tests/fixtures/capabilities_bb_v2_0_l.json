@@ -1,0 +1,109 @@
+{
+  "version": "1.0",
+  "hardware": {
+    "sensors": {
+      "internalTemperatureSensor": true,
+      "externalTemperatureProbeConnector": false,
+      "humiditySensor": false,
+      "proximitySensor": false,
+      "ambientLightSensor": false
+    },
+    "communication": {
+      "bluetoothModule": true,
+      "wifiModule": true,
+      "nfcChip": true
+    }
+  },
+  "features": {
+    "climateControl": {
+      "mode": {
+        "userControllable": true,
+        "type": "enum",
+        "validValues": ["off", "heat"]
+      },
+      "heat": {
+        "stages": 1,
+        "setpoint": {
+          "userControllable": true,
+          "type": "float",
+          "validValues": [5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 16.5, 17, 17.5, 18, 18.5, 19, 19.5, 20, 20.5, 21, 21.5, 22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26, 26.5, 27, 27.5, 28, 28.5, 29, 29.5, 30]
+        }
+      },
+      "advancedConfig": {
+        "baseboardHeating": {
+          "controlType": {
+            "userControllable": true,
+            "type": "integer",
+            "validValues": [8, 9]
+          }
+        }
+      }
+    },
+    "sensing": {
+      "temperature": {
+        "sensors": {
+          "internal": true,
+          "externalProbe": false,
+          "remote": false
+        },
+        "trackingSensor": {
+          "userControllable": true,
+          "type": "enum",
+          "validValues": ["internal"]
+        },
+        "temperatureOffset": {
+          "userControllable": true,
+          "type": "float",
+          "validValues": [-5, -4.5, -4, -3.5, -3, -2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5],
+          "value": 0
+        }
+      },
+      "humidity": false
+    },
+    "interface": {
+      "wakeOnApproach": {
+        "userControllable": false,
+        "type": "boolean"
+      },
+      "lockout": {
+        "userControllable": true,
+        "type": "integer",
+        "validValues": [0, 3]
+      },
+      "brightness": {
+        "userControllable": true,
+        "type": "integer"
+      },
+      "unit": {
+        "userControllable": true,
+        "type": "enum",
+        "validValues": ["C", "F"]
+      }
+    },
+    "connectivity": {
+      "bluetooth": true,
+      "wifi": true,
+      "nfc": true,
+      "matter": false,
+      "homekit": true,
+      "googleHome": true,
+      "amazonAlexa": true
+    },
+    "smart": {
+      "energyReporting": false,
+      "scheduling": true,
+      "zoning": false,
+      "geofence": true,
+      "earlyOn": false,
+      "cloudEarlyOn": false,
+      "shortcuts": true,
+      "savedSchedules": false,
+      "wholeHomeEnergy": false
+    }
+  },
+  "system": {
+    "deviceId": "a1b2c3d4e5f6",
+    "model": "BB-V2-0-L",
+    "firmwareVersion": "3.17.5.13"
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "schedule_hold": {
+        "default": "mdi:calendar-check",
+        "state": {
+          "on": "mdi:calendar-lock"
+        }
+      }
+    },
+    "number": {
+      "brightness_active": {
+        "default": "mdi:brightness-7"
+      },
+      "brightness_idle": {
+        "default": "mdi:brightness-4"
+      },
+      "setpoint_min": {
+        "default": "mdi:thermometer-chevron-down"
+      },
+      "setpoint_max": {
+        "default": "mdi:thermometer-chevron-up"
+      },
+      "temperature_offset": {
+        "default": "mdi:thermometer-plus"
+      }
+    },
+    "select": {
+      "display_unit": {
+        "default": "mdi:temperature-celsius",
+        "state": {
+          "fahrenheit": "mdi:temperature-fahrenheit"
+        }
+      },
+      "heater_type": {
+        "default": "mdi:radiator"
+      }
+    },
+    "sensor": {
+      "connection_path": {
+        "default": "mdi:lan-connect",
+        "state": {
+          "cloud": "mdi:cloud-outline",
+          "offline": "mdi:lan-disconnect"
+        }
+      },
+      "heating_runtime_today": {
+        "default": "mdi:timer-outline"
+      }
+    },
+    "switch": {
+      "button_lock": {
+        "default": "mdi:lock-open-variant-outline",
+        "state": {
+          "on": "mdi:lock-outline"
+        }
+      }
+    }
+  },
+  "services": {
+    "hold": {
+      "service": "mdi:hand-back-right"
+    },
+    "resume_schedule": {
+      "service": "mdi:calendar-sync"
+    },
+    "set_schedule": {
+      "service": "mdi:calendar-edit"
+    },
+    "clear_schedule": {
+      "service": "mdi:calendar-remove"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+name: Model report
+description: Tell us how Mysa Local works with your thermostat model.
+labels: [model-report]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Reports like this are how models move to the "tested" list. Please attach the diagnostics file (Settings → Devices & services → Mysa Local → ⋮ → Download diagnostics).
+  - type: input
+    id: model
+    attributes:
+      label: Model and firmware
+      description: For example BB-V1-1, firmware 3.x.y.
+    validations:
+      required: true
+  - type: checkboxes
+    id: works
+    attributes:
+      label: What works
+      options:
+        - label: Discovery and pairing
+        - label: Setpoint and mode (local)
+        - label: Cloud fallback
+        - label: Cloud settings (lock, brightness, limits, offset)
+        - label: Schedules and holds
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything wrong or missing?

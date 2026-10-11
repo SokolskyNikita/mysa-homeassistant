@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Format, lint and type-check.
+set -e
+cd "$(dirname "$0")/.."
+ruff format .
+ruff check . --fix
+mypy
