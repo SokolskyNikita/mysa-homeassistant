@@ -48,13 +48,26 @@ def test_protocol_modules_load_without_home_assistant() -> None:
     """Bundled protocol implementations can load without the HA parent package."""
     # The deployed integration's parent initializer needs HA. Load just its
     # bundled protocols in an isolated process to enforce the implementation boundary.
-    script = (
-        "import sys; "
-        f"sys.path.insert(0, {str(COMPONENT)!r}); "
-        "from protocols.cloud import MysaClient; "
-        "from protocols.homekit import HomeKitProtocol, HomeKitDevice; "
-        "assert 'homeassistant' not in sys.modules"
+    # Register only the protocol package. Adding the component directory to
+    # sys.path would let HA's select.py shadow Python's standard-library select.
+    script = f"""
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location(
+    "protocols", {str(COMPONENT / "protocols" / "__init__.py")!r}
+)
+package = importlib.util.module_from_spec(spec)
+sys.modules["protocols"] = package
+spec.loader.exec_module(package)
+from protocols.cloud import MysaClient
+from protocols.homekit import HomeKitProtocol, HomeKitDevice
+assert "homeassistant" not in sys.modules
+"""
+    result = subprocess.run(  # noqa: S603 - fixed interpreter and local import check
+        [sys.executable, "-I", "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
     )
-    subprocess.run(  # noqa: S603 - fixed interpreter and locally generated import check
-        [sys.executable, "-I", "-c", script], check=True, capture_output=True
-    )
+    assert result.returncode == 0, result.stderr
