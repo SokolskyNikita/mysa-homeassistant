@@ -6,17 +6,7 @@
   "dependencies": ["zeroconf"],
   "documentation": "https://github.com/SokolskyNikita/mysa-homeassistant",
   "homekit": {
-    "models": [
-      "BB-V1-0",
-      "BB-V1-1",
-      "BB-V2-0",
-      "BB-V2-0-L",
-      "BB-V3-0",
-      "INF-V1-0",
-      "AC-V1-0",
-      "ST-V1-0",
-      "CS-V1-0"
-    ]
+    "models": ["BB-V?-*", "INF-V?-*", "AC-V?-*", "ST-V?-*", "CS-V?-*"]
   },
   "integration_type": "hub",
   "iot_class": "local_push",

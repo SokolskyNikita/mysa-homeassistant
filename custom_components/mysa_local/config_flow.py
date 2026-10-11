@@ -74,13 +74,13 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     HOMEKIT_MANUFACTURER,
-    HOMEKIT_MODELS,
     LOGGER,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
     SUBENTRY_THERMOSTAT,
     USER_AGENT,
     WIFI_SETUP_URL,
+    is_mysa_model,
 )
 from .homekit import ENDPOINT_KEYS, async_copy_pairing, async_get_controller
 from .local import CONNECTION_ERRORS, AccessoryInfo, parse_accessories
@@ -142,9 +142,8 @@ def homekit_device_candidates(hass: HomeAssistant) -> dict[str, str]:
         if not entry.data.get("AccessoryPairingID"):
             continue
         for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
-            if (
-                device.manufacturer == HOMEKIT_MANUFACTURER
-                or device.model in HOMEKIT_MODELS
+            if device.manufacturer == HOMEKIT_MANUFACTURER or is_mysa_model(
+                device.model
             ):
                 candidates[entry.entry_id] = entry.title
                 break
@@ -279,7 +278,7 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         async for discovery in controller.async_discover():
             description = discovery.description
             model = getattr(description, "model", None)
-            if model not in HOMEKIT_MODELS or discovery.paired:
+            if not is_mysa_model(model) or discovery.paired:
                 continue
             if description.id.lower() in known:
                 continue
@@ -538,7 +537,7 @@ class MysaConfigFlow(ThermostatSteps, ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="invalid_discovery")
         hkid = str(props["id"]).lower()
         model = str(props["md"])
-        if model not in HOMEKIT_MODELS:
+        if not is_mysa_model(model):
             return self.async_abort(reason="not_supported")
         try:
             paired = not int(props.get("sf", 1)) & 0x01

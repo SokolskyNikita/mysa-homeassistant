@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import fnmatch
 import logging
 from typing import Final
 
@@ -54,18 +55,18 @@ CLOUD_REFRESH_AFTER_WRITE: Final = 2.0
 CLOUD_WRITE_SPACING: Final = 0.5
 CLOUD_MAX_BACKOFF: Final = timedelta(minutes=10)
 
-# Mysa models that ship HomeKit. Discovery of these goes to this integration.
-HOMEKIT_MODELS: Final = (
-    "BB-V1-0",
-    "BB-V1-1",
-    "BB-V2-0",
-    "BB-V2-0-L",
-    "BB-V3-0",
-    "INF-V1-0",
-    "AC-V1-0",
-    "ST-V1-0",
-    "CS-V1-0",
-)
+# Mysa models that ship HomeKit, as glob patterns (mirrors manifest.json, where
+# discovery of these goes to this integration): BB-V1-0, BB-V2-0-L, INF-V1-0, ...
+HOMEKIT_MODEL_PATTERNS: Final = ("BB-V?-*", "INF-V?-*", "AC-V?-*", "ST-V?-*", "CS-V?-*")
+
+
+def is_mysa_model(model: str | None) -> bool:
+    """True if a HomeKit model string is a Mysa thermostat."""
+    return bool(model) and any(
+        fnmatch.fnmatchcase(str(model), pattern) for pattern in HOMEKIT_MODEL_PATTERNS
+    )
+
+
 MANUFACTURER: Final = "Mysa"
 HOMEKIT_MANUFACTURER: Final = "Empowered Homes Inc."
 
