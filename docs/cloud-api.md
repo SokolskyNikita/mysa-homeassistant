@@ -1,7 +1,7 @@
 # Mysa cloud API, as used by the Android app 4.20.1
 
 Captured 2026-10-10 from a live session of the Android app (traffic through a local TLS proxy), on an account with one Mysa Baseboard Lite (BB-V2-0-L, firmware 3.17.5.13).
-Everything below was actually observed unless marked *not captured*. Account data (email, names, user/home IDs, tokens) is left out on purpose; `{user}`, `{home}`, `{dev}` are placeholders. `{dev}` is the lowercase Wi-Fi MAC without colons.
+Everything below was observed live, except in sections that say they come from the app's code and items marked *not captured*. Account data (email, names, user/home IDs, tokens) is left out on purpose; `{user}`, `{home}`, `{dev}` are placeholders. `{dev}` is the lowercase Wi-Fi MAC without colons.
 
 ## Transport
 - **HTTPS only.** The app opened no MQTT/AWS IoT connection at all. The thermostat itself still holds its own MQTT session to AWS IoT (:8883); Mysa's backend relays commands over it.
@@ -116,7 +116,7 @@ Some settings still go through the older device record. The reply echoes the bod
 - App detail: the `legacyBaseboardMigration` flags are hard-coded true in 4.20.1. That's why the Lite gets `/state`, `/capabilities` and `/schedule` like newer models, while firmware, pairing and fleet stay legacy.
 
 ## Adding and removing a thermostat (static analysis of 4.20.1 and 3.54.1, 2026-10-11)
-From both app bundles, decompiled with `hermes-dec`. Only `/devices/purgeadd` has been called for real (see below); everything else is read from the code.
+From both app bundles, decompiled with `hermes-dec`. The claim, the delete and `/devices/purgeadd` were also called for real (see the live test below); the rest is read from the code.
 
 ### Add (claim): `POST /devices`
 - **Where it happens during setup (4.20.1):** Wi-Fi setup over Bluetooth or the thermostat's own access point → `CONNECTED` → **claim** (`ADDING_TO_ACCOUNT`) → connection check (`VERIFYING_CONNECTION`; for the Lite a "legacy echo" check that gives up after 4 min) → firmware update → done.
@@ -239,7 +239,7 @@ Decided 2026-10-11: this integration doesn't add these models for now, and the c
 
 ## Not captured on purpose
 - Geofencing and Smart Alerts: both need the phone's location/notification permissions (declined), and on the Lite the alerts are only geofence enter/leave. HA does presence itself.
-- Firmware install (`/devices/{dev}/firmware-update`), Delete Device, Shared Access invites: irreversible or they email people. Delete Device is described above from the app's code, but it has never been called.
+- Firmware install (`/devices/{dev}/firmware-update`) and Shared Access invites: irreversible, or they email people.
 
 ## Other endpoints seen (all GET unless noted)
 - `/mobile/bootstrap?versionNumber=4.20.1`: `versionNumber` is required (without it: 400 `FST_ERR_VALIDATION`, "querystring must have required property 'versionNumber'"). User record (`AllowedDevices`, `AllowedHomes`, Cognito attributes), `primaryHomeId`, `activeHomeId`, `regionApiBaseUrl`.

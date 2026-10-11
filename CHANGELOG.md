@@ -6,13 +6,13 @@
 
 ## 0.3.0 (2026-10-11)
 
-- The Baseboard V3, Central HVAC and Climate Sensor are unsupported: to join, they need a credential file from Mysa's servers. HomeKit discovery no longer claims them (the manifest now lists `BB-V1-*`, `BB-V2-*`, `INF-V?-*` and `AC-V?-*`), adding from the Mysa account skips them and the options' account table marks them **Not supported**. The README's model table shows which models are supported.
+- The Baseboard V3, Central HVAC and Climate Sensor are unsupported: to join, they need a credential file from Mysa's servers. HomeKit discovery no longer claims them (the manifest now lists `BB-V1-*`, `BB-V2-*`, `INF-V?-*` and `AC-V?-*`), adding from the Mysa account skips them and the options' account table marks them **Not supported**.
 - **Save my password** (optional, off by default) on the Mysa sign-in. Mysa's sign-in token seems to last about a month and isn't renewed. With the password saved, Mysa Local signs in again by itself when the token stops working; without it, Home Assistant asks you to sign in again as before. The password is stored unencrypted in Home Assistant's configuration. The options page shows whether it's saved; to change that, sign out and sign in again. Re-authentication keeps the choice and replaces a saved password with the new one. Signing out deletes it, and diagnostics redact it.
 - Cloud client: `MysaAuth(email=..., password=...)` signs in again when the refresh token is refused.
 - A **Humidity** sensor, and the climate entity's current humidity, from the cloud. They're added whenever the cloud reports humidity: the Baseboard Lite does, although its capability data says it has no humidity sensor. Its readings matched a separate sensor in the same room (dew point within 1 °C).
 - A **Heater power** sensor (W): the heater wattage while the relay is on, 0 W while it's off. Added with the energy sensor when a wattage is set.
 - A Mysa Local section in Settings → System → Repairs → ⋮ → System information: thermostats per connection path, sign-in, saved password, cloud status, poll interval and whether Mysa's server can be reached (only checked with the cloud on).
-- Fixes from an audit against Mysa's Android app (4.20.1):
+- Fixes:
   - A 403 from Mysa no longer asks you to sign in again. Only a refused token renewal does; a 403, or a 401 right after a renewal, is an ordinary error. A refused account claim (a thermostat on someone else's account) still shows "Mysa refused to add it".
   - **Heating runtime today** never goes down within a day: it's the larger of the local count and the thermostat's own figure. Switching between them could lower it, and Home Assistant's statistics counted the day twice (Energy dashboard included). It also follows a heating cycle across midnight correctly. Runtime and heater energy now update once a minute instead of on every thermostat update.
   - Diagnostics redact the HomeKit name ("Mysa-" plus the end of the Wi-Fi MAC, which gives away the Mysa device ID) and any other text containing the device ID.
