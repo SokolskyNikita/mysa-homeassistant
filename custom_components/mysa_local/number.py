@@ -35,6 +35,12 @@ class MysaNumberDescription(NumberEntityDescription):
     changes: Callable[[DeviceState, float], dict[str, dict[str, Any]]]
 
 
+# Mysa's app (4.20.1): brightness in steps of 5, wake brightness never below 10,
+# and sleep never brighter than wake. It never sends anything else.
+BRIGHTNESS_STEP = 5
+MIN_WAKE_BRIGHTNESS = 10
+
+
 def _brightness_changes(
     key: str,
 ) -> Callable[[DeviceState, float], dict[str, dict[str, Any]]]:
@@ -42,9 +48,16 @@ def _brightness_changes(
         # Mysa's app always sends both brightness values together.
         active = state.active_brightness if state.active_brightness is not None else 100
         idle = state.idle_brightness if state.idle_brightness is not None else 50
-        values = {"activeIntensity": active, "idleIntensity": idle}
-        values[key] = round(value)
-        return {"physicalInterface": values}
+        value = round(value / BRIGHTNESS_STEP) * BRIGHTNESS_STEP
+        # Keep the value just set and move the other one if they'd cross (the
+        # app swaps them instead, which would undo what was just set here).
+        if key == "activeIntensity":
+            active = max(MIN_WAKE_BRIGHTNESS, value)
+            idle = min(idle, active)
+        else:
+            idle = value
+            active = max(active, idle)
+        return {"physicalInterface": {"activeIntensity": active, "idleIntensity": idle}}
 
     return _changes
 
@@ -58,7 +71,7 @@ NUMBERS: tuple[MysaNumberDescription, ...] = (
         mode=NumberMode.SLIDER,
         value=lambda s: s.active_brightness,
         supported=lambda c: c.brightness,
-        value_range=lambda c: (0, 100, 1),
+        value_range=lambda c: (MIN_WAKE_BRIGHTNESS, 100, BRIGHTNESS_STEP),
         changes=_brightness_changes("activeIntensity"),
     ),
     MysaNumberDescription(
@@ -69,7 +82,7 @@ NUMBERS: tuple[MysaNumberDescription, ...] = (
         mode=NumberMode.SLIDER,
         value=lambda s: s.idle_brightness,
         supported=lambda c: c.brightness,
-        value_range=lambda c: (0, 100, 1),
+        value_range=lambda c: (0, 100, BRIGHTNESS_STEP),
         changes=_brightness_changes("idleIntensity"),
     ),
     MysaNumberDescription(

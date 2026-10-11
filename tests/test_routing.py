@@ -20,7 +20,7 @@ from homeassistant.components.select import (
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN, SERVICE_TURN_ON
 from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 import pytest
 
 from .common import HKID, FakeCloud, hub_entry
@@ -117,6 +117,36 @@ async def test_rejected_local_write_is_not_retried(
     ):
         await _set_temp(hass, 22)
     assert cloud.updates == []
+
+
+@pytest.mark.usefixtures("controller")
+async def test_brightness_rules(hass: HomeAssistant, cloud: FakeCloud) -> None:
+    """Brightness follows Mysa's app: steps of 5, wake >= 10, sleep <= wake."""
+    await setup_entry(hass, hub_entry())
+    wake = hass.states.get("number.living_room_wake_brightness")
+    assert (wake.attributes["min"], wake.attributes["step"]) == (10, 5)
+    assert hass.states.get("number.living_room_sleep_brightness").attributes[
+        "min"
+    ] == 0
+
+    async def set_value(entity: str, value: float) -> None:
+        await hass.services.async_call(
+            NUMBER_DOMAIN,
+            SERVICE_SET_VALUE,
+            {ATTR_ENTITY_ID: f"number.living_room_{entity}_brightness", "value": value},
+            blocking=True,
+        )
+
+    await set_value("sleep", 33)  # snaps to 35
+    await set_value("wake", 30)  # below sleep: sleep follows it down
+    await set_value("sleep", 80)  # above wake: wake follows it up
+    with pytest.raises(ServiceValidationError):
+        await set_value("wake", 0)
+    assert [u["physicalInterface"] for u in cloud.updates] == [
+        {"activeIntensity": 100, "idleIntensity": 35},
+        {"activeIntensity": 30, "idleIntensity": 30},
+        {"activeIntensity": 80, "idleIntensity": 80},
+    ]
 
 
 @pytest.mark.usefixtures("controller")
