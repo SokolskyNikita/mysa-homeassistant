@@ -279,3 +279,14 @@ async def test_cloud_write_shows_immediately(
         blocking=True,
     )
     assert hass.states.get("select.living_room_heater_type").state == "fan_forced"
+
+
+async def test_fallback_from_startup(
+    hass: HomeAssistant, controller: FakeController, cloud: FakeCloud
+) -> None:
+    """A thermostat that's unreachable at startup gets live mode right away."""
+    controller.aliases[HKID].available = False
+    await setup_entry(hass, hub_entry())
+    assert hass.states.get("sensor.living_room_connection_path").state == "cloud"
+    assert cloud.live_mode == [{"timeout": 300}]
+    assert _thermostat(hass).cloud.update_interval.total_seconds() == 10

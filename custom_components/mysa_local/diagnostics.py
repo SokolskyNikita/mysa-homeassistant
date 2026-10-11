@@ -128,6 +128,12 @@ async def async_get_config_entry_diagnostics(
             "cloud_last_update_success": (
                 runtime.cloud.last_update_success if runtime.cloud else None
             ),
+            "cloud_poll_seconds": (
+                runtime.cloud.update_interval.total_seconds()
+                if runtime.cloud and runtime.cloud.update_interval
+                else None
+            ),
+            "cloud_fallback_count": len(runtime.cloud.fallback) if runtime.cloud else 0,
         },
         "subentries": [
             {

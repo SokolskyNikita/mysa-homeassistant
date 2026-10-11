@@ -186,6 +186,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
                 thermostat.notify()
 
         entry.async_on_unload(cloud.async_add_listener(_cloud_updated))
+        # A thermostat that is unreachable from the start goes into cloud
+        # fallback (live mode, faster polling) now, not at the next poll.
+        _cloud_updated()
     else:
         _async_remove_cloud_entities(hass, entry)
 
