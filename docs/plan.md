@@ -101,7 +101,7 @@ Measured on a Baseboard Lite, 10 setpoint changes per path, times from send:
 6. **Options:** cloud on/off, poll interval, live mode, sign-in/sign-out and firmware installs (advanced). Per thermostat, under **Settings and status**: heater wattage (for kWh) and whether to use the cloud's runtime numbers.
 
 ## Entities
-Created from Mysa's capability data (`GET /capabilities/{dev}`), so each model gets only what it supports; humidity is the exception (see Decisions). Without the cloud, the local entities come from HomeKit. The full list is in the README, "What you get". The energy sensor is shaped for HA's Energy dashboard (device consumption).
+Created from Mysa's capability data (`GET /capabilities/{dev}`), so each model gets only what it supports; humidity is the exception (see Decisions). Without the cloud, the local entities come from HomeKit. The README's "Core entities" lists the main ones. The energy sensor is shaped for HA's Energy dashboard (device consumption).
 
 ## Actions (services)
 - `hold` (permanent, or until a time), `resume_schedule`

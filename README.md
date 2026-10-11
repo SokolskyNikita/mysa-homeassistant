@@ -57,34 +57,22 @@ Choose **Move a thermostat from the HomeKit Device integration**. Mysa Local add
 
 To finish setup, the Baseboard V3, Central HVAC and Climate Sensor need a credential file from Mysa's servers sent over Bluetooth, which Home Assistant can't do. Mysa Local leaves them out of discovery and doesn't list them when adding from your Mysa account. Set them up in the Mysa app and add them to Home Assistant's [Matter integration](https://www.home-assistant.io/integrations/matter/) instead.
 
-## What you get
+## Core entities
 
 | Entity | Source | Notes |
 |---|---|---|
-| Climate | Local, cloud fallback | Setpoint, mode, room temperature, real relay state (heating/idle). Limits follow the thermostat's hardware setpoint limits. |
-| Temperature sensor | Local, cloud fallback | For history and statistics. |
-| Identify button | Local | Makes the thermostat signal itself. |
-| Display units select | Local, cloud fallback | °C/°F on the thermostat's own screen. HA shows temperatures in your HA units either way. |
-| Connection path sensor | — | `local`, `cloud` or `offline`. |
-| HomeKit pairing sensor | — | `paired`, or `not_paired` for a thermostat that's only connected through the cloud. |
-| Mysa account sensor | Cloud | `on_account` or `not_on_account` (only while signed in). |
-| Heating runtime today | Cloud or local | The thermostat's own measured on-time (cloud), or counted from the heating state (local). Resets at midnight. |
-| Heater power | Derived | The wattage you enter while the heater is on, 0 W while it's off. |
-| Heater energy today | Derived | Runtime × the wattage you enter. Works in the Energy dashboard. |
-| Humidity sensor | Cloud | Room humidity. Also shown on the climate entity. |
-| Button lock switch | Cloud | |
-| Wake / sleep brightness | Cloud | Steps of 5, like Mysa's app. Wake is at least 10 %, and sleep is never brighter than wake. |
-| Lowest / highest setpoint | Cloud | The thermostat's hardware limits. |
+| Climate | Local, cloud fallback | Setpoint, mode, room temperature and the real heating state. |
+| Temperature | Local, cloud fallback | |
+| Humidity | Cloud | |
+| Heating runtime today | Local or cloud | Resets at midnight. |
+| Heater power and energy | Derived | From the heater wattage you enter. Energy works in the Energy dashboard. |
+| Button lock | Cloud | |
+| Wake / sleep brightness | Cloud | |
+| Lowest / highest setpoint | Cloud | The climate entity follows them. |
 | Temperature offset | Cloud | |
-| Heater type select | Cloud | Baseboard or fan forced (how often the relay switches). |
-| Firmware update | Cloud | Checks for updates. Installing is off unless you allow it (see [Options](#options)). |
-| Cloud connection | Cloud | Whether Mysa's cloud hears from the thermostat. |
-| Wi-Fi signal | Cloud | Disabled by default. |
-| Schedule hold | Cloud | On while a hold overrides the Mysa schedule. |
-
-Each model only gets the entities its capability data lists, except humidity, which is added whenever the cloud reports it.
-
-The device's model line shows the thermostat's Mysa ID (its Wi-Fi MAC) and, when it differs, its name in the Mysa app: for example *Mysa Baseboard Lite · Mysa ID a1b2c3d4e5f6 · Mysa app: Bedroom*.
+| Heater type | Cloud | Baseboard or fan forced. |
+| Firmware update | Cloud | Installing is off unless you allow it (see [Options](#options)). |
+| Connection path | — | `local`, `cloud` or `offline`. |
 
 ## Options
 
