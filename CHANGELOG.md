@@ -2,76 +2,72 @@
 
 ## 0.4.0 (2026-10-11)
 
-- **Mini-Split AC fan speed and swing** on the climate entity, over the cloud (HomeKit doesn't have them). Fan speed, vertical swing and horizontal swing each appear when the AC's remote has them in the current mode, with only the options it has (auto/low/medium/high or auto/1–7/sleep; off, on, auto and fixed positions), and are hidden while the AC is off because a change would switch it on. Remotes that only have a swing toggle button aren't driven. Built from Mysa's app 4.20.1 code and not yet tested on an AC.
+- Added cloud controls for Mini-Split AC fan speed and vertical and horizontal swing to the climate entity. Fan options follow the remote: named speeds (low/medium/high) or numbered speeds (1–7), with auto or sleep where available. Swing options include off, on, auto or fixed positions where supported.
+- Each control appears only when the AC remote supports it in the current mode. Controls are hidden while the AC is off to avoid turning it on. Remotes with only a swing toggle are not supported.
+- The AC implementation follows Mysa Android app 4.20.1 and has been tested with simulated responses. It has not been tested on AC hardware.
 
 ## 0.3.1 (2026-10-11)
 
-- **Live mode during local outages** is now an option, off by default (integration options → **Cloud and polling**). On: while a thermostat can't be reached on your network, Mysa is asked to have it report every ~5 s and the cloud is read every 10 s, as before. Off: no live mode requests, and a thermostat on the cloud is read at the normal poll interval, so its readings can be a few minutes old.
+- Live mode during local outages is now an option under integration options → Cloud and polling. It is off by default. When enabled, Mysa is asked to report about every five seconds and the cloud is polled every 10 seconds while a locally paired thermostat is unreachable on the LAN. Earlier versions enabled this automatically. When disabled, cloud polling uses the normal interval, so readings may be several minutes old.
 
 ## 0.3.0 (2026-10-11)
 
-- The Baseboard V3, Central HVAC and Climate Sensor are unsupported: to join, they need a credential file from Mysa's servers. HomeKit discovery no longer claims them (the manifest now lists `BB-V1-*`, `BB-V2-*`, `INF-V?-*` and `AC-V?-*`), adding from the Mysa account skips them and the options' account table marks them **Not supported**.
-- **Save my password** (optional, off by default) on the Mysa sign-in. Mysa's sign-in token seems to last about a month and isn't renewed. With the password saved, Mysa Local signs in again by itself when the token stops working; without it, Home Assistant asks you to sign in again as before. The password is stored unencrypted in Home Assistant's configuration. The options page shows whether it's saved; to change that, sign out and sign in again. Re-authentication keeps the choice and replaces a saved password with the new one. Signing out deletes it, and diagnostics redact it.
-- Cloud client: `MysaAuth(email=..., password=...)` signs in again when the refresh token is refused.
-- A **Humidity** sensor, and the climate entity's current humidity, from the cloud. They're added whenever the cloud reports humidity: the Baseboard Lite does, although its capability data says it has no humidity sensor. Its readings matched a separate sensor in the same room (dew point within 1 °C).
-- A **Heater power** sensor (W): the heater wattage while the relay is on, 0 W while it's off. Added with the energy sensor when a wattage is set.
-- A Mysa Local section in Settings → System → Repairs → ⋮ → System information: thermostats per connection path, sign-in, saved password, cloud status, poll interval and whether Mysa's server can be reached (only checked with the cloud on).
-- Fixes:
-  - A 403 from Mysa no longer asks you to sign in again. Only a refused token renewal does; a 403, or a 401 right after a renewal, is an ordinary error. A refused account claim (a thermostat on someone else's account) still shows "Mysa refused to add it".
-  - **Heating runtime today** never goes down within a day: it's the larger of the local count and the thermostat's own figure. Switching between them could lower it, and Home Assistant's statistics counted the day twice (Energy dashboard included). It also follows a heating cycle across midnight correctly. Runtime and heater energy now update once a minute instead of on every thermostat update.
-  - Diagnostics redact the HomeKit name ("Mysa-" plus the end of the Wi-Fi MAC, which gives away the Mysa device ID) and any other text containing the device ID.
-  - The device page no longer loses its serial number and firmware version when HomeKit and the cloud aren't reachable at startup, and a firmware update shows there without a restart.
-  - Turning the cloud off disables the cloud-only entities instead of deleting them, so their names, entity IDs, areas and history are kept. Turning it back on re-enables them (Home Assistant reloads the integration once more about 30 s later). Entities you had disabled yourself stay disabled.
-  - Cloud state shows only values the thermostat confirmed, not ones that were requested but never applied.
-  - Wake and sleep brightness follow Mysa's app: steps of 5, wake at least 10 %, and sleep never brighter than wake (the other value moves to match).
+- Baseboard V3, Central HVAC and Climate Sensor are now excluded from pairing and account imports because setup requires credential files from Mysa's servers. HomeKit discovery no longer claims these models. The account device table marks them unsupported.
+- Signing in can optionally save the Mysa password. This is off by default. If token refresh is refused, the integration signs in again with the saved password or asks the user to sign in again. The cloud client supports this through `MysaAuth(email=..., password=...)`.
+- A saved password is stored unencrypted in Home Assistant's configuration, redacted from diagnostics and deleted on sign-out. The options page shows whether it is saved; sign out and back in to change the choice. Reauthentication preserves that choice and replaces the saved password with the new one.
+- Added a humidity sensor and current humidity on the climate entity when cloud state includes humidity. Baseboard Lite reports humidity even though its capability data says it has no humidity sensor. Its calculated dew point was within 1 °C of a separate room sensor.
+- Added a heater power sensor in watts when heater wattage is configured. It reports the configured wattage while the relay is on and 0 W while it is off. It is created with the heater energy sensor.
+- Added a Mysa Local section under Settings → System → Repairs → menu → System information. It shows thermostat counts by connection path, sign-in and saved-password status, cloud status, the poll interval and whether Mysa's server can be reached. Server reachability is checked only when cloud access is enabled.
+- A 403 or a 401 after token refresh is now treated as an API error instead of a request to sign in again. A refused refresh can trigger a new sign-in. A refused claim for a thermostat on another account still displays the existing add-error message.
+- Heating runtime today now uses the larger of the local count and the thermostat's figure. This fixes decreases that Home Assistant treated as resets, causing double-counting in statistics. Runtime accounting also handles heating across midnight. Runtime and heater energy update once a minute.
+- Diagnostics now redact the HomeKit name (which includes part of the Wi-Fi MAC) and other text containing the device ID.
+- The device page retains its serial number and firmware version if HomeKit and cloud are unavailable at startup. Firmware updates now appear without restarting Home Assistant.
+- Turning off cloud access disables cloud-only entities while preserving their names, entity IDs, areas and history. Turning it back on re-enables them and reloads the integration about 30 seconds later. Entities disabled by the user remain disabled.
+- Cloud response parsing now uses the thermostat's reported values instead of pending requests.
+- Wake and sleep brightness now follow Mysa app rules: steps of 5, wake brightness of at least 10% and sleep brightness no greater than wake brightness. Changing one value adjusts the other when needed.
 
 ## 0.2.1 (2026-10-11)
 
-- Repairs warnings: a fixable warning's text now lives only in its fix flow, and the ones Home Assistant can't fix (models it can't add to an account) get their own text-only version. Home Assistant's translation check (hassfest) rejected 0.2.0 for having both.
+- Updated repair warning translations to pass Home Assistant's `hassfest` check. Warnings with a fix show their text in the fix flow; unsupported-model warnings use a separate text-only message because Home Assistant cannot fix them.
 
 ## 0.2.0 (2026-10-11)
 
-- Local and cloud kept in step (while signed in to Mysa):
-  - Pairing a thermostat that isn't on your Mysa account offers to add it there; adding one from the account offers to pair it locally too (found on the network by its `Mysa-xxxxxx` name).
-  - Each thermostat's **Settings and status** shows whether it's on the account and paired locally, and can add it to or remove it from the account, or pair it locally.
-  - The integration options show a table of the thermostats on the account, with their Home Assistant and Mysa app names (view only; removing happens per thermostat).
-  - The device's model line shows the thermostat's Mysa ID and, when it differs, its name in the Mysa app; its settings can sync the name either way.
-  - Repairs warnings with fixes: paired but not on the account; cloud only; added from the account but no longer on it. All can be ignored.
-  - New diagnostic sensors: **Mysa account** and **HomeKit pairing**.
-  - Adding a thermostat to the account keeps its stored settings: the cloud client's `add_device(app_defaults=False)` sends the older app's smaller claim. (The current app's claim reset a returning thermostat's heater type to Baseboard.)
-  - The options menu says which Mysa account is signed in.
-- Cloud client: `add_device` (claim a thermostat for the account; returns False on 409, already on the account), `delete_device`, `replace_device` (`purgeadd`; not used by the integration), `get_shortcuts`/`update_shortcut` and home names in `Bootstrap.homes`. The flow is in `docs/cloud-api.md`, "Adding and removing a thermostat".
-  - The claim body carries the defaults Mysa's app sends per model (Baseboard V1/V2/Lite, In-floor, AC). Models that need a credential file over Bluetooth to join (Baseboard V3, Central HVAC, Climate Sensor) and unknown models raise `ValueError`; the client doesn't add them.
-  - New constants: `ModelFamily`, `MODEL_FAMILIES` (every model string the app accepts), `model_family()`, `WIFI_ONLY_FAMILIES`, `DutyCycleOpt`.
+- While signed in to Mysa, setup now offers to add a locally paired thermostat to the account or pair an account thermostat locally. Local pairing discovers the device by its `Mysa-xxxxxx` network name.
+- Each thermostat's Settings and status menu shows whether it is on the Mysa account and paired locally. It can add or remove the thermostat from the account or start local pairing. The options page lists account thermostats with their Home Assistant and Mysa app names; the table is view-only.
+- The device's model line shows its Mysa ID and, when different, its Mysa app name. Device settings can sync the name in either direction.
+- Added repair issues for thermostats paired locally but missing from the account, available only through the cloud or removed from the account after being imported. Each issue can be ignored.
+- Added diagnostic sensors for Mysa account membership and HomeKit pairing. The options menu also identifies the signed-in Mysa account.
+- Added cloud client methods to claim, delete and replace a device, get shortcuts with `get_shortcuts()` and update them with `update_shortcut()`. Home names are available through `Bootstrap.homes`. `replace_device()` calls the legacy `purgeadd` route and is not used by the integration. `add_device()` returns `False` when the API responds with 409 because the device is already on the account.
+- The integration uses `add_device(app_defaults=False)` to omit the newer app's settings defaults when claiming a returning thermostat. Including those defaults had reset its heater type to Baseboard during testing. Claim defaults cover Baseboard V1, Baseboard V2 and Lite, In-Floor and AC. Unknown models and models requiring Bluetooth credential files raise `ValueError`. See the [cloud API documentation](docs/cloud-api.md#adding-and-removing-devices) for the limits of settings retention.
+- Added the `ModelFamily`, `MODEL_FAMILIES`, `model_family()`, `WIFI_ONLY_FAMILIES` and `DutyCycleOpt` constants and helpers.
 
 ## 0.1.4 (2026-10-11)
 
-- Pairing: an unpaired Mysa's HomeKit service dozes off and comes back with a press of a button on the thermostat. The pair screen and the README now say so, and a connection failure keeps the form open with a "wake it and retry" hint instead of ending the flow.
+- The pairing flow now explains that an unpaired thermostat's HomeKit service may sleep and can be woken by pressing a thermostat button. A connection failure keeps setup open and tells the user to wake the thermostat and retry.
 
 ## 0.1.3 (2026-10-11)
 
-- The HomeKit code field accepts any spacing or punctuation ("1234 5678", "123-45-678", ...): only the 8 digits count. A code with the wrong number of digits gets a message saying it has 8 and is printed on the back of the faceplate, and trivial codes like 11111111 get their own message.
+- The HomeKit setup code accepts any spacing or punctuation and uses its eight digits. Codes with the wrong number of digits now explain that the code has eight digits and is printed on the back of the faceplate. Trivial codes such as `11111111` get a separate error.
 
 ## 0.1.2 (2026-10-11)
 
-- The setup and options menus mark the Mysa sign-in as [optional], and the sign-in form lists what it adds.
+- The setup and options flows now mark Mysa sign-in as optional. The sign-in form lists the features it enables.
 
 ## 0.1.1 (2026-10-11)
 
-- Diagnostics also redact the thermostat's Mysa device ID (its Wi-Fi MAC) and HomeKit ID.
+- Diagnostics now redact the thermostat's HomeKit ID and Mysa device ID (its Wi-Fi MAC).
 
 ## 0.1.0 (2026-10-11)
 
-First release. Tested on a Mysa Baseboard Lite (BB-V2-0-L), firmware 3.17.5.13.
+First release. Tested on a Mysa Baseboard Lite (`BB-V2-0-L`) with firmware `3.17.5.13`.
 
-- Local control over HomeKit: setpoint, mode, room temperature, real heating state, display units and Identify. HomeKit discovery of Mysa models is claimed by this integration, and pairing takes one step.
-- Move a thermostat over from the HomeKit Device integration without its setup code. Entity IDs, names and areas are kept, and the old entry is removed.
-- Optional Mysa sign-in (Cognito SRP; only a refresh token is stored) adds button lock, wake and sleep brightness, hardware setpoint limits, temperature offset, heater type, firmware check, cloud connectivity, Wi-Fi signal and the thermostat's own heating runtime.
-- Local-first routing: changes go over HomeKit and fall back to the cloud, with a read-back after a timed-out write so nothing is applied twice. A connection-path sensor shows the active path, and a repair issue appears after 15 minutes without the local path.
-- While a thermostat runs on the cloud, Mysa's live mode is requested and the poll speeds up to 10 s. Both stop as soon as the local connection is back.
-- One cloud request polls all thermostats. Polling backs off on errors and rate limits.
-- A cloud off switch makes zero calls to Mysa's servers.
-- Heating runtime today (from the thermostat, or counted locally) and heater energy today from a wattage you set, for the Energy dashboard.
-- Actions: `hold`, `resume_schedule`, `set_schedule`, `clear_schedule`, plus a schedule-hold sensor.
-- Firmware update entity: checking is always on, and installing is opt-in under Advanced options.
-- Diagnostics with redaction, translations and brand images.
+- Added local HomeKit control for setpoint, mode, room temperature, heating state, display units and Identify. The integration claims Mysa models during HomeKit discovery so users can pair from the discovery card.
+- Added migration from HomeKit Device without the setup code. Migration transfers matching climate, temperature, display-units and Identify entities with their IDs and registry settings, unless an equivalent Mysa Local entity already exists. It copies device names, areas and labels, then removes the old entry.
+- Optional Mysa sign-in uses Cognito SRP and saves a refresh token without storing the password. It adds button lock, wake and sleep brightness, hardware setpoint limits, temperature offset, heater type, firmware checks, cloud connectivity, Wi-Fi signal and the thermostat's heating runtime.
+- Controls supported by HomeKit use it first and fall back to the cloud. Other controls use the cloud directly. The integration checks whether a timed-out write took effect before retrying through the cloud. A connection-path sensor shows the active route. A repair issue appears after 15 minutes without the local connection.
+- While a locally paired thermostat is unreachable on the LAN, the integration requests Mysa live mode and polls every 10 seconds. It stops renewing live mode and returns to normal polling when the local connection is restored. Live mode was automatic in this release; it became an opt-in setting, off by default, in 0.3.1.
+- One batch request polls cloud state for all thermostats. Other cloud data uses separate requests. Polling backs off after errors and rate limits. Disabling cloud access stops the integration's requests to Mysa's servers.
+- Added heating runtime for the current day, read from the thermostat or counted locally, and daily heater energy based on a configured wattage for the Home Assistant Energy dashboard.
+- Added the `hold`, `resume_schedule`, `set_schedule` and `clear_schedule` actions and a sensor that reports schedule holds. The `hold` action requires a Mysa schedule on the thermostat.
+- Added a firmware update entity. Firmware checks run when cloud access is enabled; installation is opt-in under Advanced options.
+- Added diagnostics with redaction, translations and brand images.

@@ -1,101 +1,147 @@
 # Mysa Local for Home Assistant
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://www.hacs.xyz/docs/faq/custom_repositories/)
 [![Validate](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/validate.yml/badge.svg)](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/validate.yml)
 [![Tests](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/tests.yml/badge.svg)](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/tests.yml)
 
-Control **Mysa smart thermostats** from Home Assistant **over your own network**, with Mysa's cloud as an optional extra.
+Control Mysa thermostats over your local network through HomeKit. Setpoint, mode, room temperature and heating state work without a Mysa account or internet connection. Setup uses Home Assistant's UI.
 
-- Setpoint, mode, room temperature and the real heating state go over HomeKit on your LAN. A change reaches the thermostat in about 0.2 s, and none of it needs the internet.
-- Signing in to your Mysa account is optional. It adds what HomeKit doesn't expose: button lock, display brightness, setpoint limits, temperature offset, heater type, humidity, schedules and holds, firmware updates and the thermostat's own heating runtime. The cloud also takes over while the local connection is down.
-- Turn the cloud off and the integration makes zero calls to Mysa's servers.
-- Setup happens in the UI, with no YAML, and new thermostats are discovered automatically.
-
-> [!IMPORTANT]
-> **So far it's only been tested on the Mysa Baseboard Lite (BB-V2-0-L).** The other models marked ✅ under [Supported models](#supported-models) should work through Mysa's own capability data. If you try one, please [send a model report](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=model_report.yml) with your diagnostics.
-
-Not affiliated with or endorsed by Mysa (Empowered Homes Inc.). Mysa is a trademark of its owner.
-
-## Installation
-
-With HACS: HACS → ⋮ → Custom repositories → add `https://github.com/SokolskyNikita/mysa-homeassistant` as an **Integration** → install **Mysa Local** → restart Home Assistant.
-
-Without HACS: copy `custom_components/mysa_local` into your `config/custom_components/` and restart.
-
-Requires Home Assistant 2026.9 or newer.
-
-## Setup
-
-1. If the thermostat isn't on Wi-Fi yet (a new or reset Mysa shows a Bluetooth icon), put it on your 2.4 GHz Wi-Fi with the [Wi-Fi setup page](https://sokolskynikita.github.io/mysa-wifi-setup/). It runs in Chrome or Edge on a computer with Bluetooth and doesn't need the Mysa app or a phone.
-2. Press a button on the thermostat to wake it: an unpaired Mysa stops answering HomeKit after a while. Then click **Add** on it in Home Assistant and enter the 8-digit HomeKit code from the back of the faceplate (spaces and dashes are fine). A thermostat can only be paired to one HomeKit controller, so remove it from Apple Home first if it's there.
-3. Sign in to your Mysa account if you want the cloud features, or skip this and sign in later from the options. By default Home Assistant keeps only a sign-in token, which seems to last about a month; after that it asks you to sign in again. Tick **Save my password** to have Mysa Local sign in again by itself instead.
-
-To add more thermostats, let Home Assistant discover them or use **Add thermostat** on the integration's page. A thermostat that can't be reached locally can be added from your Mysa account, with cloud control only.
-
-### Mysa account and local pairing
-
-While you're signed in, Mysa Local keeps the two sides matched:
-- Pairing a thermostat that isn't on your Mysa account offers to add it there. A thermostat that was on the account before keeps its stored settings, such as heater type and display units.
-- Adding a thermostat from your Mysa account offers to pair it locally too. Mysa Local finds it on your network by its name (`Mysa-` plus the end of its Wi-Fi MAC) and asks for the HomeKit code.
-- A paired thermostat that isn't on the account, or one that's only connected through the cloud, shows up under **Settings → Repairs** as a warning with a fix. Ignore it if that's how you want it.
-
-### Moving from the HomeKit Device integration
-
-Choose **Move a thermostat from the HomeKit Device integration**. Mysa Local adds its own HomeKit pairing through the existing one, so no setup code is needed. It keeps your entity IDs, names and areas, then removes the HomeKit Device entry.
+An optional Mysa sign-in adds settings, humidity, schedules, firmware checks and cloud control when the local connection fails.
 
 ## Supported models
 
-| Model | Code | Local (HomeKit) | Cloud | Status |
-|---|---|---|---|---|
-| Mysa Baseboard Lite | `BB-V2-0-L` | ✅ | ✅ | Tested (firmware 3.17.5.13) |
-| Mysa Baseboard V1 / V2 | `BB-V1-x`, `BB-V2-0` | ✅ | ✅ | Untested |
-| Mysa In-Floor | `INF-V1-0` | ✅ | ✅ | Untested |
-| Mysa for Mini-Split AC | `AC-V1-0` | ✅ | ✅ | Untested |
-| Mysa for Central HVAC | `ST-V1-0` | ❌ | ❌ | Not supported |
-| Mysa Baseboard V3 | `BB-V3-0` | ❌ | ❌ | Not supported |
-| Mysa Climate Sensor | `CS-V1-0` | ❌ | ❌ | Not supported |
+Only the Baseboard Lite has been tested on hardware. The integration accepts the other older models below, but their controls and pairing still need testing.
 
-To finish setup, the Baseboard V3, Central HVAC and Climate Sensor need a credential file from Mysa's servers sent over Bluetooth, which Home Assistant can't do. Mysa Local leaves them out of discovery and doesn't list them when adding from your Mysa account. Set them up in the Mysa app and add them to Home Assistant's [Matter integration](https://www.home-assistant.io/integrations/matter/) instead.
-
-## Core entities
-
-| Entity | Source | Notes |
+| Model | Model IDs | Status |
 |---|---|---|
-| Climate | Local, cloud fallback | Setpoint, mode, room temperature and the real heating state. On a Mini-Split AC, also fan speed and vertical and horizontal swing (cloud), with the options its remote has in the current mode. |
-| Temperature | Local, cloud fallback | |
-| Humidity | Cloud | |
-| Heating runtime today | Local or cloud | Resets at midnight. |
-| Heater power and energy | Derived | From the heater wattage you enter. Energy works in the Energy dashboard. |
-| Button lock | Cloud | |
-| Wake / sleep brightness | Cloud | |
-| Lowest / highest setpoint | Cloud | The climate entity follows them. |
-| Temperature offset | Cloud | |
-| Heater type | Cloud | Baseboard or fan forced. |
-| Firmware update | Cloud | Installing is off unless you allow it (see [Options](#options)). |
-| Connection path | — | `local`, `cloud` or `offline`. |
+| Baseboard Lite | `BB-V2-0-L` | Tested locally and through the cloud on firmware 3.17.5.13 |
+| Other Baseboard V1 / V2 models | `BB-V1-*`, `BB-V2-*` | Supported in code; untested |
+| In-Floor | `INF-V1-0` | Supported in code; untested |
+| Mini-Split AC | `AC-V1-0` | Supported in code; untested |
+| Central HVAC | `ST-V1-0` | Not supported |
+| Baseboard V3 | `BB-V3-0` | Not supported |
+| Climate Sensor | `CS-V1-0` | Not supported |
 
-## Options
+Baseboard V3, Central HVAC and Climate Sensor need a cloud-issued credential file during Bluetooth setup. Mysa Local does not implement that flow and excludes these models from discovery and account selection. Set them up with the Mysa app, then use Home Assistant's [Matter integration](https://www.home-assistant.io/integrations/matter/).
 
-The integration's options have the cloud switch, the cloud poll interval (30–300 s, default 60), **Live mode during local outages** (off by default; see [How local-first works](#how-local-first-works)) and Mysa sign-in or sign-out. With the cloud off, the cloud-only entities are disabled but keep their names, areas and history; turning it back on brings them back. Under *Advanced* there's **Allow firmware installs**, off by default: a firmware install is untested with this integration and can't be undone.
+AC fan and swing controls were implemented from Mysa app 4.20.1 and tested with simulated responses. They show the remote's options for the current mode and are hidden while the AC is off. Toggle-only swing, AC auto mode and separate heating/cooling target ranges are not implemented. In-Floor's floor-sensor reading is not exposed.
 
-The options page also says which Mysa account is signed in and whether its password is saved. To change the save-password choice, sign out and sign in again. Signing out deletes a saved password.
+If you test another model, [submit a model report](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=model_report.yml) with its firmware version and integration diagnostics.
 
-**Thermostats on my Mysa account**, also in the options, is a view-only table of every thermostat on the account: its name in Home Assistant and in the Mysa app, and whether it's in Home Assistant (local and cloud, cloud only or not added).
+## Installation
 
-Each thermostat's **Settings and status** (⋮ → Settings and status) shows whether it's on your Mysa account, its name there and whether it's paired locally. From there you can:
-- set the heater wattage (adds the power and energy sensors) and choose whether to use the thermostat's own measured runtime, under **Settings**
-- **Pair locally** with the HomeKit code, for a thermostat added from the account
-- **Add to** or **Remove from my Mysa account**. This is the only place a thermostat is removed from the account. Removing first takes it out of the account's Home/Away/Vacation shortcuts and deletes its Mysa schedule. Mysa keeps its settings, so adding it back restores them.
-- use the Mysa app's name in Home Assistant, or rename it in the Mysa app to match, when the two names differ
+Requires Home Assistant 2026.9 or newer.
 
-## Actions
+With HACS:
 
-| Action | What it does |
+1. Open HACS → menu → Custom repositories.
+2. Add `https://github.com/SokolskyNikita/mysa-homeassistant` with type Integration.
+3. Download Mysa Local and restart Home Assistant.
+
+For a manual installation, copy [custom_components/mysa_local](custom_components/mysa_local) into your Home Assistant `config/custom_components/` directory, then restart.
+
+## Setup
+
+### Pair over your local network
+
+1. Connect the thermostat to 2.4 GHz Wi-Fi. You can use the Mysa app or the separate [Mysa Wi-Fi setup page](https://sokolskynikita.github.io/mysa-wifi-setup/). The page uses Bluetooth in Chrome or Edge without the Mysa app or an account. A new or reset thermostat shows a pairing symbol, usually a Bluetooth icon.
+2. Press a button on the thermostat to wake its HomeKit service. In Settings → Devices & services, add the discovered Mysa. You can also choose Add integration → Mysa Local → Pair a thermostat on this network.
+3. Enter the eight-digit HomeKit code printed on the back of the faceplate. Spaces and dashes are accepted.
+4. Sign in to Mysa for cloud features, or choose Skip, local only.
+
+Home Assistant must be able to reach the thermostat and discover it through mDNS. If it is paired to Apple Home or another controller, remove that pairing before starting a new one. For an existing Home Assistant HomeKit Device entry, use the migration below.
+
+To add another thermostat, use its discovery card or Add thermostat on the Mysa Local integration page.
+
+### Move from HomeKit Device
+
+Choose Move a thermostat from the HomeKit Device integration during setup or when adding a thermostat. The existing pairing must be reachable. Mysa Local uses it to add its own pairing, so the setup code is not required.
+
+The migration transfers matching climate, temperature, display-units and Identify entities with their IDs and registry settings, unless an equivalent Mysa Local entity already exists. It also copies the device's name, area and labels, then removes the old HomeKit Device entry.
+
+### Add thermostats from your Mysa account
+
+Sign in during setup or through the integration's options, then select thermostats from the account. You can pair each one locally with its HomeKit code or leave it under cloud control. A thermostat without local pairing needs Mysa's servers and an internet connection to work.
+
+Local pairing and Mysa account membership are separate. While signed in, Mysa Local offers to add a locally paired thermostat to the account if it is missing there. If the account has no home, create one in the Mysa app first.
+
+Repairs notices identify thermostats that are only on the cloud, missing from the account or removed from it after setup. You can use the offered fix or ignore a notice when that arrangement is intentional.
+
+## Entities and controls
+
+Entities depend on the thermostat's capabilities and reported data. Local controls use cloud fallback where listed, provided the thermostat is on your account and cloud access is enabled.
+
+| Entity or control | Connection | Behavior |
+|---|---|---|
+| Climate and room temperature | Local, with cloud fallback | Setpoint, supported modes, room temperature and reported heating state; also creates a separate temperature sensor |
+| AC fan speed and swing | Cloud | Fan speed plus vertical and horizontal swing, where the remote supports them |
+| Humidity | Cloud | Also shown on the climate entity; the Lite reports it despite its capability flag |
+| Display units | Local, with cloud fallback | Celsius or Fahrenheit on the thermostat's screen; does not change Home Assistant's units |
+| Identify | Local | Signals the thermostat so you can identify it |
+| Button lock | Cloud | Locks or unlocks the thermostat's buttons |
+| Wake and sleep brightness | Cloud | Five-percent steps; wake is at least 10% and sleep cannot exceed wake |
+| Lowest and highest setpoint | Cloud | Hardware limits, also used by the climate entity |
+| Temperature offset | Cloud | Adjusts the temperature used for control and the reported room temperature |
+| Heater type | Cloud | Baseboard or fan forced on models that support those profiles |
+| Heating runtime today | Observed heating state, optionally supplemented by cloud history | Resets at midnight; see [Runtime and energy](#runtime-and-energy) |
+| Heater power and energy | Calculated | Created when you set a heater wattage |
+| Firmware update | Cloud | Checks for updates; installation requires an option |
+| Connection path | Integration status | `local`, `cloud` or `offline` |
+
+Other status entities show HomeKit pairing, Mysa account membership, cloud connectivity and schedule hold. The Wi-Fi signal sensor is disabled by default; enable it from the device's entity list when needed.
+
+## Options and account management
+
+### Integration options
+
+Open Mysa Local's options, then Cloud and polling.
+
+| Option | Default | Effect |
+|---|---|---|
+| Use Mysa cloud | Enabled after sign-in | Allows cloud settings, data and fallback control |
+| Cloud poll interval | 60 seconds | Reads state for all thermostats; accepts 30–300 seconds |
+| Live mode during local outages | Off | Requests faster readings while a locally paired thermostat's LAN connection is down |
+| Advanced → Allow firmware installs | Off | Allows the Firmware update entity to start an offered update |
+
+Turning cloud access off disables cloud-only entities while keeping their entity IDs, names, areas and history. Your sign-in is retained. Turning it back on restores entities disabled by the integration; entities you disabled yourself stay disabled. A thermostat configured only through the cloud is unavailable while cloud access is off.
+
+Firmware installation has not been verified with an available update. The trigger was tested when the Lite was already up to date; no firmware was installed. The [API reference](docs/cloud-api.md#firmware) records that test and the update flow.
+
+The options menu also provides sign-in, sign-out and Thermostats on my Mysa account. The account table is read-only: it shows both names and whether each thermostat is paired locally, uses only the cloud or has not been added to Home Assistant.
+
+### Saved sign-in
+
+By default, Mysa Local stores your email and refresh token after sign-in. It renews short-lived API tokens automatically. If the saved sign-in expires or is revoked, Home Assistant asks you to sign in again; local control continues.
+
+Select Save my password to let the integration sign in again automatically. This is optional and off by default. The password is stored unencrypted in Home Assistant's configuration. To change the choice, sign out and sign in again. Signing out deletes the token and any saved password.
+
+### Per-thermostat settings
+
+On the integration page, open the thermostat's menu → Settings and status. It shows local pairing and Mysa account membership. From there you can:
+
+- Set heater wattage and choose whether cloud history contributes to heating runtime.
+- Pair a thermostat locally with its HomeKit code.
+- Add it to or remove it from your Mysa account.
+- Copy its Mysa app name to Home Assistant or rename it in Mysa to match Home Assistant.
+
+Remove from my Mysa account attempts to detach the thermostat's Mysa schedules and remove its shortcut actions before deleting the account record. Cleanup errors are logged and do not stop the removal. If paired locally, HomeKit control remains available. A thermostat without local pairing becomes unreachable.
+
+Re-adding sends the name, home and time zone without the newer app's settings defaults. This avoids explicitly overwriting settings such as heater type. The live tests and limits of settings retention are described under [Adding and removing devices](docs/cloud-api.md#adding-and-removing-devices).
+
+Deleting a thermostat from Home Assistant removes Mysa Local's HomeKit pairing. It does not remove the thermostat from your Mysa account.
+
+## Schedules and holds
+
+These actions require a Mysa sign-in, cloud access and a thermostat on that account. Creating or clearing a schedule also requires the thermostat to belong to a Mysa home. The actions target Mysa Local climate entities. Once a Mysa schedule is saved, Home Assistant does not need to stay running for it to run.
+
+| Action | Effect |
 |---|---|
-| `mysa_local.hold` | Holds a setpoint (and optionally a mode) over the Mysa schedule, permanently or `until` a time. Applied right away. Needs a Mysa schedule on the thermostat (Mysa has nothing to hold over otherwise). |
-| `mysa_local.resume_schedule` | Ends the hold. |
-| `mysa_local.set_schedule` | Replaces the weekly schedule stored by Mysa. It keeps running even when Home Assistant or the internet is down. |
-| `mysa_local.clear_schedule` | Deletes it. |
+| `mysa_local.hold` | Holds a temperature and optional mode over an existing Mysa schedule. Omit `until` for a permanent hold, or supply a future date and time. The state is applied immediately. |
+| `mysa_local.resume_schedule` | Ends the hold and resumes the Mysa schedule |
+| `mysa_local.set_schedule` | Replaces the thermostat's weekly Mysa schedule |
+| `mysa_local.clear_schedule` | Removes the thermostat's Mysa schedule |
+
+For a weekday schedule:
 
 ```yaml
 action: mysa_local.set_schedule
@@ -111,77 +157,94 @@ data:
       temperature: 18
 ```
 
-These need the cloud. If you'd rather keep schedules in Home Assistant, plain automations on the climate entity work fully locally.
+Days are `mon` through `sun`. Each event accepts `hvac_mode: heat`, `cool` or `off`; the default is `heat`. Temperatures in these custom actions are Celsius. Schedule times use the thermostat's time zone, so check that it matches Home Assistant's.
 
-## How local-first works
+To hold 22 °C until you resume the schedule:
 
-- HomeKit pushes every change, so the only local polling is a light health check every 30 s.
-- The cloud is read with **one request for all thermostats** every 60 s (configurable). While the local connection is healthy, cloud values for the same fields are ignored, so the two never fight.
-- A change goes to HomeKit first, with a 5 s timeout. If HomeKit is down or fails, the same change goes through the cloud. After a local write times out, the integration reads the value back before trying again, so a change is never applied twice.
-- A thermostat on the cloud is read at the normal poll interval, so its readings can be a few minutes old. With **Live mode during local outages** on, Mysa is asked for a fresh reading every ~5 s and the cloud is read every 10 s instead, until the local connection is back.
-- The **Connection path** sensor shows which path is active. If the local connection stays down for 15 minutes, a repair issue lists what to check (Wi-Fi, a DHCP reservation, power). It clears itself.
-- The integration backs off on rate limits and server errors and spaces out its writes.
+```yaml
+action: mysa_local.hold
+target:
+  entity_id: climate.living_room
+data:
+  temperature: 22
+  hvac_mode: heat
+```
+
+A hold needs an existing Mysa schedule. For schedules managed entirely by Home Assistant, use automations that call the climate entity's normal actions. Those use local control while the thermostat is paired and reachable.
+
+## Runtime and energy
+
+Heating runtime today counts the time Home Assistant observes the heater running. The option "Use the thermostat's own heating runtime" is enabled by default. When cloud access is available, it supplements that count with Mysa's history, including periods when Home Assistant was down. Cloud runtime is fetched every 15 minutes. The displayed total keeps the larger count and does not decrease within a day.
+
+Set Heater wattage to the combined rated wattage of the heaters controlled by that thermostat. A positive value adds power and energy sensors; zero turns them off. With local readings, power is that wattage while heating and zero while idle. With cloud readings, power uses Mysa's reported duty cycle, so it can show an average between zero and the configured wattage. Energy is runtime multiplied by wattage and can be used in the Energy dashboard. These are estimates, not electrical measurements. Runtime and energy update once a minute and reset at local midnight.
+
+## Local and cloud behavior
+
+HomeKit supplies push updates and a health check runs every 30 seconds. While the local connection is healthy, the climate entity uses its readings. Cloud-only data, such as humidity and brightness settings, still comes from Mysa if enabled.
+
+Setpoint, screen-unit and HomeKit-supported mode changes try HomeKit first. Modes without a HomeKit equivalent, including fan-only and dry, go directly through the cloud. A local write has a five-second timeout. After a timeout, the integration reads back the local value before retrying through the cloud. For setpoint and mode changes, it also checks cloud-reported state. A device rejection is reported directly.
+
+Cloud state uses one batch request for all thermostats per poll. Settings records, capabilities and other data refresh less often. Mysa can return readings that are several minutes old even when it reports the thermostat as connected.
+
+With Live mode during local outages enabled, a lost LAN connection triggers a request for readings about every five seconds and changes cloud polling to ten seconds. Normal polling resumes when local control returns. This option applies to thermostats with a local pairing; thermostats added only from the account use the normal poll interval.
+
+The Connection path sensor shows the active route. If a paired thermostat's LAN path stays down for 15 minutes, a repair notice appears and clears after recovery. Cloud errors and rate limits cause polling to back off; writes are spaced apart.
 
 ## Privacy
 
-- Mysa Local stores the thermostats' HomeKit pairing keys and, if you signed in, your Mysa email and a sign-in token. Your password is stored only if you ticked **Save my password**, unencrypted in Home Assistant's configuration. The sign-in uses SRP, so the password itself is never sent to Mysa.
-- With the cloud off (or never signed in), nothing is sent to Mysa.
-- Diagnostics redact tokens, keys, addresses, serial numbers and account IDs.
+Mysa Local stores HomeKit pairing keys and the Mysa credentials described under [Saved sign-in](#saved-sign-in). Sign-in uses SRP, so the password itself is not sent to Mysa.
+
+With cloud access disabled, the integration stops contacting Mysa's servers. The thermostat may still maintain its own cloud connection; this option does not change its network access.
+
+Downloaded diagnostics redact stored credentials, pairing keys, addresses, serial numbers, device names and account identifiers.
 
 ## Troubleshooting
 
-- If a thermostat isn't discovered, or pairing says it couldn't reach the thermostat's HomeKit service, press a button on the thermostat to wake it. Otherwise check that it's on Wi-Fi, on the same network as Home Assistant (mDNS has to work between them) and not paired to Apple Home.
-- If it keeps dropping to `cloud`, give the thermostat a DHCP reservation and check its Wi-Fi signal (enable the *Wi-Fi signal* sensor).
-- Deleting a thermostat (or the integration) removes Mysa Local's HomeKit pairing from it. If the thermostat was offline at the time, reset its HomeKit pairing on the device before pairing again.
-- Debug logging can be turned on from the integration's page.
-- Settings → System → Repairs → ⋮ → System information has a Mysa Local section: how many thermostats are on the local path, on the cloud or offline, whether you're signed in, whether the password is saved and whether Mysa's server can be reached.
+| Problem | What to check |
+|---|---|
+| Thermostat is missing from discovery or cannot be paired | Press a thermostat button to wake HomeKit, check Wi-Fi and mDNS connectivity, then retry. Remove an existing Apple Home pairing first. |
+| Connection path keeps changing to `cloud` | Check the thermostat's Wi-Fi signal and consider a DHCP reservation. The optional Wi-Fi signal entity can help. |
+| Cloud settings are unavailable | Check that you are signed in, Use Mysa cloud is enabled and the thermostat is on the account. Local controls can continue without them. |
+| Pairing fails after removing the thermostat from HA | If it was offline during removal, its old HomeKit pairing may still exist. Reset that pairing on the thermostat before pairing again. |
+| A hold is refused | Create a Mysa schedule first. For a timed hold, use an end time in the future. |
+
+Enable debug logging or download diagnostics from the integration page. System information has a Mysa Local section with connection counts, sign-in status and cloud health; open Settings → System → Repairs → menu → System information.
+
+For a bug report, include the model, firmware, integration version and diagnostics in a [GitHub issue](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=bug.yml).
+
+## Other integration options
+
+| Option | Control path | Requirements |
+|---|---|---|
+| Mysa Local | HomeKit on the LAN, with optional HTTPS cloud features and fallback | HomeKit code for local pairing; Mysa account for cloud features |
+| [HomeKit Device](https://www.home-assistant.io/integrations/homekit_controller/) | Local HomeKit; available controls depend on the services the thermostat exposes | Built into HA; HomeKit pairing |
+| [Mysa_HA](https://github.com/kgelinas/Mysa_HA) | Mysa's cloud through MQTT and HTTP | Custom HA integration, Mysa credentials and internet access |
+| [mysa2mqtt](https://github.com/bourquep/mysa2mqtt/tree/main/packages/mysa2mqtt) | Mysa's cloud through a bridge to your MQTT broker and HA | Node.js or Docker, an MQTT broker, Mysa credentials and internet access |
+
+Check each project's model and feature list before switching. Mysa Local's hardware testing is limited to the Lite; other integrations may expose controls it does not, including In-Floor sensor data.
 
 ## Development
 
+Use Python 3.14.2 or newer in a virtual environment:
+
 ```bash
-scripts/setup    # install HA, test and lint dependencies (Python 3.14)
-scripts/test     # pytest with coverage
-scripts/lint     # ruff format, ruff check, mypy --strict
-scripts/develop  # run a development Home Assistant with the integration
+python3 -m venv .venv
+source .venv/bin/activate
+scripts/setup
 ```
 
-The cloud client in `custom_components/mysa_local/api/` has no Home Assistant imports, so it can become its own library. The API notes are in [`docs/cloud-api.md`](docs/cloud-api.md).
+Run commands from the repository root:
 
-## Compared with other options
+```bash
+scripts/test     # pytest with coverage; accepts extra pytest arguments
+scripts/lint     # Ruff formatting and fixes, then strict mypy
+scripts/develop  # development Home Assistant using config/
+```
 
-| | **Mysa Local** | [HomeKit Device](https://www.home-assistant.io/integrations/homekit_controller/) | [Mysa_HA](https://github.com/kgelinas/Mysa_HA) | [mysa2mqtt](https://github.com/bourquep/mysa2mqtt) |
-|---|---|---|---|---|
-| Runs as | Integration from HACS, set up in the UI | Built into Home Assistant | Integration from HACS, set up in the UI | A separate Node.js program or Docker container, plus an MQTT broker |
-| Works without the internet or Mysa's cloud | ✅ | ✅ | ❌ | ❌ |
-| Falls back to the cloud when the local connection drops | ✅ | ❌ | — | — |
-| Setpoint and mode changes go over | HomeKit, else Mysa's HTTPS API | HomeKit | Mysa's MQTT broker | Mysa's MQTT broker |
-| Mysa password stored | Only if you choose to (otherwise a sign-in token) | — | Yes | Yes, in its configuration |
-| Setpoint, mode, room temperature | ✅ | ✅ | ✅ | ✅ |
-| Real heating state (relay on/off) | ✅ | ✅ | Estimated from temperature vs setpoint | ✅ |
-| Humidity | ✅ | ❌ | ✅ | ✅ |
-| °C/°F on the thermostat's screen | ✅ | ✅ | ✅ | ❌ |
-| Button lock | ✅ | ❌ | ✅ | ❌ |
-| Display brightness | ✅ | ❌ | ✅ | ❌ |
-| Hardware setpoint limits | ✅ (the climate entity follows them) | ❌ (always 5–30 °C) | ⚠️ (can be set, but the climate entity stays at 5–30 °C) | ❌ |
-| Temperature offset | ✅ | ❌ | ❌ | ❌ |
-| Heater type (how often the relay switches) | ✅ | ❌ | ❌ | ❌ |
-| Mysa's weekly schedule | ✅ | ❌ | ❌ ([open PR](https://github.com/kgelinas/Mysa_HA/pull/20)) | ❌ |
-| Hold / resume schedule | ✅ | ❌ | ❌ ([open PR](https://github.com/kgelinas/Mysa_HA/pull/20)) | ❌ |
-| Firmware | Check, and install if you allow it | ❌ | Check only | ❌ |
-| Heating runtime measured by the thermostat | ✅ | ❌ | ❌ | ❌ |
-| Power and energy | Estimated from the heater wattage you enter | ❌ | Measured on the Baseboard V1, estimated on others | Measured on the Baseboard V1, estimated on others |
-| Identify | ✅ | ✅ | ❌ | ❌ |
-| Add or remove a thermostat on the Mysa account | ✅ | ❌ | ❌ | ❌ |
-| Mini-split AC fan speed and swing | ✅ | ❌ | ✅ | Fan speed only |
-| In-Floor floor sensor | ❌ | ❌ | ✅ | ✅ |
-| Models tested | Baseboard Lite | Any Mysa with HomeKit | Baseboard V1/V2/Lite, In-Floor, AC; Central HVAC needs testing | Baseboard V1/V2/Lite, In-Floor, AC |
-| Oldest Home Assistant supported | 2026.9 | — | 2024.1 | — |
-| First / latest release | Oct 2026 / Oct 2026 | — | Dec 2025 / Mar 2026 | May 2025 / Sep 2026 |
+CI also runs HACS validation and hassfest. The cloud API package in [custom_components/mysa_local/api](custom_components/mysa_local/api) has no Home Assistant imports. Its endpoints, protocol findings and implementation limits are documented in [docs/cloud-api.md](docs/cloud-api.md). Release history is in [CHANGELOG.md](CHANGELOG.md).
 
-## Credits
+## Credits and license
 
-Built on [aiohomekit](https://github.com/Jc2k/aiohomekit), the library behind Home Assistant's HomeKit support. Thanks to the community projects that mapped Mysa's protocols first, including [Mysa_HA](https://github.com/kgelinas/Mysa_HA) and [mysotherm](https://github.com/dlenski/mysotherm), a Python command-line tool for Mysa thermostats.
+Mysa Local uses [aiohomekit](https://github.com/Jc2k/aiohomekit) for HomeKit. [Mysa_HA](https://github.com/kgelinas/Mysa_HA) and [mysotherm](https://github.com/dlenski/mysotherm) supplied earlier work on Mysa's cloud protocols.
 
-## License
-
-[MIT](LICENSE)
+Released under the [MIT License](LICENSE). This project is not affiliated with Mysa or Empowered Homes Inc.
