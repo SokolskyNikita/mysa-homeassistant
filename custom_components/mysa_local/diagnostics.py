@@ -7,7 +7,7 @@ import json
 from typing import Any
 
 from aiohomekit.model.characteristics import CharacteristicsTypes
-from homeassistant.components.diagnostics import async_redact_data
+from homeassistant.components.diagnostics import REDACTED, async_redact_data
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 
@@ -46,8 +46,11 @@ TO_REDACT = {
 }
 
 
-# Characteristic values that identify the unit: serial, MAC, setup ID.
+# Characteristic values that identify the unit: name ("Mysa-" plus the end of
+# the MAC), serial, MAC, setup ID.
 _PRIVATE_CHARS = {
+    CharacteristicsTypes.NAME,
+    CharacteristicsTypes.CONFIGURED_NAME,
     CharacteristicsTypes.SERIAL_NUMBER,
     MAC_CHAR_UUID,
     "00000220-0000-1000-8000-0026BB765291",
@@ -62,8 +65,25 @@ def _redact_accessories(accessories: list[dict[str, Any]]) -> list[dict[str, Any
                     str(char.get("type", "")).upper() in _PRIVATE_CHARS
                     and "value" in char
                 ):
-                    char["value"] = "**REDACTED**"
+                    char["value"] = REDACTED
     return accessories
+
+
+def _scrub_device_ids(data: Any, fragments: tuple[str, ...]) -> Any:
+    """Redact any string that still contains a thermostat's ID or MAC.
+
+    Its ID is the Wi-Fi MAC, and names like "Mysa-d2cc0c" carry the end of it,
+    which with the vendor prefix gives the whole ID away.
+    """
+    if isinstance(data, dict):
+        return {key: _scrub_device_ids(value, fragments) for key, value in data.items()}
+    if isinstance(data, list):
+        return [_scrub_device_ids(value, fragments) for value in data]
+    if isinstance(data, str):
+        flat = data.lower().replace(":", "").replace("-", "")
+        if any(fragment in flat for fragment in fragments):
+            return REDACTED
+    return data
 
 
 async def async_get_config_entry_diagnostics(
@@ -126,7 +146,12 @@ async def async_get_config_entry_diagnostics(
             }
         thermostats.append(item)
 
-    return {
+    fragments = tuple(
+        part
+        for thermostat in runtime.thermostats.values()
+        for part in (thermostat.device_id.lower(), thermostat.device_id.lower()[-6:])
+    )
+    diagnostics = {
         "integration_version": VERSION,
         "entry": {
             "options": dict(entry.options),
@@ -160,3 +185,4 @@ async def async_get_config_entry_diagnostics(
         ],
         "thermostats": thermostats,
     }
+    return _scrub_device_ids(diagnostics, fragments)

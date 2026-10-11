@@ -303,6 +303,8 @@ async def test_diagnostics_redacted(
         HKID,
     ):
         assert secret not in blob
+    # Not even the end of the MAC, as in the HomeKit name "Mysa-d4e5f6".
+    assert DEVICE_ID[-6:] not in blob.lower()
     thermostat = diag["thermostats"][0]
     assert thermostat["model"] == "BB-V2-0-L"
     assert thermostat["cloud"]["capabilities"]["system"]["model"] == "BB-V2-0-L"
