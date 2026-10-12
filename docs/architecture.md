@@ -43,7 +43,8 @@ option is on, and each selected thermostat's MQTT setting is on. The integration
 passes the client only the enabled account-device allowlist. See the package's [cloud guide](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md),
 [HomeKit guide](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md),
 and [MQTT guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md)
-for the APIs, lifecycle, timeouts, and failure handling.
+for the APIs, lifecycle, timeouts, and failure handling. The [HA MQTT guide](mqtt.md)
+covers the integration options, value selection, and hardware evidence.
 
 Home Assistant installs the library as an external dependency. The integration
 adapters own the caller-provided HTTP session and discovery/controller
@@ -64,10 +65,11 @@ The integration layer owns lifecycle, policy, persistence, and presentation:
 - `cloud_coordinator.py` schedules cloud refreshes, retries, and cloud
   operations. It calls the cloud protocol client and publishes typed state to
   the integration.
-- The account runtime owns one MQTT session for account thermostats enabled by
-  the global and per-thermostat options, renews live reporting, and publishes telemetry with per-field
-  receipt-time freshness. MQTT supplies read-only humidity and numeric duty
-  cycle; HTTPS remains the field-by-field fallback and command path.
+- The account runtime owns one MQTT session for account thermostats selected by
+  the global and per-thermostat options. It manages stream requests and
+  per-field receipt-time freshness for read-only humidity and numeric duty
+  cycle. See the [MQTT guide](mqtt.md) for selection, fallback, and hardware
+  evidence.
 - `thermostat.py` combines the three state sources and exposes semantic
   operations to entities and services.
 - `command_router.py` serializes writes and handles local-first fallback and

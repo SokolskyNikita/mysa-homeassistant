@@ -8,6 +8,7 @@ entities, services, and integration options.
 | Reference | Contents |
 | --- | --- |
 | [Architecture](architecture.md) | HA lifecycle, polling, local-first routing, fallback, persistence, and ownership |
+| [MQTT telemetry](mqtt.md) | HA switches, per-device selection, reading freshness, fallback, and hardware evidence |
 | [Account and schedule workflows](cloud-workflows.md) | HA enrollment, removal, schedule management, and recovery policy |
 | [Experimental newer-model support](new-cloud-models.md) | HA controls, setup, diagnostics, and the V3 hardware test procedure |
 | [Cloud feature scope](cloud-scope.md) | Which cloud features belong in HA and why |
@@ -22,9 +23,10 @@ entities, services, and integration options.
 Protocol documentation is maintained in the standalone
 [`mysa-client` documentation](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md).
 That includes cloud authentication, endpoint and payload shapes, account/schedule
-wire mechanics, HomeKit characteristics, Bluetooth/SoftAP setup, MQTT, firmware,
-and Matter research. Sanitized exchanges and protocol diagnostic tools live
-there too. The
+wire mechanics, HomeKit characteristics, Bluetooth/SoftAP setup, MQTT protocol,
+firmware, and Matter research. Sanitized exchanges and protocol diagnostic tools
+live there too. Home Assistant's MQTT switches, value selection, and hardware
+evidence are documented in the [HA MQTT guide](mqtt.md). The
 [raw API inventory](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/api-coverage.md)
 tracks client methods independently of this integration's management coverage.
 

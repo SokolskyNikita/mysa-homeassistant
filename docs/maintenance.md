@@ -9,17 +9,18 @@ references are maintained in [`mysa-client`](https://github.com/SokolskyNikita/m
 | --- | --- |
 | Installation, entities, services, and configuration | [User guide](../README.md) and [newer-model setup/test guide](new-cloud-models.md) |
 | HA lifecycle, polling, routing, freshness, persistence, and recovery | [Architecture](architecture.md) and [account/schedule workflows](cloud-workflows.md) |
+| MQTT controls, value selection, fallback, and hardware evidence in HA | [MQTT guide](mqtt.md) |
 | HA cloud/HomeKit work, acceptance criteria, and product exclusions | [Cloud tracker](implementation/cloud.md) and [HomeKit tracker](implementation/homekit.md) |
 | Integration and management coverage | [Management inventory](implementation/progress.md) |
-| Public client APIs, wire protocols, endpoint/payload details, firmware and provisioning research | [Client protocol index](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md) |
+| Public client APIs, MQTT authorization and wire protocol, endpoint/payload details, firmware and provisioning research | [Client protocol index](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md) |
 | Raw API method coverage | [Client API inventory](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/api-coverage.md) |
 | Sanitized cloud/MQTT exchanges and protocol tools | [Client examples](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/README.md) and [tools](https://github.com/SokolskyNikita/mysa-client/tree/main/tools) |
 
 Update protocol findings in the client repository, then link to them from HA
-workflow or acceptance criteria where needed. Do not copy the wire reference
-back here. Short forwarding pages preserve previously published URLs; current
-navigation should link directly to the maintained reference. Release notes
-remain historical.
+workflow or acceptance criteria where needed. Keep HA configuration, source
+selection, fallback, and hardware evidence in the HA MQTT guide; do not copy the
+wire reference here. Short forwarding links preserve previously published
+protocol bookmarks. Release notes remain historical.
 
 ## Issue format
 

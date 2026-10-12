@@ -157,10 +157,10 @@ also lack matching hardware validation. See [cloud validation](cloud.md),
 - Analytics, localization, feature flags, phone diagnostic uploads and general
   app communication preferences; device notification operations remain included.
 - Obsolete credential helpers as extra features, duplicate endpoint aliases,
-  and device-internal firmware-download behavior. The optional MQTT transport
-  is documented separately from the HTTP, HomeKit, and setup API inventory;
-  current [MQTT evidence](../mqtt.md) establishes live echo and telemetry only
-  for the tested devices and account configuration.
+  and device-internal firmware-download behavior. MQTT is documented separately
+  from the HTTP, HomeKit, and setup API inventory. See the [HA MQTT guide](../mqtt.md)
+  for integration behavior and hardware evidence, and the [client MQTT guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md)
+  for protocol details.
 - Unknown-purpose HomeKit/GATT fields, speculative reboot commands and unobserved
   Matter vendor extensions. Add operations when their meaning is established.
 - A generic “no bugs” item or a count of passed tests masquerading as correctness.

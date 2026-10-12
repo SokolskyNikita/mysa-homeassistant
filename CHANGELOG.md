@@ -2,34 +2,23 @@
 
 ## 0.6.0 (2026-10-12)
 
-- Use the optional `mysa-client` MQTT transport for live, read-only telemetry
-  when Mysa account access and cloud use are enabled. The new Live MQTT
-  readings option is on by default; one session serves the configured account
-  thermostats. HomeKit and HTTPS command routing are unchanged.
-- Prefer MQTT humidity and numeric heating duty cycle while readings are no
-  more than 30 seconds old by local receipt time. Fall back per field to valid
+- Add optional `mysa-client` MQTT telemetry for live, read-only humidity and
+  numeric heating duty cycle when Mysa account access and cloud use are
+  enabled. The default-on integration switch is the master; a new default-on
+  per-thermostat option selects devices for one shared session. HomeKit and
+  HTTPS command routing are unchanged.
+- Prefer MQTT humidity and numeric heating duty cycle while readings are less
+  than 30 seconds old by local receipt time. Fall back per field to valid
   HTTPS telemetry; use a fresh MQTT duty-cycle fraction for estimated heater
   power before the existing fallback behavior. MQTT connection failures do not
   block startup or local control. Expose a numeric Heating duty cycle sensor
   when the device reports that measurement.
-- Add a default-on per-thermostat **Use live MQTT readings** setting under
-  thermostat settings. The integration-level option remains the master switch;
-  either setting can exclude a device from the shared MQTT session.
-
-Validated with 287 Home Assistant tests and 177 client tests on Python 3.11
-and 3.14; lint, type checks, documentation checks, and distribution build pass.
-Initially deployed with `mysa-client` 0.1.2 on Home Assistant 2026.10.1. Both
-installed Baseboard Lites reported MQTT humidity and duty cycle, adding two duty
-cycle sensors (42 to 44 active entities). Saved configuration, sign-in,
-pairings, existing entity IDs, modes, and setpoints were preserved, with no new
-unavailable entities. The per-thermostat toggle was validated: turning one
-device off removed only its MQTT readings and used cloud fallback while the
-other stayed on MQTT; turning it back on restored MQTT readings for both.
-After restoring the HA MQTT session, a 200-second observation received 13
-successful samples at 15-second intervals, with fresh MQTT humidity and duty
-cycle from both thermostats and zero dropped events. This confirms fresh
-readings beyond the 180-second requested stream duration; long-term availability
-is not established.
+Validated with 287 Home Assistant tests on Python 3.14 and 177 client tests on
+Python 3.11–3.14. GitHub CI, lint, type checks, documentation checks, and the
+distribution build pass.
+Deployed and checked on Home Assistant 2026.10.1 with two Baseboard Lites,
+including the per-device toggle and cloud fallback. See the [MQTT guide](docs/mqtt.md)
+for the observation window, preserved configuration, hardware scope, and limits.
 
 ## 0.5.2 (2026-10-12)
 
