@@ -25,7 +25,11 @@ pairings, existing entity IDs, modes, and setpoints were preserved, with no new
 unavailable entities. The per-thermostat toggle was validated: turning one
 device off removed only its MQTT readings and used cloud fallback while the
 other stayed on MQTT; turning it back on restored MQTT readings for both.
-Continuous MQTT availability remains under live validation.
+After restoring the HA MQTT session, a 200-second observation received 13
+successful samples at 15-second intervals, with fresh MQTT humidity and duty
+cycle from both thermostats and zero dropped events. This confirms fresh
+readings beyond the 180-second requested stream duration; long-term availability
+is not established.
 
 ## 0.5.2 (2026-10-12)
 

@@ -49,7 +49,11 @@ then tested through Home Assistant: disabling one thermostat removed its
 subscription and MQTT readings, and humidity/duty cycle fell back to cloud;
 the other thermostat remained subscribed with both values sourced from MQTT.
 Re-enabling the first restored MQTT-sourced humidity and duty cycle on both.
-Continuous MQTT availability is still under observation.
+After restoring the HA MQTT session, a 200-second observation received 13
+successful samples at 15-second intervals. Both thermostats had fresh MQTT
+humidity and duty-cycle readings in every sample, with zero dropped events.
+This confirms fresh readings beyond the 180-second requested stream duration;
+long-term availability is not established.
 
 The integration requires `mysa-client[homekit,mqtt]==0.1.2`. MQTT is
 supplementary, and its live behavior remains intermittent; keep the 30-second
