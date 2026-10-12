@@ -19,6 +19,7 @@ from custom_components.mysa_local.const import (
     DOMAIN,
     SUBENTRY_THERMOSTAT,
 )
+from custom_components.mysa_local.pairing_store import pairing_store
 
 from .common import (
     ACCOUNT_ISSUE,
@@ -31,6 +32,42 @@ from .common import (
     thermostat_subentry,
 )
 from .conftest import setup_entry
+
+
+@pytest.mark.parametrize("connected", [True, False])
+async def test_picker_hides_old_identities_at_healthy_endpoint(
+    hass, controller, connected
+):
+    """Old IDs cannot masquerade as new devices at an active Mysa endpoint."""
+    entry = hub_entry(signed_in=False, cloud_enabled=False)
+    await setup_entry(hass, entry)
+    local = next(iter(entry.runtime_data.thermostats.values())).local
+    if not connected:
+        local.mark_unavailable("Temporary outage")
+    store = pairing_store(hass)
+    for old_id in ("aa:00:00:00:00:01", "aa:00:00:00:00:02"):
+        await store.async_save(
+            old_id,
+            {**local.pairing_data, "AccessoryPairingID": old_id},
+            name="Mysa-d4e5f6",
+            model="BB-V2-0-L",
+        )
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_THERMOSTAT),
+        context={"source": config_entries.SOURCE_USER},
+    )
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "pick"}
+    )
+    assert result["step_id"] == "pick"
+    if connected:
+        assert result["errors"] == {"base": "no_devices"}
+    else:
+        selector = next(iter(result["data_schema"].schema.values()))
+        assert len(selector.config["options"]) == 2
+    # Hiding a record never removes recovery keys or unpairs the accessory.
+    assert len(await store.async_load()) == 2
+    await hass.config_entries.async_unload(entry.entry_id)
 
 
 @pytest.mark.usefixtures("controller")

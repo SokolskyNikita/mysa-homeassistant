@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1 (2026-10-12)
+
+- Hide saved pairing attempts from older HomeKit identities when their endpoint
+  is already serving a healthy configured thermostat. Preserve those recovery
+  records, and continue offering them when the local connection is unavailable.
+
 ## 0.8.0 (2026-10-12)
 
 - Add an opt-in checkbox to remember a successfully used HomeKit setup code in

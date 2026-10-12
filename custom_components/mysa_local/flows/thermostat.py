@@ -72,6 +72,15 @@ from .shared import (
 from .state import ThermostatFlowState
 
 
+def _pairing_endpoint(pairing: Any) -> tuple[str, int] | None:
+    """Read a usable endpoint without exposing pairing credentials."""
+    if isinstance(pairing, Mapping):
+        host, port = pairing.get("AccessoryIP"), pairing.get("AccessoryPort")
+        if isinstance(host, str) and isinstance(port, int):
+            return host, port
+    return None
+
+
 class ThermostatSteps(FlowHandler[Any, Any, Any]):
     """Pairing and account linking shared by setup, subentries, and repairs."""
 
@@ -114,8 +123,27 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         known = self._known_hkids()
         store = pairing_store(self.hass)
         pending = await store.async_load()
+        # A reset Mysa may return under a different HomeKit identity. Its old
+        # recovery records must not be offered as new devices while the same
+        # endpoint is already serving a healthy configured thermostat. Keep
+        # the backups: endpoint reuse alone is not proof they can be deleted.
+        hub = hub_entry(self.hass)
+        runtime = getattr(hub, "runtime_data", None) if hub is not None else None
+        connected_endpoints = set()
+        if runtime is not None:
+            for thermostat in runtime.thermostats.values():
+                local = thermostat.local
+                if (
+                    local is not None
+                    and local.available
+                    and (endpoint := _pairing_endpoint(local.pairing_data))
+                ):
+                    connected_endpoints.add(endpoint)
         self._thermostat.pending_recoveries = {
-            hkid: record for hkid, record in pending.items() if hkid not in known
+            hkid: record
+            for hkid, record in pending.items()
+            if hkid not in known
+            and _pairing_endpoint(record.get("pairing")) not in connected_endpoints
         }
         if user_input is not None:
             selected = user_input.get(CONF_DEVICE)
