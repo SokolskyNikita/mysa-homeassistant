@@ -2,7 +2,7 @@
 
 Last reviewed: **2026-10-12**
 
-Package baseline: **Mysa Local 0.5.2**
+Package baseline: **Mysa Local 0.6.0**
 
 This tracker covers how the Home Assistant integration selects state, routes and
 confirms commands, manages setup and recovery, and verifies model behavior. The
@@ -11,16 +11,16 @@ owns direct request methods, codecs, parsers, and protocol evidence. The two
 maps have independent rows and percentages.
 
 <!-- api-progress:start -->
-![Integration & management: 32 of 42 implemented (76.2 percent)](management-progress.svg)
+![Integration & management: 35 of 45 implemented (77.8 percent)](management-progress.svg)
 
-**01 Integration & management:** 32 of 42 known rows fully implemented (76.2%). Partial: 7; missing: 3.
+**01 Integration & management:** 35 of 45 known rows fully implemented (77.8%). Partial: 7; missing: 3.
 
 | Layer | Category | Implemented | Partial | Missing | Total |
 | --- | --- | ---: | ---: | ---: | ---: |
-| Integration & management | State selection | 8 | 1 | 1 | 10 |
+| Integration & management | State selection | 9 | 1 | 1 | 11 |
 | Integration & management | Command handling | 9 | 1 | 0 | 10 |
-| Integration & management | Lifecycle & recovery | 8 | 0 | 0 | 8 |
-| Integration & management | Managed workflows | 6 | 1 | 1 | 8 |
+| Integration & management | Lifecycle & recovery | 9 | 0 | 0 | 9 |
+| Integration & management | Managed workflows | 7 | 1 | 1 | 9 |
 | Integration & management | Verification | 1 | 4 | 1 | 6 |
 <!-- api-progress:end -->
 
@@ -49,6 +49,14 @@ the client method inventory or invent an integration requirement for every
 unsupported Mysa app feature. Raw API support does not itself prove source
 selection, command confirmation, model suitability, or physical behavior.
 
+Raw MQTT protocol support is counted in the client inventory's
+[API-READ-25](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/api-coverage.md#api-read-25).
+HA source selection, lifecycle, and settings are counted here in MGT-STATE-11,
+MGT-LIFECYCLE-09, and MGT-WORKFLOW-09. See the [HA MQTT guide](../mqtt.md) for
+integration behavior and hardware evidence, and the
+[client MQTT guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md)
+for protocol details.
+
 The strongest live evidence remains two Baseboard Lites (`BB-V2-0-L`, firmware
 `3.17.5.13`) observed October 10–12. AC, In-floor and other baseboard variants
 need matching hardware checks. V3, Central HVAC and Climate Sensor support is
@@ -69,12 +77,13 @@ evidence, and explicit remaining gaps.
 | <a id="mgt-state-02"></a>MGT-STATE-02 | Use cloud telemetry as fallback only when the thermostat is online and the measurement clock is fresh; make stale fallback values unavailable and recover on a fresh report. | Implemented | [Freshness policy](../../custom_components/mysa_local/cloud_coordinator.py), [climate selection](../../custom_components/mysa_local/thermostat.py), [freshness regressions](../../tests/test_telemetry_freshness.py#L74), [recovery regression](../../tests/test_telemetry_freshness.py#L101). Clocks skewed by more than 24 hours remain open in MGT-STATE-09. |
 | <a id="mgt-state-03"></a>MGT-STATE-03 | Retain missing fields at their original observation age and let a successful independent source update without refreshing stale siblings. | Implemented | [Per-field reconciliation](../../custom_components/mysa_local/cloud_state.py), [coordinator acquisition](../../custom_components/mysa_local/cloud_coordinator.py), [independent-source and age regressions](../../tests/test_cloud_completion.py#L248). Hardware timing remains separate in MGT-QUALITY-01/02. |
 | <a id="mgt-state-04"></a>MGT-STATE-04 | Select each cloud field from valid reported observations using its own normalized source timestamp; reject invalid/future and desired-only values. | Implemented | [Observation reconciliation](../../custom_components/mysa_local/cloud_state.py), [timestamp/source regression](../../tests/test_cloud_completion.py#L107), [parser regression](../../tests/test_cloud_completion.py#L88). A large but plausible clock skew still needs the explicit fallback in MGT-STATE-09. |
-| <a id="mgt-state-05"></a>MGT-STATE-05 | Track humidity freshness independently from temperature and publish it only when its own cloud observation is usable. | Implemented | [Humidity property](../../custom_components/mysa_local/thermostat.py), [sensor entities](../../custom_components/mysa_local/sensor.py), [stale fallback regression](../../tests/test_telemetry_freshness.py#L159), [humidity entity regression](../../tests/test_features.py#L460). HomeKit humidity is not part of the observed Lite profile. |
+| <a id="mgt-state-05"></a>MGT-STATE-05 | Track HTTPS humidity freshness independently from temperature and use it only when its own cloud observation is usable. | Implemented | [Humidity property](../../custom_components/mysa_local/thermostat.py), [sensor entities](../../custom_components/mysa_local/sensor.py), [stale fallback regression](../../tests/test_telemetry_freshness.py#L159), [humidity entity regression](../../tests/test_features.py#L460). HomeKit humidity is not part of the observed Lite profile; MQTT precedence is tracked in MGT-STATE-11. |
 | <a id="mgt-state-06"></a>MGT-STATE-06 | Select coherent paired limits and brightness from a single candidate source; do not mix a lone structured bound with an unrelated record bound. | Implemented | [Pair selection](../../custom_components/mysa_local/cloud_state.py), [mixed-bound regression](../../tests/test_cloud_completion.py#L340), [setpoint precedence regressions](../../tests/test_setpoint_limits.py). |
 | <a id="mgt-state-07"></a>MGT-STATE-07 | Derive HVAC action from fresh reported stages/state bits; return unknown on missing or contradictory evidence instead of inferring action from selected mode. | Implemented | [HVAC action selection](../../custom_components/mysa_local/thermostat.py), [synthetic HVAC activity regression](../../tests/test_new_cloud_models.py#L183). This path is app-derived and still needs matching HVAC hardware evidence in MGT-QUALITY-02. |
 | <a id="mgt-state-08"></a>MGT-STATE-08 | Select the best applicable room-temperature source across local/cloud and any linked Mysa sensor, with explicit priority, freshness, and user-visible selection rules. | Partial | [Current local-over-cloud selection](../../custom_components/mysa_local/thermostat.py), [remote-temperature tracker](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-state.md#remote-temperature-tracking), [new-model deferrals](../new-cloud-models.md#deferred-features). Current policy is healthy local HomeKit first, then fresh cloud telemetry; linked/remote sensor setup and preference/arbitration are unsupported. |
 | <a id="mgt-state-09"></a>MGT-STATE-09 | Tolerate a device clock more than 24 hours ahead or behind using receipt-time-minus-five-minutes, with a per-device enabled default, diagnostics, and return to reported time after recovery. | Missing | [Current timestamp selection](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/observations.py), [freshness policy](../../custom_components/mysa_local/cloud_coordinator.py), [existing timestamp regression](../../tests/test_cloud_completion.py#L107). Existing code rejects some invalid/future clocks; the per-device setting, greater-than-24-hour receipt-time-minus-five-minute fallback, diagnostic provenance, and recovery behavior are not implemented. |
 | <a id="mgt-state-10"></a>MGT-STATE-10 | Keep connection status separate from measurement freshness: online must not make old readings fresh, and stale telemetry must not hide otherwise connected cloud settings. | Implemented | [Coordinator status/freshness](../../custom_components/mysa_local/cloud_coordinator.py), [regressions](../../tests/test_telemetry_freshness.py#L121) and [settings availability regression](../../tests/test_telemetry_freshness.py#L159). |
+| <a id="mgt-state-11"></a>MGT-STATE-11 | Prefer valid MQTT humidity and numeric heating duty cycle while connected and less than 30 seconds old by local receipt time; expire each field independently and fall back to usable HTTPS observations without deriving numeric duty from a relay boolean. | Implemented | [MQTT coordinator](../../custom_components/mysa_local/mqtt_coordinator.py), [source selection regressions](../../tests/test_mqtt_values.py), [per-field expiry and message validation regressions](../../tests/test_mqtt_coordinator.py), [two-Lite validation](../mqtt.md#hardware-validation-and-limits). Sensors expose source provenance. MQTT receipt-time freshness does not implement the HTTPS clock-skew policy in MGT-STATE-09. |
 
 ### COMMAND — routing, validation, and confirmation
 
@@ -103,6 +112,7 @@ evidence, and explicit remaining gaps.
 | <a id="mgt-lifecycle-06"></a>MGT-LIFECYCLE-06 | Persist an accepted HomeKit pairing before further accessory reads and attempt bounded key cleanup if persistence fails. | Implemented | [Pairing/session code](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/controller.py), [persist-before-read regression](https://github.com/SokolskyNikita/mysa-client/blob/main/tests/homekit/test_homekit_protocol.py#L155), [storage-failure rollback regression](https://github.com/SokolskyNikita/mysa-client/blob/main/tests/homekit/test_homekit_protocol.py#L181), [pairing failure regressions](https://github.com/SokolskyNikita/mysa-client/blob/main/tests/homekit/test_pairing_protocol_failures.py#L34). A failed rollback against an unreachable device remains a documented limitation. |
 | <a id="mgt-lifecycle-07"></a>MGT-LIFECYCLE-07 | Preserve an interrupted HomeKit Device migration marker and retry without losing destination entities or unrelated device metadata. | Implemented | [Migration handler](../../custom_components/mysa_local/migration.py), [migration criteria](homekit.md#hk-a03-criteria), [migration retry regressions](../../tests/test_migration.py#L36) and [partial takeover regression](../../tests/test_migration.py#L89). |
 | <a id="mgt-lifecycle-08"></a>MGT-LIFECYCLE-08 | Journal schedule replacement/clear operations so failure, cancellation, shared attachments, app edits, and restart recovery do not lose unrelated schedules. | Implemented | [Schedule recovery implementation](../../custom_components/mysa_local/schedule.py), [recovery tests](../../tests/test_schedule_recovery.py#L246), [restart recovery](../../tests/test_schedule_recovery.py#L284), [shared schedule preservation](../../tests/test_schedule_recovery.py#L375). Extracting the journal into a smaller component is maintainability work only; no separate credit is counted while the safety behavior is covered. |
+| <a id="mgt-lifecycle-09"></a>MGT-LIFECYCLE-09 | Start MQTT without blocking HA setup, retry failed connections, renew live reporting after reconnect and before stream expiry, and cancel background work and close the client on unload. | Implemented | [MQTT coordinator](../../custom_components/mysa_local/mqtt_coordinator.py), [startup, retry, renewal, quiet-stream refresh, and unload regressions](../../tests/test_mqtt_coordinator.py), [restart validation](../mqtt.md#hardware-validation-and-limits). Renewal requests do not extend field freshness; a quiet or disconnected session falls back per field. Long-term availability remains unverified. |
 
 ### WORKFLOW — account/device management and model scope
 
@@ -116,6 +126,7 @@ evidence, and explicit remaining gaps.
 | <a id="mgt-workflow-06"></a>MGT-WORKFLOW-06 | Manage newer-model initial provisioning and fleet ownership end to end, including credential transfer, claim/finalization, and update lifecycle. | Missing | [Current account import boundary](../cloud-workflows.md#baseboard-v3-central-hvac-and-climate-sensor), [new-model deferrals](../new-cloud-models.md#deferred-features), [tracked cloud gap](cloud.md#c-p14). The HA workflow starts only after the user has completed setup/enrollment in Mysa's app; no matching credential-transfer or fleet finalization flow is implemented. |
 | <a id="mgt-workflow-07"></a>MGT-WORKFLOW-07 | Make experimental/support status and operational limits discoverable in device information and diagnostics without leaking account/device identifiers. | Implemented | [Device model/support label](../../custom_components/mysa_local/thermostat.py), [diagnostic redaction](../../custom_components/mysa_local/diagnostics.py), [diagnostic regression](../../tests/test_new_cloud_models.py#L54), [redaction regression](../../tests/test_features.py#L356). |
 | <a id="mgt-workflow-08"></a>MGT-WORKFLOW-08 | Remove a device with complete cleanup of its schedule attachments, shortcut actions, sensor links and group membership, preserving unrelated devices. | Partial | [Removal workflow](../cloud-workflows.md#deletion-and-re-addition), [account cleanup](../../custom_components/mysa_local/account.py#L114), [removal regression](../../tests/test_subentry_flow.py#L173). Schedule/shortcut cleanup is best effort and record deletion proceeds after a cleanup error; sensor-link/group cleanup and newer-model removal remain incomplete. |
+| <a id="mgt-workflow-09"></a>MGT-WORKFLOW-09 | Offer default-on global and per-device MQTT settings gated by cloud sign-in; persist device choices, subscribe/request only configured account-owned enabled devices, and avoid a connection when all devices are excluded. | Implemented | [Account setup](../../custom_components/mysa_local/__init__.py), [device settings flow](../../custom_components/mysa_local/flows/thermostat.py), [allowlist and persistence regressions](../../tests/test_mqtt_setup.py), [device settings regressions](../../tests/test_subentry_flow.py), [live off/on validation](../mqtt.md#hardware-validation-and-limits). Disabling one device clears its MQTT readings and preserves other devices' MQTT participation. |
 
 ### QUALITY — validation, gaps, and evidence limits
 
@@ -157,10 +168,7 @@ also lack matching hardware validation. See [cloud validation](cloud.md),
 - Analytics, localization, feature flags, phone diagnostic uploads and general
   app communication preferences; device notification operations remain included.
 - Obsolete credential helpers as extra features, duplicate endpoint aliases,
-  and device-internal firmware-download behavior. MQTT is documented separately
-  from the HTTP, HomeKit, and setup API inventory. See the [HA MQTT guide](../mqtt.md)
-  for integration behavior and hardware evidence, and the [client MQTT guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md)
-  for protocol details.
+  and device-internal firmware-download behavior.
 - Unknown-purpose HomeKit/GATT fields, speculative reboot commands and unobserved
   Matter vendor extensions. Add operations when their meaning is established.
 - A generic “no bugs” item or a count of passed tests masquerading as correctness.
@@ -182,3 +190,7 @@ The generator reads only this repository and does not contact a thermostat.
   client repository and kept HA acceptance criteria here. The maps have
   independent denominators; their scores are not comparable to the earlier
   aggregate. This is a documentation change.
+- **2026-10-12, MQTT release:** updated the baseline to 0.6.0 and added three
+  implemented MQTT acceptance rows for source selection, lifecycle, and user
+  settings. The management score is now 35/45 (77.8%), up from 32/42 (76.2%).
+  Existing hardware, command-application, and HTTPS clock-skew gaps remain open.
