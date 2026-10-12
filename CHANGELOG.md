@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.5 (2026-10-12)
+
+- Fixed schedule holds that replaced an explicit OFF with the current mode or heat. Omitting the mode now preserves OFF when the thermostat is already off. OFF holds send no temperature target or immediate setpoint command, including when a temperature is supplied.
+- Climate setpoint controls now use Home Assistant's display units for their step size. The usual 0.5 °C step becomes 1 °F in Fahrenheit; other capability-provided steps are converted as temperature intervals. The thermostat's screen units do not affect this choice. Commands and readings retain their existing Celsius conversion and precision.
+- Added regression coverage for timed and permanent holds, Fahrenheit command conversion and limits, an In-Floor capability allowing 40 °C, AC startup with reported OFF and desired COOL, and numbered AC fan speeds and their HTTP commands.
+
+Validated with 252 automated tests (90% coverage), Ruff and strict mypy on Home Assistant 2026.9.4. AC and In-Floor regression checks use simulated responses; this release does not add hardware validation for those models.
+
+Installed locally on Home Assistant 2026.10.1 on 2026-10-12. Both Baseboard Lite thermostats connected over HomeKit after restart; temporary setpoint writes were confirmed and original settings restored. Cloud polling succeeded, saved configuration and entity IDs were unchanged, and there were no new unavailable entities or Mysa startup errors.
+
 ## 0.4.4 (2026-10-11)
 
 - Cloud readings now count as current for up to 90 minutes instead of ten. Outside live mode, Mysa thermostats upload their readings in batches 12–30 minutes apart, so humidity, Wi-Fi signal and the humidity on the climate entity were unavailable for most of each interval. Cloud fallback uses the same limit.

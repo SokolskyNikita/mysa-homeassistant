@@ -53,8 +53,14 @@ async def async_hold(
 ) -> None:
     """Hold a state over the schedule, permanently or until a time."""
     cloud = thermostat.require_cloud()
-    mode = mode or thermostat.mode or Mode.HEAT
-    if temperature is None:
+    if mode is None:
+        mode = thermostat.mode
+    if mode is None:
+        mode = Mode.HEAT
+    if mode == Mode.OFF:
+        # OFF has no setpoint, either in the hold or the immediate device write.
+        temperature = None
+    elif temperature is None:
         temperature = thermostat.target_temperature
     if until is not None:
         until = dt_util.as_utc(

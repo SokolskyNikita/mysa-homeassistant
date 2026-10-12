@@ -21,6 +21,7 @@ from homeassistant.components.climate.const import (
 from homeassistant.const import ATTR_TEMPERATURE, PRECISION_TENTHS, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util.unit_conversion import TemperatureDeltaConverter
 
 from .data import MysaConfigEntry
 from .entity import MysaEntity, async_add_when_ready
@@ -193,8 +194,16 @@ class MysaClimate(MysaEntity, ClimateEntity):
 
     @property
     def target_temperature_step(self) -> float:
-        """Setpoint step (0.5 °C on Mysa)."""
-        return self.thermostat.setpoint_range[2]
+        """Setpoint step in HA's display units (HA does not convert this field)."""
+        step = self.thermostat.setpoint_range[2]
+        unit = self.hass.config.units.temperature_unit
+        if unit == UnitOfTemperature.FAHRENHEIT and step == 0.5:
+            # Mysa's UI uses whole Fahrenheit degrees for its half-Celsius step.
+            return 1.0
+        return round(
+            TemperatureDeltaConverter.convert(step, UnitOfTemperature.CELSIUS, unit),
+            4,
+        )
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Change the setpoint (and the mode, if given)."""

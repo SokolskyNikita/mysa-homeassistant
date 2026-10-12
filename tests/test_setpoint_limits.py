@@ -19,7 +19,7 @@ import pytest
 from custom_components.mysa_local.const import DOMAIN
 from custom_components.mysa_local.protocols.cloud import DeviceRecord
 
-from .common import DEVICE_ID, FakeCloud, hub_entry
+from .common import DEVICE_ID, FakeCloud, hub_entry, thermostat_subentry
 from .conftest import setup_entry
 
 
@@ -129,3 +129,43 @@ async def test_missing_or_malformed_record_limits_remain_unknown(
     assert thermostat.setpoint_max is None
     assert hass.states.get("number.living_room_lowest_setpoint").state == "unknown"
     assert hass.states.get("number.living_room_highest_setpoint").state == "unknown"
+
+
+async def test_infloor_can_set_reported_40_degree_limit(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """In-Floor capability data can raise the ceiling above the 30°C fallback."""
+    for record in (
+        cloud.devices["DevicesObj"][DEVICE_ID],
+        cloud.bootstrap["data"]["devices"][DEVICE_ID],
+    ):
+        record.update({"Model": "INF-V1-0", "MaxSetpoint": 40})
+    cloud.state["identity"]["reported"]["model"] = "INF-V1-0"
+    cloud.state["targetHeat"]["reported"]["lockoutMax"] = 40
+    cloud.capabilities["system"]["model"] = "INF-V1-0"
+    cloud.capabilities["features"]["climateControl"]["heat"]["setpoint"][
+        "validValues"
+    ] = [5 + i / 2 for i in range(71)]
+    entry = hub_entry(subentries=[thermostat_subentry(pairing=None)])
+    await setup_entry(hass, entry)
+    climate_id = "climate.living_room"
+    assert hass.states.get(climate_id).attributes[ATTR_MAX_TEMP] == 40
+
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_TEMPERATURE,
+        {ATTR_ENTITY_ID: climate_id, ATTR_TEMPERATURE: 40},
+        blocking=True,
+    )
+    assert cloud.updates == [{"source": 3, "targetHeat": {"setpoint": 40}}]
+    await entry.runtime_data.cloud.async_refresh()
+    assert hass.states.get(climate_id).attributes[ATTR_TEMPERATURE] == 40
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_TEMPERATURE,
+            {ATTR_ENTITY_ID: climate_id, ATTR_TEMPERATURE: 40.5},
+            blocking=True,
+        )
+    assert len(cloud.updates) == 1

@@ -36,7 +36,7 @@ from custom_components.mysa_local.protocols.cloud import (
     Swing,
 )
 
-from .common import DEVICE_ID, FakeCloud, hub_entry
+from .common import DEVICE_ID, FakeCloud, hub_entry, thermostat_subentry
 from .conftest import setup_entry
 
 CLIMATE = "climate.living_room"
@@ -213,3 +213,56 @@ def test_record_parsing() -> None:
     assert record.ac_swing(Mode.COOL, "verticalSwing") == (Swing.OFF, Swing.AUTO)
     assert record.ac_fan_speeds(Mode.FAN_ONLY) == ()
     assert record.ac_fan_speeds(Mode.SLEEP) == ()  # no SupportedModes key
+
+
+async def test_ac_starts_off_despite_desired_cooling(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """Startup trusts reported OFF and sends no command to synchronize the AC."""
+    _make_ac(cloud)
+    cloud.state["modes"]["reported"]["mode"] = 0
+    cloud.state["modes"]["desired"]["mode"] = 3
+    entry = hub_entry(subentries=[thermostat_subentry(pairing=None)])
+    await setup_entry(hass, entry)
+
+    state = hass.states.get(CLIMATE)
+    assert state.state == HVACMode.OFF
+    assert state.attributes["hvac_action"] == "off"
+    assert state.attributes[ATTR_SUPPORTED_FEATURES] & FAN_AND_SWING == 0
+    assert cloud.updates == []
+    assert cloud.settings == []
+
+
+@pytest.mark.parametrize(
+    ("fan_mode", "wire_value"),
+    [("auto", 0), ("speed_1", 4), ("speed_2", 5), ("speed_3", 6)],
+)
+async def test_ac_odd_numbered_fan_capabilities_and_commands(
+    hass: HomeAssistant, cloud: FakeCloud, fan_mode: str, wire_value: int
+) -> None:
+    """Odd fan IDs describe numbered speeds; remote keys must not add phantom modes."""
+    _make_ac(
+        cloud,
+        SupportedModes={"4": {"fanSpeeds": [1, 3, 5, 7]}},
+        SupportedKeys=[8, 9, 10, 11],
+    )
+    cloud.state["modes"]["reported"]["mode"] = 3
+    entry = hub_entry(subentries=[thermostat_subentry(pairing=None)])
+    await setup_entry(hass, entry)
+    assert hass.states.get(CLIMATE).attributes[ATTR_FAN_MODES] == [
+        "auto",
+        "speed_1",
+        "speed_2",
+        "speed_3",
+    ]
+
+    await _call(hass, SERVICE_SET_FAN_MODE, {ATTR_FAN_MODE: fan_mode})
+    assert cloud.updates == [
+        {"source": 3, "modes": {"fan_mode": wire_value, "mode": 3}}
+    ]
+    await entry.runtime_data.cloud.async_refresh()
+    assert hass.states.get(CLIMATE).attributes[ATTR_FAN_MODE] == fan_mode
+
+    with pytest.raises(ServiceValidationError):
+        await _call(hass, SERVICE_SET_FAN_MODE, {ATTR_FAN_MODE: "medium"})
+    assert len(cloud.updates) == 1
