@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0 (2026-10-12)
+
+- Add an opt-in checkbox to remember a successfully used HomeKit setup code in
+  private local storage and a main configuration action to forget all saved
+  codes without removing pairings. Codes are also removed when unpairing or
+  deleting the integration; automatic re-pairing is not enabled by this option.
+
+- Include the local connection error, outage start, and client recovery details
+  (when provided by the installed client) in HomeKit diagnostics. Add regression
+  coverage for reconnecting with saved pairing keys after temporary outages and
+  for retaining the original offline-start error with the client fix for #25.
+
 ## 0.7.0 (2026-10-12)
 
 - Move reusable Mysa state reconciliation, command confirmation, capability

@@ -331,4 +331,7 @@ class LocalThermostat:
             "manufacturer": self.info.manufacturer,
             "firmware": self.info.firmware,
             "fields": details["fields"],
+            "last_error": self.last_error,
+            "down_since": self.down_since.isoformat() if self.down_since else None,
+            "recovery": details.get("recovery"),
         }

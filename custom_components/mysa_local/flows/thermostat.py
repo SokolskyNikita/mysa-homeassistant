@@ -49,6 +49,10 @@ from custom_components.mysa_local.homekit_adapter import (
     async_get_controller,
     async_unpair,
 )
+from custom_components.mysa_local.homekit_codes import (
+    CONF_REMEMBER_HOMEKIT_CODE,
+    homekit_codes,
+)
 from custom_components.mysa_local.migration import HKC_DOMAIN
 from custom_components.mysa_local.pairing_store import pairing_store
 
@@ -195,7 +199,15 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         model = self._thermostat.model or ""
         return self.async_show_form(
             step_id="pair",
-            data_schema=vol.Schema({vol.Required(CONF_PAIRING_CODE): str}),
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_PAIRING_CODE): str,
+                    vol.Optional(
+                        CONF_REMEMBER_HOMEKIT_CODE,
+                        default=self._thermostat.remember_homekit_code,
+                    ): BooleanSelector(),
+                }
+            ),
             errors=errors or {},
             description_placeholders={
                 "name": self._thermostat.name or "Mysa",
@@ -332,6 +344,9 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
 
         code: str | None = None
         if user_input is not None:
+            self._thermostat.remember_homekit_code = bool(
+                user_input.get(CONF_REMEMBER_HOMEKIT_CODE, False)
+            )
             try:
                 code = format_pin(user_input[CONF_PAIRING_CODE])
             except HomeKitMalformedPinError:
@@ -357,6 +372,10 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
                     pairing_data,
                     name=self._thermostat.name,
                     model=self._thermostat.model,
+                )
+                await homekit_codes(self.hass).async_save(
+                    str(pairing_data["AccessoryPairingID"]),
+                    code if self._thermostat.remember_homekit_code else None,
                 )
             except Exception as err:  # Pairing already changed the accessory.
                 raise PairingPersistenceError from err

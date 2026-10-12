@@ -27,7 +27,11 @@
         "title": "Pair {name}",
         "description": "Enter the 8-digit HomeKit setup code for {name} ({model}). It's printed on the back of the faceplate.\n\nPress a button on the thermostat first: while it's unpaired, its HomeKit service dozes off and pairing can't reach it.\n\nA thermostat can only be paired to one HomeKit controller. If it's in Apple Home, remove it there first. {error}",
         "data": {
-          "pairing_code": "HomeKit setup code"
+          "pairing_code": "HomeKit setup code",
+          "remember_homekit_code": "Remember HomeKit setup code"
+        },
+        "data_description": {
+          "remember_homekit_code": "Recommended for some flaky devices that may need pairing again. Stores the 8-digit code locally in Home Assistant for future pairing recovery. This does not enable automatic re-pairing. You can forget saved codes from the main Mysa Local configuration menu."
         }
       },
       "takeover": {
@@ -185,7 +189,11 @@
           "title": "Pair {name}",
           "description": "Enter the 8-digit HomeKit setup code for {name} ({model}). It's printed on the back of the faceplate.\n\nPress a button on the thermostat first: while it's unpaired, its HomeKit service dozes off and pairing can't reach it.\n\nA thermostat can only be paired to one HomeKit controller. If it's in Apple Home, remove it there first. {error}",
           "data": {
-            "pairing_code": "HomeKit setup code"
+            "pairing_code": "HomeKit setup code",
+            "remember_homekit_code": "Remember HomeKit setup code"
+          },
+          "data_description": {
+            "remember_homekit_code": "Recommended for some flaky devices that may need pairing again. Stores the 8-digit code locally in Home Assistant for future pairing recovery. This does not enable automatic re-pairing. You can forget saved codes from the main Mysa Local configuration menu."
           }
         },
         "takeover": {
@@ -316,7 +324,8 @@
           "settings": "Cloud and polling",
           "sign_in": "Sign in to Mysa [optional]",
           "sign_out": "Sign out of Mysa",
-          "account": "Thermostats on my Mysa account"
+          "account": "Thermostats on my Mysa account",
+          "forget_homekit_codes": "Forget remembered HomeKit codes"
         },
         "description": "{account}"
       },
@@ -368,6 +377,10 @@
         "menu_options": {
           "init": "Back"
         }
+      },
+      "forget_homekit_codes": {
+        "title": "Forget all remembered HomeKit codes?",
+        "description": "Delete all {count} remembered 8-digit HomeKit setup codes from this integration? Existing HomeKit pairings and connections will keep working. You will need to enter the code again if a device needs pairing again."
       }
     },
     "error": {
@@ -645,7 +658,11 @@
             "title": "Pair {name}",
             "description": "Enter the 8-digit HomeKit setup code for {name} ({model}). It's printed on the back of the faceplate.\n\nPress a button on the thermostat first: while it's unpaired, its HomeKit service dozes off and pairing can't reach it.\n\nA thermostat can only be paired to one HomeKit controller. If it's in Apple Home, remove it there first. {error}",
             "data": {
-              "pairing_code": "HomeKit setup code"
+              "pairing_code": "HomeKit setup code",
+              "remember_homekit_code": "Remember HomeKit setup code"
+            },
+            "data_description": {
+              "remember_homekit_code": "Recommended for some flaky devices that may need pairing again. Stores the 8-digit code locally in Home Assistant for future pairing recovery. This does not enable automatic re-pairing. You can forget saved codes from the main Mysa Local configuration menu."
             }
           }
         },

@@ -32,6 +32,7 @@ from custom_components.mysa_local.const import (
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
 )
+from custom_components.mysa_local.homekit_codes import homekit_codes
 
 from .account import SIGN_IN_SCHEMA, async_sign_in, sign_in_data, sign_in_error
 from .shared import md
@@ -54,6 +55,8 @@ class MysaOptionsFlow(OptionsFlow):
         if signed_in and self._cloud_data() is not None:
             menu.append("account")
         menu.append("sign_out" if signed_in else "sign_in")
+        if await homekit_codes(self.hass).async_count():
+            menu.append("forget_homekit_codes")
         if not signed_in:
             account = "Not signed in to Mysa; everything runs locally."
         else:
@@ -148,6 +151,20 @@ class MysaOptionsFlow(OptionsFlow):
                 "thermostats": "\n".join(rows) if len(rows) > 2 else "No thermostats.",
                 "add_hint": add_hint,
             },
+        )
+
+    async def async_step_forget_homekit_codes(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Forget all remembered setup codes after the user confirms."""
+        codes = homekit_codes(self.hass)
+        if user_input is not None:
+            await codes.async_forget_all()
+            return self.async_create_entry(data=dict(self.config_entry.options))
+        return self.async_show_form(
+            step_id="forget_homekit_codes",
+            data_schema=vol.Schema({}),
+            description_placeholders={"count": str(await codes.async_count())},
         )
 
     async def async_step_settings(

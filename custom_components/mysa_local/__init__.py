@@ -58,6 +58,7 @@ from .const import (
 from .data import MysaConfigEntry, MysaRuntimeData
 from .event_history import EventHistory
 from .homekit_adapter import async_get_controller, async_unpair
+from .homekit_codes import homekit_codes
 from .local_adapter import LOCAL_ERRORS, LocalThermostat
 from .migration import async_migrate_homekit_controller
 from .mqtt_coordinator import MysaMqttCoordinator
@@ -470,6 +471,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> boo
 
 async def async_remove_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> None:
     """Unpair every thermostat so it can be paired again elsewhere."""
+    await homekit_codes(hass).async_forget_all()
     for subentry in entry.subentries.values():
         if pairing := subentry.data.get(CONF_PAIRING):
             await async_unpair(hass, pairing)

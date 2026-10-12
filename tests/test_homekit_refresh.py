@@ -121,3 +121,56 @@ async def test_unload_cancels_pending_metadata_refresh(hass, controller):
     assert cancelled.is_set()
     assert not pairing.listeners
     assert not pairing.config_changed_listeners
+
+
+async def test_offline_start_keeps_cause_and_recovers_with_saved_pairing(
+    hass, controller
+):
+    """Polling an undiscovered device retains the cause and later reconnects."""
+    pairing = controller.aliases[HKID]
+    pairing.available = False
+    entry = hub_entry(signed_in=False, cloud_enabled=False)
+    with patch(CLOCK, return_value=1) as clock:
+        await setup_entry(hass, entry)
+        local = next(iter(entry.runtime_data.thermostats.values())).local
+        original_pairing = local.pairing_data
+        original_error = local.last_error
+        assert original_error == "HomeKit accessory was not found"
+        clock.return_value = 31
+        await local.async_poll()
+        assert not local.available
+        assert local.last_error == original_error
+        assert local.diagnostics()["last_error"] == original_error
+        assert local.diagnostics()["down_since"] is not None
+        pairing.available = True
+        clock.return_value = 61
+        await local.async_poll()
+        await hass.async_block_till_done()
+        assert local.available
+        assert local.last_error is None
+        assert local.diagnostics()["down_since"] is None
+        assert local.pairing_data == original_pairing
+        assert hass.states.get("climate.living_room").state == "heat"
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_established_connection_recovers_without_pairing_again(hass, controller):
+    """A transient outage reuses saved keys and restores the existing entity."""
+    entry = hub_entry(signed_in=False, cloud_enabled=False)
+    await setup_entry(hass, entry)
+    local = next(iter(entry.runtime_data.thermostats.values())).local
+    pairing = controller.aliases[HKID]
+    original_pairing = local.pairing_data
+    assert local.available
+    pairing.available = False
+    await local.async_poll()
+    await hass.async_block_till_done()
+    assert not local.available
+    assert hass.states.get("climate.living_room").state == "unavailable"
+    pairing.available = True
+    await local.async_poll()
+    await hass.async_block_till_done()
+    assert local.available
+    assert local.pairing_data == original_pairing
+    assert hass.states.get("climate.living_room").state == "heat"
+    await hass.config_entries.async_unload(entry.entry_id)

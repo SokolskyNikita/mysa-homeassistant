@@ -23,6 +23,7 @@ class ThermostatFlowState:
     model: str | None = None
     finish_pairing: PairingSession | None = field(default=None, repr=False)
     pairing_in_progress: bool = False
+    remember_homekit_code: bool = False
     discoveries: dict[str, HomeKitDiscovery] = field(default_factory=dict)
     pending_recoveries: dict[str, dict[str, Any]] = field(
         default_factory=dict, repr=False

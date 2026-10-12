@@ -20,6 +20,7 @@ from mysa_client.homekit import (
 )
 
 from .const import DOMAIN, LOGGER
+from .homekit_codes import homekit_codes
 
 _PROTOCOL_KEY: HassKey[HomeKitProtocol] = HassKey(f"{DOMAIN}_homekit_protocol")
 _PROTOCOL_LOCK: HassKey[asyncio.Lock] = HassKey(f"{DOMAIN}_homekit_protocol_lock")
@@ -82,6 +83,8 @@ async def async_copy_pairing(
 
 async def async_unpair(hass: HomeAssistant, pairing_data: Mapping[str, Any]) -> None:
     """Remove our HomeKit key from the accessory using the shared controller."""
+    if pairing_id := pairing_data.get("AccessoryPairingID"):
+        await homekit_codes(hass).async_save(str(pairing_id), None)
     protocol = await async_get_controller(hass)
     try:
         async with asyncio.timeout(15):
