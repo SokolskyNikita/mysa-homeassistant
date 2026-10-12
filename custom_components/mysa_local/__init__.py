@@ -42,6 +42,7 @@ from .const import (
     CONF_LIVE_MODE,
     CONF_MIGRATE_FROM,
     CONF_MODEL,
+    CONF_MQTT_ENABLED,
     CONF_PAIRING,
     CONF_REFRESH_TOKEN,
     CONF_USER_ID,
@@ -59,6 +60,7 @@ from .event_history import EventHistory
 from .homekit_adapter import async_get_controller, async_unpair
 from .local_adapter import LOCAL_ERRORS, LocalThermostat
 from .migration import async_migrate_homekit_controller
+from .mqtt_coordinator import MysaMqttCoordinator
 from .schedule import async_recover_schedule
 from .services import async_setup_services
 from .thermostat import Thermostat
@@ -89,6 +91,7 @@ CLOUD_ONLY_KEYS = frozenset(
         "firmware",
         "wifi_signal",
         "humidity",
+        "heating_duty_cycle",
         "cloud_online",
         "schedule_hold",
         "mysa_account",
@@ -147,11 +150,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
     subentries = [
         s for s in entry.subentries.values() if s.subentry_type == SUBENTRY_THERMOSTAT
     ]
+    mqtt_enabled_device_ids = {
+        s.data[CONF_DEVICE_ID]
+        for s in subentries
+        if s.data.get(CONF_MQTT_ENABLED, True)
+    }
     token = entry.data.get(CONF_REFRESH_TOKEN)
     cloud_on = bool(token) and entry.options.get(CONF_CLOUD_ENABLED, True)
 
     client: MysaClient | None = None
     cloud: MysaCloudCoordinator | None = None
+    auth: MysaAuth | None = None
     history = EventHistory()
     if cloud_on:
 
@@ -193,6 +202,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
         client=client, cloud=cloud, fingerprint=_fingerprint(entry), history=history
     )
     entry.runtime_data = runtime
+    if auth is not None and entry.options.get(CONF_MQTT_ENABLED, True):
+        runtime.mqtt = MysaMqttCoordinator(
+            hass, entry, auth.async_get_id_token, history=history
+        )
     entry.async_on_unload(history.close)
 
     for subentry in subentries:
@@ -209,7 +222,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
         if controller is not None and (pairing := subentry.data.get(CONF_PAIRING)):
             local = LocalThermostat(hass, controller, pairing, subentry.title)
         runtime.thermostats[subentry.subentry_id] = Thermostat(
-            hass, subentry, local, lambda: runtime.cloud, history=history
+            hass,
+            subentry,
+            local,
+            lambda: runtime.cloud,
+            history=history,
+            mqtt_getter=lambda: runtime.mqtt,
         )
         entry.async_on_unload(runtime.thermostats[subentry.subentry_id].stop)
 
@@ -247,6 +265,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
         @callback
         def _cloud_updated() -> None:
             nonlocal recovery_task
+            if runtime.mqtt is not None and cloud.data is not None:
+                # Subscribe only to configured devices confirmed on this
+                # account. A local pairing alone is not MQTT authorization.
+                runtime.mqtt.async_set_devices(
+                    {
+                        t.device_id: record.model or t.model or "unknown"
+                        for t in runtime.thermostats.values()
+                        if t.device_id in mqtt_enabled_device_ids
+                        if (record := cloud.data.records.get(t.device_id)) is not None
+                    }
+                )
             for thermostat in runtime.thermostats.values():
                 thermostat.notify()
             async_update_account_issues(hass, entry)
@@ -269,6 +298,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
         async_update_account_issues(hass, entry)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    if runtime.mqtt is not None:
+        for thermostat in runtime.thermostats.values():
+            entry.async_on_unload(runtime.mqtt.async_add_listener(thermostat.notify))
+        runtime.mqtt.async_start()
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     entry.async_on_unload(
         async_track_time_interval(
@@ -427,6 +460,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> boo
     """Disconnect everything."""
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
+        if entry.runtime_data.mqtt is not None:
+            await entry.runtime_data.mqtt.async_stop()
         await asyncio.gather(
             *(t.async_stop() for t in entry.runtime_data.thermostats.values())
         )

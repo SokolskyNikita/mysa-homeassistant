@@ -10,7 +10,7 @@ from typing import Final
 DOMAIN: Final = "mysa_local"
 LOGGER = logging.getLogger(__package__)
 
-VERSION: Final = "0.5.2"
+VERSION: Final = "0.6.0"
 USER_AGENT: Final = (
     f"mysa-homeassistant/{VERSION} "
     "(+https://github.com/SokolskyNikita/mysa-homeassistant)"
@@ -27,10 +27,12 @@ CONF_USER_ID: Final = "user_id"
 # Sign-in form field: keep the password so an expired sign-in renews itself.
 CONF_SAVE_PASSWORD: Final = "save_password"  # noqa: S105
 
-# Hub entry options
+# Hub entry options. CONF_MQTT_ENABLED is also the per-thermostat subentry
+# override; a missing subentry value means enabled for backward compatibility.
 CONF_CLOUD_ENABLED: Final = "cloud_enabled"
 CONF_FIRMWARE_INSTALL: Final = "allow_firmware_install"
 CONF_LIVE_MODE: Final = "live_mode"
+CONF_MQTT_ENABLED: Final = "mqtt_enabled"
 DEFAULT_LIVE_MODE: Final = True
 DEFAULT_SCAN_INTERVAL: Final = 60
 MIN_SCAN_INTERVAL: Final = 30

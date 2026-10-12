@@ -47,6 +47,7 @@ from custom_components.mysa_local.const import (
     CONF_DEVICE_ID,
     CONF_HEATER_WATTS,
     CONF_MODEL,
+    CONF_MQTT_ENABLED,
     CONF_PAIRING,
 )
 
@@ -113,6 +114,10 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
                 device_id=device_id,
                 model=model,
             )
+            self._pending_sub["data"] = {
+                **self._pending_sub["data"],
+                CONF_MQTT_ENABLED: True,
+            }
             if can_pair_locally(model):
                 self._thermostat.target_device_id = device_id
                 self._thermostat.target_name = self._pending_sub["title"]
@@ -154,10 +159,17 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
             or "Mysa"
         )
         new = thermostat_subentry(info, pairing, title, migrate_from)
+        new["data"] = {**new["data"], CONF_MQTT_ENABLED: True}
         for subentry in entry.subentries.values():
             if subentry.unique_id == new["unique_id"]:
+                updated_data = {**subentry.data, **new["data"]}
+                # Re-identifying a thermostat must not undo its saved per-device
+                # MQTT choice. Old entries without this key retain the default.
+                updated_data[CONF_MQTT_ENABLED] = subentry.data.get(
+                    CONF_MQTT_ENABLED, True
+                )
                 self.hass.config_entries.async_update_subentry(
-                    entry, subentry, data={**subentry.data, **new["data"]}
+                    entry, subentry, data=updated_data
                 )
                 return self.async_abort(reason="thermostat_updated")
         self._pending_sub = new
@@ -211,7 +223,7 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
         has_client = account_client(entry) is not None
         cloud_name = self._cloud_name()
         basic = model_family(model) in EXPERIMENTAL_CLOUD_FAMILIES
-        menu = ["cloud_info"] if basic else ["settings"]
+        menu = ["cloud_info", "mqtt"] if basic else ["settings"]
         if not paired and can_pair_locally(model):
             menu.append("local_pair")
         if status == ACCOUNT_OFF and has_client and can_claim(device_id, model):
@@ -241,6 +253,29 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
         if user_input is not None:
             return self.async_abort(reason="cloud_info")
         return self.async_show_form(step_id="cloud_info", data_schema=vol.Schema({}))
+
+    async def async_step_mqtt(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Enable or disable MQTT for this thermostat alone."""
+        subentry = self._get_reconfigure_subentry()
+        current = subentry.data.get(CONF_MQTT_ENABLED, True)
+        if user_input is not None:
+            return self.async_update_and_abort(
+                self._get_entry(),
+                subentry,
+                data_updates={
+                    CONF_MQTT_ENABLED: bool(user_input.get(CONF_MQTT_ENABLED, current))
+                },
+            )
+        schema = vol.Schema({vol.Optional(CONF_MQTT_ENABLED): BooleanSelector()})
+        return self.async_show_form(
+            step_id="mqtt",
+            data_schema=self.add_suggested_values_to_schema(
+                schema, {CONF_MQTT_ENABLED: current}
+            ),
+            description_placeholders={"name": subentry.title},
+        )
 
     def _cloud_name(self) -> str | None:
         """The thermostat's name in the Mysa app, if known."""
@@ -371,7 +406,7 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
     async def async_step_settings(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Heater wattage and runtime source."""
+        """Heater wattage, runtime source, and per-device MQTT readings."""
         subentry = self._get_reconfigure_subentry()
         if user_input is not None:
             return self.async_update_and_abort(
@@ -380,6 +415,12 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
                 data_updates={
                     CONF_HEATER_WATTS: float(user_input.get(CONF_HEATER_WATTS) or 0),
                     CONF_CLOUD_RUNTIME: bool(user_input[CONF_CLOUD_RUNTIME]),
+                    CONF_MQTT_ENABLED: bool(
+                        user_input.get(
+                            CONF_MQTT_ENABLED,
+                            subentry.data.get(CONF_MQTT_ENABLED, True),
+                        )
+                    ),
                 },
             )
         schema = vol.Schema(
@@ -394,6 +435,7 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
                     )
                 ),
                 vol.Required(CONF_CLOUD_RUNTIME): BooleanSelector(),
+                vol.Optional(CONF_MQTT_ENABLED): BooleanSelector(),
             }
         )
         return self.async_show_form(
@@ -403,6 +445,7 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
                 {
                     CONF_HEATER_WATTS: subentry.data.get(CONF_HEATER_WATTS, 0),
                     CONF_CLOUD_RUNTIME: subentry.data.get(CONF_CLOUD_RUNTIME, True),
+                    CONF_MQTT_ENABLED: subentry.data.get(CONF_MQTT_ENABLED, True),
                 },
             ),
             description_placeholders={"name": subentry.title},

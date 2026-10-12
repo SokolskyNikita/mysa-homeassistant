@@ -105,3 +105,5 @@ def async_add_when_ready(
     _add()
     if (cloud := entry.runtime_data.cloud) is not None:
         entry.async_on_unload(cloud.async_add_listener(_add))
+    if (mqtt := entry.runtime_data.mqtt) is not None:
+        entry.async_on_unload(mqtt.async_add_listener(_add))

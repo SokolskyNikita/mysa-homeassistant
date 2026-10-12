@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Generator
-from unittest.mock import AsyncMock, patch
+from contextlib import ExitStack
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from aiohomekit.testing import FakeController
 from homeassistant.core import HomeAssistant
 from mysa_client.homekit import HomeKitProtocol
+from mysa_client.mqtt import MqttConnectionError
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
@@ -23,6 +25,30 @@ def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
 @pytest.fixture(autouse=True)
 def mock_zc(mock_async_zeroconf: object) -> None:
     """Never touch the real network for mDNS."""
+
+
+@pytest.fixture(autouse=True)
+def mqtt_client_factory(request: pytest.FixtureRequest) -> Generator[MagicMock]:
+    """Keep the optional cloud push connection offline unless a test enables it."""
+    with ExitStack() as stack:
+        factory = stack.enter_context(
+            patch("custom_components.mysa_local.mqtt_coordinator.MysaMqttClient")
+        )
+        if not request.node.get_closest_marker("mqtt_runtime"):
+            # Older tests wait for all HA background tasks to finish. The
+            # persistent stream never completes; lifecycle tests opt in.
+            stack.enter_context(
+                patch(
+                    "custom_components.mysa_local.mqtt_coordinator."
+                    "MysaMqttCoordinator.async_start"
+                )
+            )
+        factory.return_value.connected = False
+        factory.return_value.connect = AsyncMock(
+            side_effect=MqttConnectionError("MQTT offline in test")
+        )
+        factory.return_value.close = AsyncMock()
+        yield factory
 
 
 @pytest.fixture

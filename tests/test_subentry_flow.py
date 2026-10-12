@@ -13,6 +13,8 @@ import pytest
 from custom_components.mysa_local.const import (
     CONF_CLOUD_RUNTIME,
     CONF_HEATER_WATTS,
+    CONF_MODEL,
+    CONF_MQTT_ENABLED,
     CONF_PAIRING,
     DOMAIN,
     SUBENTRY_THERMOSTAT,
@@ -60,6 +62,47 @@ async def test_subentry_reconfigure_wattage(hass: HomeAssistant) -> None:
     assert power.state in ("0.0", "1500.0")  # follows the relay; see test_features
 
 
+@pytest.mark.usefixtures("controller")
+async def test_subentry_settings_toggle_mqtt_and_preserve_saved_choice(
+    hass: HomeAssistant,
+) -> None:
+    """Per-device MQTT is shown and remains unchanged in later settings edits."""
+    entry = hub_entry(signed_in=False)
+    await setup_entry(hass, entry)
+    (subentry,) = entry.subentries.values()
+    assert subentry.data.get(CONF_MQTT_ENABLED, True) is True
+
+    async def open_settings() -> dict:
+        result = await entry.start_subentry_reconfigure_flow(hass, subentry.subentry_id)
+        return await hass.config_entries.subentries.async_configure(
+            result["flow_id"], {"next_step_id": "settings"}
+        )
+
+    result = await open_settings()
+    schema_fields = {
+        getattr(field, "schema", field) for field in result["data_schema"].schema
+    }
+    assert CONF_MQTT_ENABLED in schema_fields
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_HEATER_WATTS: 0,
+            CONF_CLOUD_RUNTIME: True,
+            CONF_MQTT_ENABLED: False,
+        },
+    )
+    assert result["reason"] == "reconfigure_successful"
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert subentry.data[CONF_MQTT_ENABLED] is False
+
+    result = await open_settings()
+    await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_HEATER_WATTS: 0, CONF_CLOUD_RUNTIME: True}
+    )
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert subentry.data[CONF_MQTT_ENABLED] is False
+
+
 @pytest.mark.usefixtures("unpaired_controller")
 async def test_subentry_add_by_pairing(hass: HomeAssistant) -> None:
     """Add thermostat from the integration page."""
@@ -82,6 +125,7 @@ async def test_subentry_add_by_pairing(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     (subentry,) = entry.subentries.values()
     assert subentry.unique_id == DEVICE_ID
+    assert subentry.data[CONF_MQTT_ENABLED] is True
 
 
 @pytest.mark.usefixtures("unpaired_controller")
@@ -221,7 +265,9 @@ async def test_settings_pair_cloud_only_locally(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
     """A cloud-only thermostat gets paired from its settings."""
-    entry = hub_entry(subentries=[cloud_only_subentry()])
+    unpaired_subentry = cloud_only_subentry()
+    unpaired_subentry["data"][CONF_MQTT_ENABLED] = False
+    entry = hub_entry(subentries=[unpaired_subentry])
     await setup_entry(hass, entry)
     assert hass.states.get("sensor.living_room_homekit_pairing").state == "not_paired"
     (subentry,) = entry.subentries.values()
@@ -237,6 +283,7 @@ async def test_settings_pair_cloud_only_locally(
     assert result["reason"] == "thermostat_updated"
     await hass.async_block_till_done(wait_background_tasks=True)
     assert entry.subentries[subentry.subentry_id].data[CONF_PAIRING]
+    assert entry.subentries[subentry.subentry_id].data[CONF_MQTT_ENABLED] is False
 
 
 @pytest.mark.usefixtures("unpaired_controller")
@@ -274,6 +321,32 @@ async def test_add_from_account_includes_new_models(
         (entry.entry_id, "thermostat"), context={"source": config_entries.SOURCE_USER}
     )
     assert "cloud_pick" in result["menu_options"]
+
+
+@pytest.mark.usefixtures("controller")
+async def test_cloud_only_model_can_disable_per_device_mqtt(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """Experimental cloud-only models expose MQTT without heater settings."""
+    device_id = cloud.add_unsupported()
+    subentry = cloud_only_subentry(device_id)
+    subentry["data"][CONF_MODEL] = "BB-V3-0"
+    entry = hub_entry(subentries=[subentry])
+    await setup_entry(hass, entry)
+    (configured,) = entry.subentries.values()
+
+    result = await entry.start_subentry_reconfigure_flow(hass, configured.subentry_id)
+    assert result["menu_options"] == ["cloud_info", "mqtt"]
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"next_step_id": "mqtt"}
+    )
+    assert result["step_id"] == "mqtt"
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {CONF_MQTT_ENABLED: False}
+    )
+    assert result["reason"] == "reconfigure_successful"
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert configured.data[CONF_MQTT_ENABLED] is False
 
 
 @pytest.mark.usefixtures("controller")

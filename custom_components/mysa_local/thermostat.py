@@ -70,6 +70,8 @@ from .local_adapter import (
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
 
+    from .mqtt_coordinator import MysaMqttCoordinator
+
 # Translate the local protocol's semantic modes into Mysa's device modes.
 LOCAL_MODE_TO_MODE = {
     LocalMode.OFF: Mode.OFF,
@@ -144,8 +146,9 @@ class Thermostat:
         cloud_getter: Callable[[], MysaCloudCoordinator | None],
         *,
         history: EventHistory | None = None,
+        mqtt_getter: Callable[[], MysaMqttCoordinator | None] | None = None,
     ) -> None:
-        """Wire up one thermostat. `cloud_getter` returns None while cloud is off."""
+        """Wire up one thermostat and its optional MQTT telemetry source."""
         self.history = history if history is not None else EventHistory()
         self._last_local_available: bool | None = None
         self.hass = hass
@@ -154,6 +157,7 @@ class Thermostat:
         self.name = subentry.title
         self.local = local
         self._cloud_getter = cloud_getter
+        self._mqtt_getter = mqtt_getter
         self.heater_watts: float = float(subentry.data.get(CONF_HEATER_WATTS) or 0)
         self.use_cloud_runtime: bool = subentry.data.get(CONF_CLOUD_RUNTIME, True)
         self._model: str | None = subentry.data.get(CONF_MODEL)
@@ -261,6 +265,31 @@ class Thermostat:
     def cloud(self) -> MysaCloudCoordinator | None:
         """The cloud coordinator, or None when the cloud is off or not set up."""
         return self._cloud_getter()
+
+    @property
+    def mqtt(self) -> MysaMqttCoordinator | None:
+        """The MQTT coordinator, or None when MQTT telemetry is unavailable."""
+        return self._mqtt_getter() if self._mqtt_getter is not None else None
+
+    def _mqtt_measurement(
+        self, name: str, *, minimum: float, maximum: float
+    ) -> float | None:
+        """Return a fresh, bounded MQTT measurement."""
+        mqtt = self.mqtt
+        value = mqtt.value(self.device_id, name) if mqtt is not None else None
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not math.isfinite(value)
+            or not minimum <= value <= maximum
+        ):
+            return None
+        return float(value)
+
+    def has_mqtt_value(self, name: str) -> bool:
+        """Whether MQTT has reported a valid value for entity discovery."""
+        mqtt = self.mqtt
+        return mqtt.has_value(self.device_id, name) if mqtt is not None else False
 
     @property
     def cloud_state(self) -> DeviceState | None:
@@ -405,6 +434,18 @@ class Thermostat:
         return self.family == ModelFamily.CLIMATE_SENSOR
 
     @property
+    def is_heating_model(self) -> bool:
+        """Whether this model family can expose a heating duty cycle."""
+        return self.family in {
+            ModelFamily.BASEBOARD_V1,
+            ModelFamily.BASEBOARD_V2,
+            ModelFamily.BASEBOARD_LITE,
+            ModelFamily.BASEBOARD_V3,
+            ModelFamily.INFLOOR,
+            ModelFamily.CENTRAL_HVAC,
+        }
+
+    @property
     def is_hvac(self) -> bool:
         """Central HVAC uses native capabilities and dual auto targets."""
         return self.family == ModelFamily.CENTRAL_HVAC
@@ -477,15 +518,59 @@ class Thermostat:
 
     @property
     def humidity(self) -> float | None:
-        """Room humidity in % (cloud only; HomeKit doesn't expose it)."""
+        """Room humidity in %, preferring fresh MQTT over fresh cloud data."""
+        mqtt_value = self._mqtt_measurement("humidity", minimum=0, maximum=100)
+        if mqtt_value is not None:
+            return mqtt_value
         state = self.cloud_state
-        return (
-            state.humidity
-            if state
-            and self.cloud
-            and self.cloud.measurement_fresh(self.device_id, "humidity")
-            else None
-        )
+        cloud = self.cloud
+        value = state.humidity if state else None
+        if (
+            value is None
+            or not math.isfinite(value)
+            or not 0 <= value <= 100
+            or cloud is None
+            or not cloud.measurement_fresh(self.device_id, "humidity")
+        ):
+            return None
+        return value
+
+    @property
+    def humidity_source(self) -> str | None:
+        """Source of the current humidity value, when one is fresh."""
+        if self._mqtt_measurement("humidity", minimum=0, maximum=100) is not None:
+            return "mqtt"
+        if self.humidity is not None:
+            return "cloud"
+        return None
+
+    @property
+    def duty_cycle(self) -> float | None:
+        """Numeric heating fraction, preferring fresh MQTT over cloud telemetry."""
+        mqtt_value = self._mqtt_measurement("duty_cycle", minimum=0, maximum=1)
+        if mqtt_value is not None:
+            return mqtt_value
+        state = self.cloud_state
+        cloud = self.cloud
+        value = state.duty_cycle if state else None
+        if (
+            value is None
+            or not math.isfinite(value)
+            or not 0 <= value <= 1
+            or cloud is None
+            or not cloud.measurement_fresh(self.device_id, "duty_cycle")
+        ):
+            return None
+        return value
+
+    @property
+    def duty_cycle_source(self) -> str | None:
+        """Source of the current numeric duty-cycle value, when one is fresh."""
+        if self._mqtt_measurement("duty_cycle", minimum=0, maximum=1) is not None:
+            return "mqtt"
+        if self.duty_cycle is not None:
+            return "cloud"
+        return None
 
     @property
     def mode(self) -> Mode | None:
@@ -574,7 +659,11 @@ class Thermostat:
 
     @property
     def heat_fraction(self) -> float | None:
-        """Relay load locally, or the latest interval's average load in the cloud."""
+        """Fresh MQTT duty cycle, else local relay state or fresh cloud average."""
+        mqtt_duty = self._mqtt_measurement("duty_cycle", minimum=0, maximum=1)
+        if mqtt_duty is not None:
+            mode = self.mode
+            return 0.0 if mode is not None and mode != Mode.HEAT else mqtt_duty
         if self.local_ok:
             heating = self.heating
             return float(heating) if heating is not None else None
@@ -587,10 +676,7 @@ class Thermostat:
             self.device_id, "duty_cycle"
         ):
             return None
-        duty = state.duty_cycle
-        if duty is None or not math.isfinite(duty) or not 0 <= duty <= 1:
-            return None
-        return duty
+        return self.duty_cycle
 
     @property
     def display_unit(self) -> str | None:

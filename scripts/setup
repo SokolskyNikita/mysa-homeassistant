@@ -3,12 +3,12 @@
 set -e
 cd "$(dirname "$0")/.."
 python3 -m pip install --upgrade pip
-client_wheel="${PWD}/../mysa-client/dist/mysa_client-0.1.0-py3-none-any.whl"
+client_wheel="${PWD}/../mysa-client/dist/mysa_client-0.1.2-py3-none-any.whl"
 if [[ -f "${client_wheel}" ]]; then
-    python3 -m pip install "mysa-client[homekit] @ file://${client_wheel}"
+    python3 -m pip install "mysa-client[homekit,mqtt] @ file://${client_wheel}"
 elif [[ -f "${PWD}/../mysa-client/pyproject.toml" ]]; then
-    python3 -m pip install --editable "${PWD}/../mysa-client[homekit]"
+    python3 -m pip install --editable "${PWD}/../mysa-client[homekit,mqtt]"
 else
-    python3 -m pip install "mysa-client[homekit]==0.1.0"
+    python3 -m pip install "mysa-client[homekit,mqtt]==0.1.2"
 fi
 python3 -m pip install --group dev --group lint

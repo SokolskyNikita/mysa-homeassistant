@@ -151,6 +151,16 @@
           "title": "Experimental cloud support",
           "description": "This device uses Mysa's cloud. Basic controls depend on its reported capabilities and have not been tested on this hardware yet. Complete setup and manage schedules, equipment settings, sensor linking and firmware updates in the Mysa app. Download integration diagnostics when reporting missing controls or commands that do not apply."
         },
+        "mqtt": {
+          "title": "{name} MQTT readings",
+          "description": "Choose whether to request live MQTT humidity and heating duty readings from this thermostat. This setting only affects this device.",
+          "data": {
+            "mqtt_enabled": "Use live MQTT readings for this thermostat"
+          },
+          "data_description": {
+            "mqtt_enabled": "When enabled, fresh MQTT values take priority and fall back automatically when updates stop. Turn it off to stop requesting and subscribing to this thermostat over MQTT."
+          }
+        },
         "user": {
           "title": "Add a Mysa thermostat",
           "menu_options": {
@@ -203,19 +213,22 @@
           "title": "{name} settings",
           "data": {
             "heater_watts": "Heater wattage",
-            "use_cloud_runtime": "Use the thermostat's own heating runtime (cloud)"
+            "use_cloud_runtime": "Use the thermostat's own heating runtime (cloud)",
+            "mqtt_enabled": "Use live MQTT readings for this thermostat"
           },
           "data_description": {
             "heater_watts": "Total wattage of the heaters this thermostat switches. Set it to get an energy sensor for the Energy dashboard; 0 turns it off.",
-            "use_cloud_runtime": "The thermostat measures its own on-time, which also covers periods when Home Assistant was down. Off: count it from the heating state that Home Assistant sees."
+            "use_cloud_runtime": "The thermostat measures its own on-time, which also covers periods when Home Assistant was down. Off: count it from the heating state that Home Assistant sees.",
+            "mqtt_enabled": "Prefer this thermostat's live humidity and numeric heating duty cycle when available. Turn it off to stop requesting and subscribing to this device over MQTT."
           }
         },
         "reconfigure": {
           "title": "{name}",
           "description": "{account}\n\n{local}",
           "menu_options": {
-            "settings": "Settings (heater wattage, heating runtime)",
+            "settings": "Settings (heater wattage, heating runtime, MQTT)",
             "cloud_info": "Experimental cloud support",
+            "mqtt": "Live MQTT readings",
             "local_pair": "Pair locally with the HomeKit code",
             "account_add": "Add to my Mysa account",
             "name_from_mysa": "Use the Mysa app's name in Home Assistant",
@@ -312,12 +325,14 @@
         "data": {
           "cloud_enabled": "Use Mysa cloud",
           "scan_interval": "Cloud poll interval",
-          "live_mode": "Live mode during local outages"
+          "live_mode": "Live cloud reporting during local outages",
+          "mqtt_enabled": "Live MQTT readings"
         },
         "data_description": {
           "cloud_enabled": "Off: no calls to Mysa's servers at all, and the cloud-only entities are disabled (they keep their names and history, and come back when you turn the cloud on). Your sign-in is kept, so turning it back on needs no password.",
           "scan_interval": "How often to read all thermostats from the cloud (one request per poll). Local HomeKit updates are instant regardless.",
-          "live_mode": "While a thermostat can't be reached on your network, ask Mysa to have it report every ~5 s, and read the cloud every 10 s. Never used while the local connection works. Off: the cloud is read at the interval above, and its readings are often 15–30 minutes old."
+          "live_mode": "While a thermostat can't be reached on your network, ask Mysa's cloud to have it report every ~5 s, and poll the cloud every 10 s. Never used while the local connection works. Off: the cloud is read at the interval above, and its readings are often 15–30 minutes old. This controls HTTPS cloud fallback; MQTT readings are controlled separately.",
+          "mqtt_enabled": "Prefer live MQTT humidity and heating duty readings when available. Falls back automatically if updates stop. Uses your Mysa sign-in; no broker or pairing code is needed."
         },
         "sections": {
           "advanced": {
@@ -481,6 +496,9 @@
       },
       "heater_power": {
         "name": "Heater power"
+      },
+      "heating_duty_cycle": {
+        "name": "Heating duty cycle"
       },
       "mysa_account": {
         "name": "Mysa account",

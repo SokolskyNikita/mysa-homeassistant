@@ -157,9 +157,10 @@ also lack matching hardware validation. See [cloud validation](cloud.md),
 - Analytics, localization, feature flags, phone diagnostic uploads and general
   app communication preferences; device notification operations remain included.
 - Obsolete credential helpers as extra features, duplicate endpoint aliases,
-  device-internal firmware-download behavior, and a new MQTT transport for
-  operations already represented. Current [MQTT evidence](../mqtt.md) does not
-  establish useful Publish/Receive access for this client.
+  and device-internal firmware-download behavior. The optional MQTT transport
+  is documented separately from the HTTP, HomeKit, and setup API inventory;
+  current [MQTT evidence](../mqtt.md) establishes live echo and telemetry only
+  for the tested devices and account configuration.
 - Unknown-purpose HomeKit/GATT fields, speculative reboot commands and unobserved
   Matter vendor extensions. Add operations when their meaning is established.
 - A generic “no bugs” item or a count of passed tests masquerading as correctness.

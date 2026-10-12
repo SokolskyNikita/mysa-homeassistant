@@ -8,9 +8,9 @@
 
 Control Mysa thermostats over your local network through HomeKit. Setpoint, mode, room temperature and heating state work without a Mysa account or internet connection. Setup uses Home Assistant's UI.
 
-An optional Mysa sign-in adds settings, humidity, schedules, firmware checks and cloud control when the local connection fails.
+An optional Mysa sign-in adds settings, schedules, firmware checks and cloud control when the local connection fails. With cloud access, the integration-level Live MQTT readings option, and a thermostat's own Live MQTT readings setting enabled, Mysa Local also receives live telemetry for that account thermostat. Both MQTT options are on by default. Recent MQTT humidity and numeric heating duty-cycle readings take priority, with existing cloud and local behavior as fallback.
 
-**Powered by [`mysa-client`](https://github.com/SokolskyNikita/mysa-client).** The core Mysa API and device communication logic lives in that standalone Python package: cloud authentication and API calls, HomeKit discovery and pairing, commands, and response parsing. This repository connects it to Home Assistant with setup flows, entities, polling, local/cloud routing, and persistence. For API documentation and standalone examples, see the [client repository](https://github.com/SokolskyNikita/mysa-client).
+**Powered by [`mysa-client`](https://github.com/SokolskyNikita/mysa-client).** The core Mysa API and device communication logic lives in that standalone Python package: cloud authentication and API calls, HomeKit discovery and pairing, optional MQTT transport, commands, and response parsing. This repository connects it to Home Assistant with setup flows, entities, polling, local/cloud routing, telemetry freshness, and persistence. For API documentation and standalone examples, see the [client repository](https://github.com/SokolskyNikita/mysa-client).
 
 ## Supported models
 
@@ -81,7 +81,7 @@ Entities depend on the thermostat's capabilities and reported data. The [newer-m
 |---|---|---|
 | Climate and room temperature | Local, with cloud fallback | Setpoint, supported modes, room temperature and reported heating state; also creates a separate temperature sensor |
 | AC fan speed and swing | Cloud | Fan speed plus vertical and horizontal swing, where the remote supports them |
-| Humidity | Cloud | Also shown on the climate entity; the Lite reports it despite its capability flag |
+| Humidity | MQTT, with cloud fallback | Recent MQTT readings take priority; also shown on the climate entity. The Lite reports it despite its capability flag |
 | Display units | Local, with cloud fallback | Celsius or Fahrenheit on the thermostat's screen; does not change Home Assistant's units |
 | Identify | Local | Signals the thermostat so you can identify it |
 | Button lock | Cloud | Locks or unlocks the thermostat's buttons |
@@ -89,8 +89,9 @@ Entities depend on the thermostat's capabilities and reported data. The [newer-m
 | Lowest and highest setpoint | Cloud | Hardware limits, also used by the climate entity |
 | Temperature offset | Cloud | Adjusts the temperature used for control and the reported room temperature |
 | Heater type | Cloud | Baseboard or fan forced on models that support those profiles |
+| Heating duty cycle | MQTT, with cloud fallback | Numeric heating percentage when reported; its `source` attribute identifies `mqtt` or `cloud` |
 | Heating runtime today | Observed heating state, optionally supplemented by cloud history | Resets at midnight; see [Runtime and energy](#runtime-and-energy) |
-| Heater power and energy | Calculated | Created when you set a heater wattage |
+| Heater power and energy | Calculated | Created when you set a heater wattage; a fresh numeric MQTT duty cycle refines estimated power |
 | Firmware update | Cloud | Checks for updates; installation is optional and has not been validated end to end |
 | Connection path | Integration status | `local`, `cloud` or `offline` |
 
@@ -104,12 +105,15 @@ Open Mysa Local's options, then Cloud and polling.
 
 | Option | Default | Effect |
 |---|---|---|
-| Use Mysa cloud | Enabled after sign-in | Allows cloud settings, data and fallback control |
+| Use Mysa cloud | Enabled after sign-in | Required for account-backed MQTT; allows cloud settings, data and fallback control |
 | Cloud poll interval | 60 seconds | Reads state for all thermostats; accepts 30–300 seconds |
 | Live mode during local outages | On | Requests faster readings while a locally paired thermostat's LAN connection is down |
+| Live MQTT readings | On | Master switch for MQTT across all thermostats; turn off to stop MQTT. Per-thermostat settings choose which devices use it |
 | Advanced → Allow firmware installs | Off | Allows the Firmware update entity to start an offered update |
 
 Turning cloud access off disables cloud-only entities while keeping their entity IDs, names, areas and history. Your sign-in is retained. Turning it back on restores entities disabled by the integration; entities you disabled yourself stay disabled. A thermostat configured only through the cloud is unavailable while cloud access is off.
+
+When Mysa sign-in and cloud access are enabled, the default-on integration-level Live MQTT readings option shares one MQTT connection across account thermostats whose per-thermostat Live MQTT readings setting is also on. Each device setting is on by default and appears under that thermostat's **Settings and status** menu. Turn off the integration option to stop MQTT for all devices, or turn off a device option to exclude only that thermostat. This path is read-only: thermostat commands continue through HomeKit or the existing HTTPS cloud path. No separate MQTT broker, Home Assistant MQTT integration, or additional pairing code is needed. If MQTT is unavailable, setup and local control continue and the integration falls back to its existing data sources.
 
 Firmware installation has not been verified with an available update. The client sends the required empty JSON body; a separate API test accepted the trigger when the Lite was already up to date, but no firmware was installed. See the [validation limits](docs/implementation/cloud.md#c-a01) and [firmware reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/firmware-and-connectivity.md#firmware).
 
@@ -126,6 +130,7 @@ Select Save my password to let the integration sign in again automatically. This
 On the integration page, open the thermostat's menu → Settings and status. It shows local pairing and Mysa account membership. From there you can:
 
 - Set heater wattage and choose whether cloud history contributes to heating runtime.
+- Turn **Use live MQTT readings** on or off for this thermostat. It is on by default; the integration-level Live MQTT readings option and cloud access must also be enabled.
 - Pair a thermostat locally with its HomeKit code.
 - Add it to or remove it from your Mysa account.
 - Copy its Mysa app name to Home Assistant or rename it in Mysa to match Home Assistant.
@@ -184,15 +189,15 @@ A hold needs an existing Mysa schedule. For schedules managed entirely by Home A
 
 Heating runtime today counts the time HomeKit reports the heater running. The option "Use the thermostat's own heating runtime" is enabled by default. When cloud access is available, it supplements that count with Mysa's history, including periods when Home Assistant was down. Cloud runtime is fetched every 15 minutes. During cloud fallback, the total advances with these measured history updates; fractional duty-cycle readings do not extend the local relay count. Without cloud history, the count pauses until HomeKit recovers. The displayed total keeps the larger count and does not decrease within a day.
 
-Set Heater wattage to the combined rated wattage of the heaters controlled by that thermostat. A positive value adds power and energy sensors; zero turns them off. With local readings, power is that wattage while heating and zero while idle. With cloud readings, power uses Mysa's reported duty cycle, so it can show an average between zero and the configured wattage. Energy is runtime multiplied by wattage and can be used in the Energy dashboard. These are estimates, not electrical measurements. Runtime and energy update once a minute and reset at local midnight.
+Set Heater wattage to the combined rated wattage of the heaters controlled by that thermostat. A positive value adds power and energy sensors; zero turns them off. A recent numeric MQTT duty-cycle fraction estimates average power as wattage multiplied by that fraction. If MQTT duty cycle is unavailable or stale, the existing cloud or local heating-state behavior applies. Energy is runtime multiplied by wattage and can be used in the Energy dashboard. These are estimates, not electrical measurements. Runtime and energy update once a minute and reset at local midnight.
 
 ## Local and cloud behavior
 
-HomeKit supplies push updates and a health check runs every 30 seconds. While the local connection is healthy, the climate entity uses its readings. Cloud-only data, such as humidity and brightness settings, still comes from Mysa if enabled.
+HomeKit supplies push updates and a health check runs every 30 seconds. While the local connection is healthy, the climate entity uses its readings. With cloud access and both MQTT options enabled, a shared MQTT session supplies live telemetry for the selected account thermostats. MQTT does not replace HomeKit control or HTTPS settings and commands.
 
 Setpoint, screen-unit and HomeKit-supported mode changes try HomeKit first. Modes without a HomeKit equivalent, including fan-only and dry, go directly through the cloud. A local write has a five-second timeout. After a timeout, the integration reads back the local value before retrying through the cloud. For setpoint and mode changes, it also checks cloud-reported state. A device rejection is reported directly.
 
-Cloud state uses one batch request for all thermostats per poll. Settings records, capabilities and other data refresh less often. Outside live mode, a thermostat samples about every 30 seconds but uploads the samples to Mysa in batches, so the latest cloud reading is often 15–30 minutes old even while the thermostat is connected and accepts commands. Cloud climate readings, humidity and Wi-Fi signal require an explicit online status and a telemetry timestamp no more than 90 minutes old or one minute ahead of Home Assistant's clock. Settings controls remain available when the cloud responds and reports the thermostat online; they do not depend on the temperature-report timestamp. Local climate control is unaffected by stale cloud telemetry.
+Cloud state uses one batch request for all thermostats per poll. Settings records, capabilities and other data refresh less often. Outside live mode, a thermostat samples about every 30 seconds but uploads the samples to Mysa in batches, so the latest cloud reading is often 15–30 minutes old even while the thermostat is connected and accepts commands. MQTT humidity and numeric duty-cycle values take priority while their receipt time is within 30 seconds; each field falls back independently to a valid HTTPS reading when MQTT data expires or is unavailable. An absent, stale or non-numeric duty cycle is never inferred from the thermostat's boolean heating state. Cloud climate readings, humidity and Wi-Fi signal require an explicit online status and a telemetry timestamp no more than 90 minutes old or one minute ahead of Home Assistant's clock. Settings controls remain available when the cloud responds and reports the thermostat online; they do not depend on the temperature-report timestamp. Local climate control is unaffected by stale cloud telemetry.
 
 With Live mode during local outages enabled (the default), a lost LAN connection triggers a request for readings about every five seconds and changes cloud polling to ten seconds. Normal polling resumes when local control returns. This option applies to thermostats with a local pairing; thermostats added only from the account use the normal poll interval.
 

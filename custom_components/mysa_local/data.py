@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from mysa_client.cloud import MysaClient
 
     from .cloud_coordinator import MysaCloudCoordinator
+    from .mqtt_coordinator import MysaMqttCoordinator
     from .thermostat import Thermostat
 
 
@@ -25,6 +26,7 @@ class MysaRuntimeData:
     thermostats: dict[str, Thermostat] = field(default_factory=dict)
     fingerprint: object = None
     history: EventHistory = field(default_factory=EventHistory)
+    mqtt: MysaMqttCoordinator | None = None
 
     @property
     def cloud_enabled(self) -> bool:

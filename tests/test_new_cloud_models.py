@@ -451,7 +451,7 @@ async def test_new_model_reconfigure_explains_scope(
             "subentry_id": subentry.subentry_id,
         },
     )
-    assert result["menu_options"] == ["cloud_info"]
+    assert result["menu_options"] == ["cloud_info", "mqtt"]
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {"next_step_id": "cloud_info"}
     )

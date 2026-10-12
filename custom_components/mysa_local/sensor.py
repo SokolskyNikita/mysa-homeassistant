@@ -58,10 +58,17 @@ async def async_setup_entry(
             entities.append(HeaterPowerSensor(thermostat))
             entities.append(EnergySensor(thermostat))
         state = thermostat.cloud_state
-        if (state is not None and state.humidity is not None) or (
-            thermostat.capabilities and thermostat.capabilities.humidity_sensor
+        if (
+            (state is not None and state.humidity is not None)
+            or (thermostat.capabilities and thermostat.capabilities.humidity_sensor)
+            or thermostat.has_mqtt_value("humidity")
         ):
             entities.append(HumiditySensor(thermostat))
+        if thermostat.is_heating_model and (
+            (state is not None and state.duty_cycle is not None)
+            or thermostat.has_mqtt_value("duty_cycle")
+        ):
+            entities.append(HeatingDutyCycleSensor(thermostat))
         if state is not None and state.rssi is not None:
             entities.append(WifiSignalSensor(thermostat))
         return entities
@@ -87,8 +94,8 @@ class TemperatureSensor(MysaEntity, SensorEntity):
         return self.thermostat.current_temperature
 
 
-class HumiditySensor(MysaCloudEntity, SensorEntity):
-    """Room humidity, as the thermostat reports it to the cloud.
+class HumiditySensor(MysaEntity, SensorEntity):
+    """Room humidity, preferring a fresh MQTT report over cloud telemetry.
 
     Created whenever the cloud reports a value, whatever the capability data
     says: the Baseboard Lite's capabilities claim no humidity sensor, yet it
@@ -107,18 +114,53 @@ class HumiditySensor(MysaCloudEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Only expose humidity while its telemetry reading is fresh."""
-        cloud = self.thermostat.cloud
-        return bool(
-            self.thermostat.cloud_connected
-            and cloud
-            and cloud.measurement_fresh(self.thermostat.device_id, "humidity")
+        """MQTT is independent of REST; cloud fallback needs a healthy poll."""
+        source = self.thermostat.humidity_source
+        return source == "mqtt" or (
+            source == "cloud" and self.thermostat.cloud_connected
         )
 
     @property
     def native_value(self) -> float | None:
         """Relative humidity in %."""
         return self.thermostat.humidity
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Identify which live source supplied the reading."""
+        return {"source": self.thermostat.humidity_source}
+
+
+class HeatingDutyCycleSensor(MysaEntity, SensorEntity):
+    """Numeric heater duty cycle, as a percentage of the interval."""
+
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+    _attr_translation_key = "heating_duty_cycle"
+
+    def __init__(self, thermostat: Thermostat) -> None:
+        """Create the entity."""
+        super().__init__(thermostat, "heating_duty_cycle")
+
+    @property
+    def available(self) -> bool:
+        """MQTT readings are independent of REST; cloud needs a healthy poll."""
+        source = self.thermostat.duty_cycle_source
+        return source == "mqtt" or (
+            source == "cloud" and self.thermostat.cloud_connected
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """Convert the device's 0..1 fraction to a percentage."""
+        fraction = self.thermostat.duty_cycle
+        return round(fraction * 100, 1) if fraction is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Identify which live source supplied the reading."""
+        return {"source": self.thermostat.duty_cycle_source}
 
 
 class ConnectionPathSensor(MysaEntity, SensorEntity):

@@ -168,7 +168,9 @@ class MysaClimate(MysaEntity, ClimateEntity):
 
     @property
     def current_humidity(self) -> float | None:
-        """Room humidity, while the cloud reports it."""
+        """Room humidity, preferring fresh MQTT independently of REST health."""
+        if self.thermostat.humidity_source == "mqtt":
+            return self.thermostat.humidity
         return self.thermostat.humidity if self.thermostat.cloud_ok else None
 
     @property

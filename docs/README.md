@@ -29,7 +29,8 @@ there too. The
 tracks client methods independently of this integration's management coverage.
 
 The integration consumes [`mysa_client.cloud`](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md)
-and [`mysa_client.homekit`](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md).
+[`mysa_client.homekit`](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md),
+and [`mysa_client.mqtt`](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md).
 The [Wi-Fi setup page](https://github.com/SokolskyNikita/mysa-wifi-setup) remains a
 separate product. Older protocol URLs in this repository forward readers to
 their maintained references.

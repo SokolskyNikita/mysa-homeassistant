@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from importlib.metadata import version
 from typing import Any
 
 from homeassistant.components.diagnostics import REDACTED, async_redact_data
@@ -91,6 +92,8 @@ async def async_get_config_entry_diagnostics(
         }
         if local is not None:
             item["homekit"] = redact_snapshot(local.diagnostics())
+        if runtime.mqtt is not None:
+            item["mqtt"] = runtime.mqtt.diagnostics(thermostat.device_id)
         if cloud is not None and cloud.data is not None:
             dev = thermostat.device_id
             state = cloud.data.states.get(dev)
@@ -159,6 +162,7 @@ async def async_get_config_entry_diagnostics(
     )
     diagnostics = {
         "integration_version": VERSION,
+        "client_version": await hass.async_add_executor_job(version, "mysa-client"),
         "entry": {
             "options": redact_snapshot(dict(entry.options)),
             "signed_in": bool(entry.data.get(CONF_REFRESH_TOKEN)),

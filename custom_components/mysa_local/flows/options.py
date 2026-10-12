@@ -22,6 +22,7 @@ from custom_components.mysa_local.const import (
     CONF_FIRMWARE_INSTALL,
     CONF_LIVE_MODE,
     CONF_MODEL,
+    CONF_MQTT_ENABLED,
     CONF_PAIRING,
     CONF_REFRESH_TOKEN,
     CONF_SAVE_PASSWORD,
@@ -175,6 +176,7 @@ class MysaOptionsFlow(OptionsFlow):
         )
         if self.config_entry.data.get(CONF_REFRESH_TOKEN):
             fields[vol.Required(CONF_LIVE_MODE)] = BooleanSelector()
+            fields[vol.Optional(CONF_MQTT_ENABLED)] = BooleanSelector()
         fields[vol.Required("advanced")] = section(
             vol.Schema({vol.Required(CONF_FIRMWARE_INSTALL): BooleanSelector()}),
             {"collapsed": True},
@@ -189,6 +191,7 @@ class MysaOptionsFlow(OptionsFlow):
                         CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                     ),
                     CONF_LIVE_MODE: options.get(CONF_LIVE_MODE, DEFAULT_LIVE_MODE),
+                    CONF_MQTT_ENABLED: options.get(CONF_MQTT_ENABLED, True),
                     "advanced": {
                         CONF_FIRMWARE_INSTALL: options.get(CONF_FIRMWARE_INSTALL, False)
                     },
