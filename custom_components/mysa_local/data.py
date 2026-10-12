@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 
+from .event_history import EventHistory
+
 if TYPE_CHECKING:
     from .cloud_coordinator import MysaCloudCoordinator
     from .protocols.cloud import MysaClient
@@ -21,6 +23,7 @@ class MysaRuntimeData:
     cloud: MysaCloudCoordinator | None
     thermostats: dict[str, Thermostat] = field(default_factory=dict)
     fingerprint: object = None
+    history: EventHistory = field(default_factory=EventHistory)
 
     @property
     def cloud_enabled(self) -> bool:

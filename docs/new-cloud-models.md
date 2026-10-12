@@ -79,16 +79,26 @@ backend permissions or the exact capabilities returned by a particular firmware.
 ## First V3 hardware check
 
 1. Set up V3 in Mysa's app and verify its basic controls there.
-2. Install Mysa Local 0.5.0 or later, sign in and import V3. Confirm it shows
+2. Install Mysa Local 0.5.1 or later, sign in and import V3. Confirm it shows
    experimental cloud support and does not ask for HomeKit pairing.
 3. Compare temperature, humidity, current mode and target against the app. Record
-   the firmware version and download integration diagnostics.
-4. Record the original mode and setpoint, make a small temporary change in HA,
-   verify it in the app and on the thermostat, then restore the original values.
-   Allow time for cloud reports; distinguish a submitted command from confirmation.
-5. Check off/heat, supported display/lock controls, app-to-HA updates and an HA
-   reload. Restore any changed settings. Report absent controls or commands that
-   remain pending along with diagnostics.
+   the model, firmware, integration and HA versions, and original mode/setpoint.
+4. In **Settings → Devices & services → Mysa Local → ⋮**, select **Enable debug
+   logging**. Reproduce once with a small setpoint change; note the time/timezone,
+   requested value and actual HA/app/physical thermostat results. Allow time for
+   cloud reporting; HTTP acceptance alone does not establish application.
+5. Restore the original settings. Download diagnostics from the account entry's
+   **⋮ → Download diagnostics**, **before any integration reload or HA restart**.
+   Then **Disable debug logging** and save the offered log. Review both files for
+   personal data and attach them to the model report with your notes. History is
+   memory-only and resets on reload/restart; no shell or API calls are needed.
+6. Repeat this capture workflow for off/heat or supported display/lock controls
+   that fail. Check app-to-HA updates. Test a reload only after saving the capture.
+   V3 testing is cloud-only: HomeKit discovery, pairing and local fallback are not
+   prerequisites. Do not test unavailable legacy schedules/holds/settings.
+
+See the [complete capture instructions](../README.md#capture-a-command-problem)
+for retention limits and the distinction between stored, reported and applied.
 
 Real V3 feedback is the next validation step. Central HVAC and Climate Sensor
 will still need their own hardware checks afterward.

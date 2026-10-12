@@ -92,11 +92,13 @@ class FirmwareUpdate(MysaCloudEntity, UpdateEntity):
         device_id = self.thermostat.device_id
         LOGGER.warning(
             "Starting a firmware update on %s at the user's request",
-            self.thermostat.name,
+            self.thermostat.history.label(self.thermostat.device_id),
         )
         await cloud.async_call(
             lambda: cloud.client.start_firmware_update(device_id),
             stale=[f"firmware:{device_id}"],
+            device_id=self.thermostat.device_id,
+            operation="firmware_update",
         )
         self._installing = True
         self.async_write_ha_state()
@@ -107,7 +109,9 @@ class FirmwareUpdate(MysaCloudEntity, UpdateEntity):
                     try:
                         info = await cloud.client.get_firmware_info(device_id)
                     except MysaError as err:
-                        LOGGER.debug("Firmware status check failed: %s", err)
+                        LOGGER.debug(
+                            "Firmware status check failed: %s", type(err).__name__
+                        )
                         continue
                     if not info.update_available:
                         break

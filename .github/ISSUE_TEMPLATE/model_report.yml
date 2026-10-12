@@ -5,7 +5,12 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks! Reports like this are how models move to the "tested" list. Please attach the diagnostics file (Settings → Devices & services → Mysa Local → ⋮ → Download diagnostics).
+        Capture once without a shell or manual API calls:
+        1. Settings → Devices & services → Mysa Local → ⋮ → Enable debug logging.
+        2. Record original settings. Reproduce once; note the time/timezone, requested values, and actual HA/app/thermostat results.
+        3. Restore the original settings, then use the account entry's ⋮ → Download diagnostics BEFORE reloading/restarting (history is memory-only).
+        4. Disable debug logging and save the offered log. Review both files for personal data, then attach diagnostics JSON and the debug log here. Integration events are sanitized; HA/third-party logs may still contain personal data.
+        HTTP acceptance is not confirmation of a physical change. Please include what you observed on the thermostat.
   - type: input
     id: model
     attributes:
@@ -13,17 +18,26 @@ body:
       description: For example BB-V1-1, firmware 3.x.y.
     validations:
       required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Integration and Home Assistant versions
+    validations:
+      required: true
   - type: checkboxes
     id: works
     attributes:
       label: What works
       options:
-        - label: Discovery and pairing
-        - label: Setpoint and mode (local)
-        - label: Cloud fallback
-        - label: Cloud settings (lock, brightness, limits, offset)
-        - label: Schedules and holds
+        - label: Cloud import/discovery of an app-enrolled device (V3 needs no HomeKit pairing)
+        - label: Temperature and humidity agree with the app/device
+        - label: Small setpoint change and heat/off agree with the app/device
+        - label: Supported display/lock controls work
+        - label: App changes appear in HA
+        - label: HomeKit pairing/local controls/cloud fallback (HomeKit models only)
+        - label: Original settings restored
   - type: textarea
     id: notes
     attributes:
-      label: Anything wrong or missing?
+      label: Requested values, actual results, and reproduction time
+      description: Include time/timezone, original settings, firmware, pending commands, and what HA, the app and thermostat showed. Attach diagnostics JSON and the debug log.

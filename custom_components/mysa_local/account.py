@@ -137,8 +137,8 @@ async def async_remove_from_account(
             LOGGER.warning(
                 "Couldn't clean up the schedule and shortcuts of %s before "
                 "removing it from the Mysa account: %s",
-                device_id,
-                err,
+                "[redacted]",
+                type(err).__name__,
             )
     await client.delete_device(device_id)
 

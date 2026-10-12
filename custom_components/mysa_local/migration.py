@@ -68,7 +68,7 @@ async def _async_move(
     ) and not await hass.config_entries.async_unload(source.entry_id):
         LOGGER.warning(
             "Couldn't unload HomeKit Device entry %s; migration will retry on setup",
-            source.title,
+            "[redacted]",
         )
         return False
 
@@ -112,10 +112,6 @@ async def _async_move(
         )
         moved.append(old_entity.entity_id)
 
-    LOGGER.info(
-        "Moved %s from HomeKit Device to Mysa Local: %s",
-        source.title,
-        ", ".join(moved) or "no entities",
-    )
+    LOGGER.info("Moved %s entities from HomeKit Device to Mysa Local", len(moved))
     await hass.config_entries.async_remove(source.entry_id)
     return hass.config_entries.async_get_entry(source.entry_id) is None

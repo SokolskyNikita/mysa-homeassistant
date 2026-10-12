@@ -22,7 +22,7 @@ Only the Baseboard Lite has been tested on hardware. Other models are supported 
 | Baseboard V3 | `BB-V3-0` | Experimental cloud support after setup in the Mysa app |
 | Climate Sensor | `CS-V1-0`, `CS-V1` | Experimental cloud readings; no climate entity |
 
-For these newer models, finish setup in the Mysa app, then sign in here and import them from your account. V3 provides basic heat/off and setpoint control. Central HVAC adds heat/cool auto targets and supported fan controls. Climate Sensor provides readings only. Controls depend on the returned capabilities. Schedules/holds, energy/runtime, sensor linking and newer-model OTA are deferred. See [experimental cloud support and the V3 test guide](docs/new-cloud-models.md).
+For the experimental models, finish setup in the Mysa app, then sign in here and import them from your account. V3 provides basic heat/off and setpoint control. Central HVAC adds heat/cool auto targets and supported fan controls. Climate Sensor provides readings only. Controls depend on the returned capabilities. Schedules/holds, energy/runtime, sensor linking and newer-model OTA are deferred. See [experimental cloud support and the V3 test guide](docs/new-cloud-models.md).
 
 AC fan and swing controls were implemented from Mysa app 4.20.1 and tested with simulated responses. They show the remote's options for the current mode and are hidden while the AC is off. Toggle-only swing, AC auto mode and AC heating/cooling target ranges are not implemented. In-Floor's floor-sensor reading is not exposed.
 
@@ -200,7 +200,7 @@ Mysa Local stores HomeKit pairing keys and the Mysa credentials described under 
 
 With cloud access disabled, the integration stops contacting Mysa's servers. The thermostat may still maintain its own cloud connection; this option does not change its network access.
 
-Downloaded diagnostics redact stored credentials, pairing keys, addresses, serial numbers, device names and account identifiers.
+Downloaded diagnostics redact stored credentials, pairing keys, addresses, serial numbers, device names and account identifiers. Command history uses anonymous thermostat labels and generated correlation IDs. Only known semantic fields enter history; arbitrary server fields, request/response bodies and exception text are omitted. Integration debug messages use the same sanitized history events. Home Assistant and third-party libraries can still log personal data, so review both downloads before sharing.
 
 ## Troubleshooting
 
@@ -212,9 +212,22 @@ Downloaded diagnostics redact stored credentials, pairing keys, addresses, seria
 | Pairing fails after removing the thermostat from HA | If it was offline during removal, its old HomeKit pairing may still exist. Reset that pairing on the thermostat before pairing again. |
 | A hold is refused | Create a Mysa schedule first. For a timed hold, use an end time in the future. |
 
-Enable debug logging or download diagnostics from the integration page. System information has a Mysa Local section with connection counts, sign-in status and cloud health; open Settings → System → Repairs → menu → System information.
+### Capture a command problem
 
-For a bug report, include the model, firmware, integration version and diagnostics in a [GitHub issue](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=bug.yml).
+No shell access or manual API requests are needed:
+
+1. Open **Settings → Devices & services → Mysa Local**, open the integration menu (**⋮**), and select **Enable debug logging**.
+2. Record the thermostat model, firmware, Mysa Local and HA versions, original settings, and the value you intend to request.
+3. Reproduce once with a small temporary change. Note the time and timezone, requested values, and what HA, the Mysa app and the physical thermostat actually show. Allow time for cloud reporting.
+4. Restore the original settings and note whether restoration worked.
+5. On the same integration page, open the affected account entry's **⋮ → Download diagnostics**. **Download before reloading the integration or restarting HA.**
+6. Select **Disable debug logging** and save the offered debug log. Review both files for personal data, then attach the diagnostics JSON and debug log to a [bug report](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=bug.yml) or [model report](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=model_report.yml), with your notes.
+
+Diagnostics include an in-memory history of at most **500 events**, retained for **24 hours**, with an **8 KiB limit per event**. Large events omit value details and are marked truncated. At most 100 retained events are recurring polling/failure observations; identical noisy events are suppressed for a minute. History is collected even without debug logging, has no disk persistence, and is cleared on unload, reload or restart. The export includes the retained time window and eviction, suppression and capture-failure counts. Download promptly after reproducing.
+
+Command events distinguish submission, HTTP acceptance, uncertain/lost responses, failures, configuration storage, unchanged values, supersession, expiry and device-reported confirmation. **Accepted does not mean applied.** `confirmed` means a qualifying device report matched the command; it does not independently prove a physical change. Compare with the app and thermostat. Earlier commands remain in history when a new command replaces their active tracking. Source timestamps, requested/baseline values, request routes/status/duration and anonymous correlation make the sequence reviewable.
+
+System information also has a Mysa Local section with connection counts, sign-in status and cloud health: **Settings → System → Repairs → ⋮ → System information**.
 
 ## Other integration options
 

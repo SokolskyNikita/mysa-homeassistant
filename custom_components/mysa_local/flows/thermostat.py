@@ -232,23 +232,27 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         except HomeKitConnectionError as err:
             LOGGER.warning(
                 "Couldn't resume HomeKit pairing with %s: %s",
-                self._thermostat.name,
-                err,
+                "[redacted]",
+                type(err).__name__,
             )
             return self._show_pair_form({"base": "cannot_connect_device"}, str(err))
         except HomeKitAuthenticationError as err:
             await pairing_store(self.hass).async_clear(hkid)
-            LOGGER.debug("Saved HomeKit pairing is no longer accepted: %s", err)
+            LOGGER.debug(
+                "Saved HomeKit pairing is no longer accepted: %s", type(err).__name__
+            )
             return self._show_pair_form({"base": "pairing_failed"}, str(err))
         except (HomeKitError, KeyError, TypeError, ValueError) as err:
-            LOGGER.debug("Resuming HomeKit pairing failed: %s", err, exc_info=True)
+            LOGGER.debug("Resuming HomeKit pairing failed: %s", type(err).__name__)
             return self._show_pair_form({"base": "pairing_failed"}, str(err))
         finally:
             if device is not None:
                 try:
                     await device.async_close()
                 except HomeKitError as err:
-                    LOGGER.debug("Closing resumed pairing failed: %s", err)
+                    LOGGER.debug(
+                        "Closing resumed pairing failed: %s", type(err).__name__
+                    )
 
         await self._async_store_pairing_backup(
             hkid,
@@ -301,11 +305,11 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             # Mysa's HomeKit server sometimes restarts for a few minutes (seen
             # right after an unpair); keep the form so the user can retry.
             LOGGER.warning(
-                "Couldn't start pairing with %s: %s", self._thermostat.name, err
+                "Couldn't start pairing with %s: %s", "[redacted]", type(err).__name__
             )
             return "cannot_connect_device", str(err)
         except (HomeKitError, IndexError) as err:
-            LOGGER.debug("Starting pairing failed: %s", err, exc_info=True)
+            LOGGER.debug("Starting pairing failed: %s", type(err).__name__)
             return "pairing_failed", str(err)
         return None, ""
 
@@ -361,8 +365,8 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             data, info = await self._thermostat.finish_pairing.async_complete(
                 code, on_pairing_saved=_persist_pairing
             )
-        except PairingPersistenceError as err:
-            LOGGER.error("Couldn't persist the HomeKit pairing: %s", err.__cause__)
+        except PairingPersistenceError:
+            LOGGER.error("Couldn't persist the HomeKit pairing: %s", "[redacted]")
             self._thermostat.finish_pairing = None
             return self._show_pair_form({"base": "pairing_failed"})
         except HomeKitAuthenticationError:
@@ -373,12 +377,12 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             return self._show_pair_form({"base": "max_peers"})
         except HomeKitConnectionError as err:
             LOGGER.warning(
-                "Pairing with %s was interrupted: %s", self._thermostat.name, err
+                "Pairing with %s was interrupted: %s", "[redacted]", type(err).__name__
             )
             self._thermostat.finish_pairing = None
             return self._show_pair_form({"base": "cannot_connect_device"}, str(err))
         except HomeKitError as err:
-            LOGGER.debug("Pairing failed: %s", err, exc_info=True)
+            LOGGER.debug("Pairing failed: %s", type(err).__name__)
             self._thermostat.finish_pairing = None
             return self._show_pair_form({"base": "pairing_failed"}, str(err))
         finally:
@@ -450,9 +454,9 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
                 pairing, info = await async_copy_pairing(
                     self.hass, entry.data, on_pairing_saved=_save_pairing
                 )
-            except PairingPersistenceError as err:
+            except PairingPersistenceError:
                 LOGGER.error(
-                    "Couldn't persist the copied HomeKit pairing: %s", err.__cause__
+                    "Couldn't persist the copied HomeKit pairing: %s", "[redacted]"
                 )
                 errors["base"] = "takeover_failed"
             except HomeKitMaxPeersError:
@@ -463,7 +467,7 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             except HomeKitConnectionError:
                 errors["base"] = "cannot_connect_device"
             except HomeKitError as err:
-                LOGGER.debug("Takeover failed: %s", err, exc_info=True)
+                LOGGER.debug("Takeover failed: %s", type(err).__name__)
                 errors["base"] = "takeover_failed"
                 detail = str(err)
             else:
@@ -632,8 +636,8 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             return None
         LOGGER.warning(
             "Paired %s while looking for %s; removing that pairing",
-            info.device_id,
-            target,
+            "[redacted]",
+            "[redacted]",
         )
         await async_unpair(self.hass, pairing)
         if self._thermostat.hkid is not None:

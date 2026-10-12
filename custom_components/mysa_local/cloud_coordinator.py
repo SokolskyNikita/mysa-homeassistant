@@ -33,6 +33,7 @@ from .const import (
     DOMAIN,
     LOGGER,
 )
+from .event_history import EventHistory, error_category
 from .protocols.cloud import (
     AcFan,
     ButtonLock,
@@ -119,6 +120,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         usage_device_ids: Iterable[str] = (),
         device_models: Mapping[str, str | None] | None = None,
         live_mode: bool = False,
+        history: EventHistory | None = None,
     ) -> None:
         """Create the coordinator; nothing is fetched until the first refresh."""
         self._base_interval = timedelta(seconds=scan_interval)
@@ -129,7 +131,9 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             name=f"{DOMAIN} cloud",
             update_interval=self._base_interval,
         )
+        self.history = history if history is not None else EventHistory()
         self.client = client
+        self.client.event_callback = self.history.request_event
         self.device_ids: set[str] = set(device_ids)
         self.device_models = dict(device_models or {})
         self.usage_device_ids: set[str] = set(usage_device_ids)
@@ -169,6 +173,12 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
     def _backoff(self) -> None:
         current = self.update_interval or self._normal_interval()
         self.update_interval = min(current * 2, CLOUD_MAX_BACKOFF)
+        self.history.record(
+            "backoff",
+            noisy=True,
+            source="cloud",
+            delay_seconds=self.update_interval.total_seconds(),
+        )
 
     @callback
     def set_fallback(self, device_id: str, active: bool) -> None:
@@ -187,15 +197,18 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             for key in [k for k in self._due if k.startswith("live:")]:
                 if key.removeprefix("live:") not in homes:
                     self._due.pop(key)
-        LOGGER.debug(
-            "Cloud fallback %s for %s; polling every %s",
-            "on" if active else "off",
-            device_id,
-            self._normal_interval(),
+        self.history.record(
+            "fallback",
+            noisy=True,
+            device_id=device_id,
+            transport="cloud",
+            active=active,
+            delay_seconds=self._normal_interval().total_seconds(),
         )
         self.update_interval = self._normal_interval()
         if active:
-            self.hass.async_create_task(self.async_request_refresh())
+            with self.history.detached():
+                self.hass.async_create_task(self.async_request_refresh())
 
     def _fallback_homes(self, records: Mapping[str, DeviceRecord]) -> set[str]:
         homes = set()
@@ -229,7 +242,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
                 raise UpdateFailed(
                     translation_domain=DOMAIN,
                     translation_key="cloud_unavailable",
-                    translation_placeholders={"error": str(err)},
+                    translation_placeholders={"error": error_category(err)},
                 ) from err
             self.update_interval = self._normal_interval()
             return data
@@ -252,6 +265,10 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
                 records = await self.client.get_devices()
                 data.records = records
                 self._mark_done("records", CLOUD_RECORDS_INTERVAL)
+                if self._optional_failures.pop("records", None):
+                    self.history.record(
+                        "source", noisy=True, source="records", status="recovery"
+                    )
             except MysaAuthError:
                 raise
             except MysaError as err:
@@ -279,6 +296,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         successful = []
         failures = []
         for source, result in zip(requests, results, strict=True):
+            previous_health = self.source_health.get(source)
             if isinstance(result, MysaAuthError):
                 raise result
             if isinstance(result, BaseException):
@@ -289,6 +307,14 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
                     "error": type(result).__name__,
                     "fetched_at": now.isoformat(),
                 }
+                if previous_health is None or previous_health.get("success"):
+                    self.history.record(
+                        "source",
+                        noisy=True,
+                        source=source,
+                        status="failure",
+                        error=error_category(result),
+                    )
                 failures.append(result)
             else:
                 self.source_health[source] = {
@@ -297,11 +323,35 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
                     "partial_errors": dict(self.client.source_errors.get(source, {})),
                     "route": self.client.legacy_source if source == "legacy" else "S",
                 }
+                partial = self.client.source_errors.get(source, {})
+                if (
+                    previous_health
+                    and (
+                        not previous_health.get("success")
+                        or previous_health.get("partial_errors")
+                    )
+                    and not partial
+                ):
+                    self.history.record(
+                        "source", noisy=True, source=source, status="recovery"
+                    )
+                for dev in partial:
+                    self.history.record(
+                        "source",
+                        noisy=True,
+                        device_id=dev,
+                        source=source,
+                        status="failure",
+                        reason="unusable",
+                    )
                 successful.append(result)
         if not successful:
             self._reconcile_pending(data, now)
             raise failures[0]
         for dev in ids:
+            self._record_observation_issues(
+                dev, [r[dev] for r in successful if dev in r], now
+            )
             data.states[dev] = reconcile(
                 dev,
                 [r[dev] for r in successful if dev in r],
@@ -354,9 +404,16 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             raise
         except MysaError as err:
             self._optional_backoff(key, err)
-            LOGGER.debug("Optional cloud read for %s failed: %s", dev, err)
+
         else:
-            self._optional_failures.pop(key, None)
+            if self._optional_failures.pop(key, None):
+                self.history.record(
+                    "source",
+                    noisy=True,
+                    device_id=dev if prefix != "live" else None,
+                    source=prefix,
+                    status="recovery",
+                )
 
     def _optional_backoff(self, key: str, err: MysaError) -> None:
         failures = self._optional_failures.get(key, 0) + 1
@@ -367,10 +424,19 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         if isinstance(err, MysaNotFoundError):
             seconds = 86400
         self._mark_done(key, timedelta(seconds=seconds))
+        source, _, dev = key.partition(":")
+        self.history.record(
+            "backoff",
+            noisy=True,
+            device_id=dev if source != "live" else None,
+            source=source,
+            error=error_category(err),
+            delay_seconds=seconds,
+        )
 
     async def _start_live_mode(self, data: CloudData, home: str) -> None:
         streamed = await self.client.start_live_mode(home, CLOUD_LIVE_MODE_TIMEOUT)
-        LOGGER.debug("Live mode for home %s: %s", home, streamed)
+        self.history.record("source", noisy=True, source="live", status="accepted")
         now = dt_util.utcnow()
         for dev in streamed:
             state = data.states.get(dev)
@@ -478,6 +544,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         """Read one thermostat's state right now (used to verify writes)."""
         state = await self.client.get_state(device_id)
         if self.data is not None:
+            self._record_observation_issues(device_id, [state], dt_util.utcnow())
             state = reconcile(
                 device_id,
                 [state],
@@ -501,11 +568,17 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
                 self.config_entry.async_start_reauth(self.hass)
                 raise translated_error("auth_expired") from err
             except MysaNotFoundError as err:
-                raise translated_error("cloud_write_failed", error=str(err)) from err
+                raise translated_error(
+                    "cloud_write_failed", error=error_category(err)
+                ) from err
             except MysaConnectionError as err:
-                raise translated_error("cloud_unavailable", error=str(err)) from err
+                raise translated_error(
+                    "cloud_unavailable", error=error_category(err)
+                ) from err
             except MysaError as err:
-                raise translated_error("cloud_write_failed", error=str(err)) from err
+                raise translated_error(
+                    "cloud_write_failed", error=error_category(err)
+                ) from err
             finally:
                 self._last_write = time.monotonic()
         self._schedule_refresh_after_write()
@@ -545,11 +618,32 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
                 self.hass, _readback(), f"{DOMAIN} refresh after write"
             )
 
-        self._refresh_after_write = async_call_later(
-            self.hass,
-            CLOUD_REFRESH_AFTER_WRITE if attempt == 0 else 5 * attempt,
-            _refresh,
-        )
+        for dev, commands in self.pending.items():
+            seen: set[str] = set()
+            for command in commands.values():
+                if command.correlation_id in seen or command.status not in {
+                    "pending",
+                    "ambiguous",
+                    "stored",
+                }:
+                    continue
+                seen.add(command.correlation_id)
+                self.history.record(
+                    "retry",
+                    device_id=dev,
+                    command_id=command.correlation_id,
+                    operation="readback",
+                    attempt=attempt + 1,
+                    delay_seconds=CLOUD_REFRESH_AFTER_WRITE
+                    if attempt == 0
+                    else 5 * attempt,
+                )
+        with self.history.detached():
+            self._refresh_after_write = async_call_later(
+                self.hass,
+                CLOUD_REFRESH_AFTER_WRITE if attempt == 0 else 5 * attempt,
+                _refresh,
+            )
 
     async def async_update_state(
         self, device_id: str, changes: Mapping[str, Mapping[str, Any]]
@@ -575,10 +669,69 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         }
         await self._tracked_write(device_id, call, expected)
 
+    def _record_observation_issues(
+        self, dev: str, states: list[DeviceState], now: datetime
+    ) -> None:
+        """Explain rejected clocks and stale/mismatching command readbacks."""
+        for state in states:
+            for name, obs in state.observations.items():
+                command = self.pending.get(dev, {}).get(name)
+                reason = None
+                if not obs.usable(now):
+                    reason = "invalid_clock"
+                elif command and command.status in {"pending", "ambiguous", "stored"}:
+                    if obs.observed_at is None:
+                        reason = "missing_timestamp"
+                    elif obs.observed_at < command.submitted_at.replace(microsecond=0):
+                        reason = "before_submission"
+                    elif obs.value != command.expected.get(name):
+                        reason = "value_mismatch"
+                if reason:
+                    self.history.record(
+                        "observation",
+                        noisy=True,
+                        device_id=dev,
+                        command_id=command.correlation_id if command else None,
+                        field=name,
+                        source=obs.source,
+                        reason=reason,
+                        observations={name: obs},
+                    )
+
+    def _command_event(
+        self, dev: str, command: PendingCommand, status: str, **fields: Any
+    ) -> None:
+        self.history.record(
+            "command",
+            device_id=dev,
+            command_id=command.correlation_id,
+            operation="set_settings" if command.stored_fields else "set_state",
+            status=status,
+            transport="cloud",
+            **fields,
+        )
+
     def _reconcile_pending(self, data: CloudData, now: datetime) -> None:
         for dev, commands in self.pending.items():
+            seen = set()
             for command in commands.values():
+                if id(command) in seen:
+                    continue
+                seen.add(id(command))
+                before = (command.status, dict(command.confirmation))
                 command.reconcile(data.states.get(dev), data.records.get(dev), now)
+                if before != (command.status, command.confirmation):
+                    self._command_event(
+                        dev,
+                        command,
+                        command.status,
+                        observations=command.evidence,
+                        evidence="device_report"
+                        if command.status == "confirmed"
+                        else "configuration_storage"
+                        if command.status == "stored"
+                        else "none",
+                    )
 
     def _validate_settings(self, device_id: str, expected: dict[str, Any]) -> None:
         """Validate semantic settings against the discovered device capabilities."""
@@ -669,10 +822,22 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         expected: dict[str, Any],
         stored: dict[str, Any] | None = None,
     ) -> None:
-        self._validate_settings(device_id, expected)
         command = pending_command(
             expected, self.state(device_id), dt_util.utcnow(), stored
         )
+        command.correlation_id = self.history.command_id()
+        self._command_event(
+            device_id,
+            command,
+            "submitted",
+            requested=expected,
+            baseline={k: v for k, v in command.baseline.items() if k in expected},
+        )
+        try:
+            self._validate_settings(device_id, expected)
+        except HomeAssistantError:
+            self._command_event(device_id, command, "failed", error="validation_failed")
+            raise
         commands = self.pending.setdefault(device_id, {})
         keys = list(expected) or [f"record:{key}" for key in (stored or {})]
         for key in keys:
@@ -680,16 +845,39 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             prior = commands.get(key)
             if prior and prior.status in ("pending", "ambiguous", "stored"):
                 prior.status = "superseded"
+                if prior.correlation_id != command.correlation_id:
+                    self._command_event(
+                        device_id,
+                        prior,
+                        "superseded",
+                        superseded_by=command.correlation_id,
+                    )
             commands[key] = command
         try:
-            await self._async_spaced(call)
+            with self.history.command(command.correlation_id, device_id):
+                await self._async_spaced(call)
+            self._command_event(device_id, command, "accepted", evidence="none")
+            if command.status == "unchanged":
+                self._command_event(device_id, command, "unchanged", evidence="none")
+        except asyncio.CancelledError:
+            if command.status != "superseded":
+                command.status = "ambiguous"
+            self._command_event(device_id, command, "ambiguous", error="cancelled")
+            raise
         except HomeAssistantError as err:
             if command.status != "superseded":
                 command.status = (
                     "ambiguous"
                     if isinstance(err.__cause__, MysaConnectionError)
+                    and not isinstance(err.__cause__, MysaRateLimitError)
                     else "failed"
                 )
+            self._command_event(
+                device_id,
+                command,
+                command.status,
+                error=error_category(err.__cause__ or err),
+            )
             self._schedule_refresh_after_write()
             raise
         finally:
@@ -846,10 +1034,55 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         )
 
     async def async_call(
-        self, call: Callable[[], Awaitable[Any]], *, stale: Iterable[str] = ()
+        self,
+        call: Callable[[], Awaitable[Any]],
+        *,
+        stale: Iterable[str] = (),
+        device_id: str | None = None,
+        operation: str = "other_write",
+        requested: Mapping[str, Any] | None = None,
     ) -> None:
         """Run any other cloud write (holds, schedules, firmware) the same way."""
-        await self._async_spaced(call)
+        with self.history.command(self.history.command_id(), device_id):
+            self.history.record(
+                "command",
+                operation=operation,
+                transport="cloud",
+                status="submitted",
+                requested=requested or {},
+            )
+            try:
+                await self._async_spaced(call)
+            except asyncio.CancelledError:
+                self.history.record(
+                    "command",
+                    operation=operation,
+                    transport="cloud",
+                    status="ambiguous",
+                    error="cancelled",
+                )
+                raise
+            except HomeAssistantError as err:
+                cause = err.__cause__ or err
+                self.history.record(
+                    "command",
+                    operation=operation,
+                    transport="cloud",
+                    status="ambiguous"
+                    if isinstance(cause, MysaConnectionError)
+                    and not isinstance(cause, MysaRateLimitError)
+                    else "failed",
+                    error=error_category(cause),
+                )
+                raise
+            else:
+                self.history.record(
+                    "command",
+                    operation=operation,
+                    transport="cloud",
+                    status="accepted",
+                    evidence="none",
+                )
         for what in stale:
             self.mark_stale(what)
 
@@ -859,4 +1092,5 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         if self._refresh_after_write is not None:
             self._refresh_after_write()
             self._refresh_after_write = None
+        self.client.event_callback = None
         await super().async_shutdown()

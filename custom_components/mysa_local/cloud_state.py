@@ -169,6 +169,8 @@ class PendingCommand:
     submitted_at: datetime
     expires_at: datetime
     baseline: dict[str, Observation]
+    correlation_id: str = ""
+    evidence: dict[str, Observation] = field(default_factory=dict)
     status: str = "pending"
     confirmation: dict[str, str] = field(default_factory=dict)
     stored_fields: dict[str, Any] = field(default_factory=dict)
@@ -192,6 +194,7 @@ class PendingCommand:
                 and (old is None or old.value != obs.value)
             ):
                 self.confirmation[name] = obs.source
+                self.evidence[name] = obs
         if self.expected and len(self.confirmation) == len(self.expected):
             self.status = "confirmed"
         elif now >= self.expires_at:

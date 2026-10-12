@@ -30,6 +30,7 @@ from .const import (
     CONNECTION_LOCAL,
     CONNECTION_OFFLINE,
 )
+from .event_history import EventHistory, error_category
 from .local_adapter import (
     CURRENT_STATE,
     CURRENT_TEMPERATURE,
@@ -141,8 +142,12 @@ class Thermostat:
         subentry: ConfigSubentry,
         local: LocalThermostat | None,
         cloud_getter: Callable[[], MysaCloudCoordinator | None],
+        *,
+        history: EventHistory | None = None,
     ) -> None:
         """Wire up one thermostat. `cloud_getter` returns None while cloud is off."""
+        self.history = history if history is not None else EventHistory()
+        self._last_local_available: bool | None = None
         self.hass = hass
         self.subentry_id = subentry.subentry_id
         self.device_id: str = subentry.data[CONF_DEVICE_ID]
@@ -162,6 +167,7 @@ class Thermostat:
             local=local,
             cloud_getter=cloud_getter,
             notify=self.notify,
+            history=self.history,
         )
         if local is not None:
             local.add_listener(self.notify)
@@ -177,6 +183,18 @@ class Thermostat:
     @callback
     def notify(self) -> None:
         """Tell entities something changed."""
+        if (
+            self.local is not None
+            and self.local.available != self._last_local_available
+        ):
+            self._last_local_available = self.local.available
+            self.history.record(
+                "connection",
+                noisy=True,
+                device_id=self.device_id,
+                transport="homekit",
+                status="recovery" if self.local.available else "failure",
+            )
         self._update_fallback()
         # Cloud dutyCycle is an interval fraction, not an instantaneous relay
         # state. During fallback only the device's measured daily usage counts.
@@ -872,10 +890,31 @@ class Thermostat:
         """Make the thermostat identify itself (local only)."""
         if self.local is None or not self.local_ok:
             raise translated_error("local_required", name=self.name)
-        try:
-            await self.local.async_identify()
-        except LOCAL_ERRORS as err:
-            raise translated_error("thermostat_unreachable", name=self.name) from err
+        with self.history.command(self.history.command_id(), self.device_id):
+            self.history.record(
+                "command", operation="identify", transport="homekit", status="submitted"
+            )
+            try:
+                await self.local.async_identify()
+            except LOCAL_ERRORS as err:
+                self.history.record(
+                    "command",
+                    operation="identify",
+                    transport="homekit",
+                    status="failed",
+                    error=error_category(err),
+                )
+                raise translated_error(
+                    "thermostat_unreachable", name=self.name
+                ) from err
+            else:
+                self.history.record(
+                    "command",
+                    operation="identify",
+                    transport="homekit",
+                    status="accepted",
+                    evidence="none",
+                )
 
     async def _async_cloud_command(
         self,

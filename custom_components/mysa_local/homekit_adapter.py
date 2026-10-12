@@ -61,7 +61,9 @@ async def async_get_controller(hass: HomeAssistant) -> HomeKitProtocol:
             try:
                 await protocol.async_stop()
             except HomeKitError as error:
-                LOGGER.debug("Stopping the HomeKit controller failed: %s", error)
+                LOGGER.debug(
+                    "Stopping the HomeKit controller failed: %s", type(error).__name__
+                )
 
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _stop)
         return protocol

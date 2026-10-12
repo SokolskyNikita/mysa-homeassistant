@@ -53,6 +53,7 @@ from .const import (
     USER_AGENT,
 )
 from .data import MysaConfigEntry, MysaRuntimeData
+from .event_history import EventHistory
 from .homekit_adapter import async_get_controller, async_unpair
 from .local_adapter import LOCAL_ERRORS, LocalThermostat
 from .migration import async_migrate_homekit_controller
@@ -151,6 +152,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
 
     client: MysaClient | None = None
     cloud: MysaCloudCoordinator | None = None
+    history = EventHistory()
     if cloud_on:
 
         @callback
@@ -184,12 +186,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
                 if s.data.get(CONF_CLOUD_RUNTIME, True)
             ],
             live_mode=entry.options.get(CONF_LIVE_MODE, DEFAULT_LIVE_MODE),
+            history=history,
         )
 
     runtime = MysaRuntimeData(
-        client=client, cloud=cloud, fingerprint=_fingerprint(entry)
+        client=client, cloud=cloud, fingerprint=_fingerprint(entry), history=history
     )
     entry.runtime_data = runtime
+    entry.async_on_unload(history.close)
 
     for subentry in subentries:
         if subentry.data.get(CONF_MIGRATE_FROM):
@@ -205,7 +209,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
         if controller is not None and (pairing := subentry.data.get(CONF_PAIRING)):
             local = LocalThermostat(hass, controller, pairing, subentry.title)
         runtime.thermostats[subentry.subentry_id] = Thermostat(
-            hass, subentry, local, lambda: runtime.cloud
+            hass, subentry, local, lambda: runtime.cloud, history=history
         )
         entry.async_on_unload(runtime.thermostats[subentry.subentry_id].stop)
 
@@ -236,8 +240,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
                 except (HomeAssistantError, MysaError) as err:
                     LOGGER.warning(
                         "%s: schedule recovery is still pending: %s",
-                        thermostat.name,
-                        err,
+                        thermostat.history.label(thermostat.device_id),
+                        type(err).__name__,
                     )
 
         @callback
@@ -399,7 +403,10 @@ async def _async_update_listener(hass: HomeAssistant, entry: MysaConfigEntry) ->
         async_delete_account_issues(hass, thermostat.device_id)
         if thermostat.local is None:
             continue
-        LOGGER.info("Removing the HomeKit pairing of %s", thermostat.name)
+        LOGGER.info(
+            "Removing the HomeKit pairing of %s",
+            thermostat.history.label(thermostat.device_id),
+        )
         try:
             async with asyncio.timeout(15):
                 await async_unpair(hass, thermostat.local.pairing_data)
@@ -407,8 +414,8 @@ async def _async_update_listener(hass: HomeAssistant, entry: MysaConfigEntry) ->
             LOGGER.warning(
                 "Couldn't unpair %s (%s); reset its HomeKit pairing on the device "
                 "before pairing it again",
-                thermostat.name,
-                err,
+                thermostat.history.label(thermostat.device_id),
+                type(err).__name__,
             )
     # The reload reads the latest data and options, so one is enough even when
     # an options flow changes data and options back to back.

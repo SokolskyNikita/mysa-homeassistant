@@ -517,7 +517,7 @@ async def test_native_replacement_failure_restores_snapshot(hass, cloud):
             AsyncMock(side_effect=MysaConnectionError("failed")),
         ),
         patch("custom_components.mysa_local.cloud_coordinator.CLOUD_WRITE_SPACING", 0),
-        pytest.raises(Exception, match="failed"),
+        pytest.raises(Exception, match="connection_error"),
     ):
         await async_set_schedule(
             thermostat, [{"days": ["mon"], "time": time(8), "temperature": 24}]

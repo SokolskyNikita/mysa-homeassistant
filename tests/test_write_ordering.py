@@ -76,6 +76,32 @@ async def test_late_local_write_reasserts_latest_cloud_command(
     assert thermostat.target_temperature == 18
     assert thermostat.commands._pending_local is None
     assert not thermostat.commands._reconcile
+    assert not thermostat.commands._reconcile_ids
+    history = entry.runtime_data.history.export()["events"]
+    submissions = [
+        e
+        for e in history
+        if e["event"] == "command"
+        and e.get("status") == "submitted"
+        and e.get("transport") == "cloud"
+    ]
+    latest = next(
+        e["command_id"]
+        for e in submissions
+        if e["requested"].get("heat_setpoint") == 18
+    )
+    assert all(
+        e["command_id"] == latest
+        for e in submissions
+        if e["requested"].get("heat_setpoint") == 18
+    )
+    assert len({e["command_id"] for e in submissions}) == 3
+    assert any(e.get("detail") == "late_response" for e in history)
+    assert all(
+        e["command_id"] != e.get("superseded_by")
+        for e in history
+        if e.get("status") == "superseded"
+    )
 
 
 async def test_simultaneous_local_commands_are_serialized(
@@ -109,6 +135,12 @@ async def test_simultaneous_local_commands_are_serialized(
         await hass.async_block_till_done(wait_background_tasks=True)
 
     assert writes == [22, 18]
+    submissions = [
+        e
+        for e in entry.runtime_data.history.export()["events"]
+        if e["event"] == "command" and e.get("status") == "submitted"
+    ]
+    assert len({e["command_id"] for e in submissions}) == 2
     assert thermostat.local.values[TARGET_TEMPERATURE] == 18
     assert cloud.updates == []
 

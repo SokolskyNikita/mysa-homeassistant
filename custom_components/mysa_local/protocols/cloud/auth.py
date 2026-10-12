@@ -221,7 +221,7 @@ class MysaAuth:
             _LOGGER.info(
                 "The Mysa sign-in stopped working (%s); signing in again with the "
                 "saved password",
-                err,
+                type(err).__name__,
             )
             return self._store(await self._srp_sign_in(*self._credentials), None)
         auth = result.get("AuthenticationResult")

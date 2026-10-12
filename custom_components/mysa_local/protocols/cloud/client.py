@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+import asyncio
+from collections.abc import Callable, Iterable, Mapping
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 import json
 import logging
@@ -57,6 +59,7 @@ from .models import (
     StateChange,
     UsageDay,
 )
+from .trace import route_template
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -160,6 +163,7 @@ class MysaClient:
         legacy_base_url: str = LEGACY_API_BASE,
     ) -> None:
         """Use an existing aiohttp session and an authenticated MysaAuth."""
+        self.event_callback: Callable[[str, dict[str, Any]], None] | None = None
         self._session = session
         self.auth = auth
         self._user_agent = user_agent
@@ -169,6 +173,12 @@ class MysaClient:
         self.source_errors: dict[str, dict[str, str]] = {}
         self.legacy_source = "R"
         self._device_models: dict[str, str | None] = {}
+
+    def _trace(self, event: str, **fields: Any) -> None:
+        """Optional metadata observer; it must never affect protocol behavior."""
+        if self.event_callback is not None:
+            with suppress(Exception):  # Tracing cannot affect control.
+                self.event_callback(event, fields)
 
     async def _request(
         self,
@@ -180,7 +190,24 @@ class MysaClient:
         base_url: str | None = None,
         _retry_auth: bool = True,
     ) -> Any:
-        token = await self.auth.async_get_id_token()
+        started = time.monotonic()
+        metadata = {
+            "route": route_template(path),
+            "method": method,
+            "transport": "cloud",
+            "host": "legacy" if base_url == self._legacy_base_url else "modern",
+        }
+        try:
+            token = await self.auth.async_get_id_token()
+        except Exception:
+            self._trace(
+                "request",
+                **metadata,
+                status="failed",
+                error="authentication_failed",
+                duration_ms=round((time.monotonic() - started) * 1000, 1),
+            )
+            raise
         headers = {
             "authorization": token,
             "accept": "application/json",
@@ -201,11 +228,42 @@ class MysaClient:
                 status = resp.status
                 text = await resp.text()
                 retry_after = resp.headers.get("Retry-After")
+        except asyncio.CancelledError:
+            self._trace(
+                "request",
+                **metadata,
+                status="ambiguous",
+                error="cancelled",
+                duration_ms=round((time.monotonic() - started) * 1000, 1),
+            )
+            raise
         except (TimeoutError, aiohttp.ClientError) as err:
-            msg = f"{method} {path} failed: {err}"
+            self._trace(
+                "request",
+                **metadata,
+                status="ambiguous",
+                error="connection_error",
+                duration_ms=round((time.monotonic() - started) * 1000, 1),
+            )
+            msg = f"{method} {route_template(path)} failed (connection error)"
             raise MysaConnectionError(msg) from err
 
+        self._trace(
+            "request",
+            **metadata,
+            http_status=status,
+            error="none"
+            if 200 <= status < 300
+            else "rate_limited"
+            if status == 429
+            else "connection_error"
+            if status >= 500
+            else "request_rejected",
+            status="accepted" if 200 <= status < 300 else "failed",
+            duration_ms=round((time.monotonic() - started) * 1000, 1),
+        )
         if status == 401 and _retry_auth:
+            self._trace("retry", **metadata, reason="auth_refresh", attempt=1)
             # A stale ID token: renew it and retry once. A sign-in that's really
             # gone fails in the renewal itself (MysaAuthError from Cognito).
             await self.auth.async_get_id_token(force_refresh=True)
@@ -221,10 +279,10 @@ class MysaClient:
             # A 403, or a 401 with a fresh token, is about this request (a route
             # the host doesn't have, a permission), not the sign-in. Mysa's app
             # never asks to sign in again over an HTTP status either.
-            msg = f"{method} {path} was refused ({status}): {text[:200]}"
+            msg = f"{method} {route_template(path)} was refused ({status})"
             raise MysaApiError(msg, status)
         if status == 404:
-            raise MysaNotFoundError(f"{method} {path}: {text[:200]}")
+            raise MysaNotFoundError(f"{method} {route_template(path)}")
         if status == 429:
             try:
                 wait = float(retry_after) if retry_after else None
@@ -232,13 +290,13 @@ class MysaClient:
                     wait = None
             except ValueError:
                 wait = None
-            msg = f"{method} {path}: rate limited"
+            msg = f"{method} {route_template(path)}: rate limited"
             raise MysaRateLimitError(msg, wait)
         if status >= 500:
-            msg = f"{method} {path} returned {status}"
+            msg = f"{method} {route_template(path)} returned {status}"
             raise MysaConnectionError(msg)
         if not 200 <= status < 300:
-            msg = f"{method} {path} returned {status}: {text[:200]}"
+            msg = f"{method} {route_template(path)} returned {status}"
             raise MysaApiError(msg, status)
         if not text:
             return None
@@ -282,6 +340,14 @@ class MysaClient:
                 raise
             if not unsupported and not isinstance(err, MysaConnectionError):
                 raise
+            self._trace(
+                "fallback",
+                operation=operation,
+                route=route_template(path),
+                transport="cloud",
+                host="legacy",
+                delay_seconds=300,
+            )
             self._fallback_until[operation] = time.monotonic() + 300
             data = await self._request(
                 method, path, body=body, base_url=self._legacy_base_url
@@ -754,7 +820,7 @@ class MysaClient:
         try:
             await self._request("DELETE", f"/schedule/hold/{device_id}")
         except MysaNotFoundError:
-            _LOGGER.debug("No hold to remove on %s", device_id)
+            _LOGGER.debug("No active hold to remove")
 
     async def get_schedules(self, home_id: str) -> list[dict[str, Any]]:
         """Every schedule in a home."""

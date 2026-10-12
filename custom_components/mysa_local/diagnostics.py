@@ -17,6 +17,7 @@ from .const import (
     VERSION,
 )
 from .data import MysaConfigEntry
+from .event_history import redact_snapshot
 
 TO_REDACT = {
     CONF_REFRESH_TOKEN,
@@ -74,13 +75,14 @@ async def async_get_config_entry_diagnostics(
         local = thermostat.local
         cloud = thermostat.cloud
         item: dict[str, Any] = {
-            "model": thermostat.model,
+            "device": runtime.history.label(thermostat.device_id),
+            "model": redact_snapshot(thermostat.model),
             "support_status": "experimental_cloud"
             if thermostat.basic_cloud_only
             else "existing",
             "model_family": thermostat.family,
             "sensor_only": thermostat.is_climate_sensor,
-            "firmware": thermostat.firmware,
+            "firmware": redact_snapshot(thermostat.firmware),
             "connection_path": thermostat.connection_path,
             "supported_modes": [m.name for m in thermostat.supported_modes],
             "setpoint_range": thermostat.setpoint_range,
@@ -88,7 +90,7 @@ async def async_get_config_entry_diagnostics(
             "runtime_source": thermostat.runtime_source,
         }
         if local is not None:
-            item["homekit"] = local.diagnostics()
+            item["homekit"] = redact_snapshot(local.diagnostics())
         if cloud is not None and cloud.data is not None:
             dev = thermostat.device_id
             state = cloud.data.states.get(dev)
@@ -96,14 +98,27 @@ async def async_get_config_entry_diagnostics(
             record = cloud.data.records.get(dev)
             firmware = cloud.data.firmware.get(dev)
             item["cloud"] = {
-                "state": async_redact_data(state.raw, TO_REDACT) if state else None,
-                "capabilities": async_redact_data(caps.raw, TO_REDACT)
+                "state": redact_snapshot(async_redact_data(state.raw, TO_REDACT))
+                if state
+                else None,
+                "capabilities": redact_snapshot(async_redact_data(caps.raw, TO_REDACT))
                 if caps
                 else None,
-                "record": async_redact_data(record.raw, TO_REDACT) if record else None,
-                "firmware": asdict(firmware) if firmware else None,
+                "record": redact_snapshot(async_redact_data(record.raw, TO_REDACT))
+                if record
+                else None,
+                "firmware": redact_snapshot(asdict(firmware)) if firmware else None,
                 "hold": thermostat.hold is not None,
-                "sources": cloud.source_health,
+                "sources": {
+                    source: {
+                        **health,
+                        "partial_errors": {
+                            runtime.history.label(dev): "missing_or_invalid_device"
+                            for dev in health.get("partial_errors", {})
+                        },
+                    }
+                    for source, health in cloud.source_health.items()
+                },
                 "observations": {
                     name: {
                         "source": obs.source,
@@ -125,6 +140,8 @@ async def async_get_config_entry_diagnostics(
                 else {},
                 "commands": {
                     name: {
+                        "command_id": command.correlation_id,
+                        "requested": redact_snapshot(command.expected),
                         "status": command.status,
                         "submitted_at": command.submitted_at.isoformat(),
                         "expires_at": command.expires_at.isoformat(),
@@ -143,7 +160,7 @@ async def async_get_config_entry_diagnostics(
     diagnostics = {
         "integration_version": VERSION,
         "entry": {
-            "options": dict(entry.options),
+            "options": redact_snapshot(dict(entry.options)),
             "signed_in": bool(entry.data.get(CONF_REFRESH_TOKEN)),
             "password_saved": CONF_PASSWORD in entry.data,
             "cloud_enabled": runtime.cloud_enabled,
@@ -160,19 +177,22 @@ async def async_get_config_entry_diagnostics(
         "subentries": [
             {
                 "title": "**REDACTED**",
-                "data": async_redact_data(
-                    {
-                        **{k: v for k, v in sub.data.items() if k != CONF_PAIRING},
-                        CONF_PAIRING: async_redact_data(
-                            dict(sub.data.get(CONF_PAIRING) or {}), TO_REDACT
-                        ),
-                    },
-                    TO_REDACT | {"device_id"},
+                "data": redact_snapshot(
+                    async_redact_data(
+                        {
+                            **{k: v for k, v in sub.data.items() if k != CONF_PAIRING},
+                            CONF_PAIRING: async_redact_data(
+                                dict(sub.data.get(CONF_PAIRING) or {}), TO_REDACT
+                            ),
+                        },
+                        TO_REDACT | {"device_id"},
+                    )
                 ),
             }
             for sub in entry.subentries.values()
         ],
         "thermostats": thermostats,
+        "event_history": runtime.history.export(),
     }
     scrubbed: dict[str, Any] = _scrub_device_ids(diagnostics, fragments)
     return scrubbed

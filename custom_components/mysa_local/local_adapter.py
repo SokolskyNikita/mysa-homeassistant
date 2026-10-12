@@ -155,12 +155,7 @@ class LocalThermostat:
             return
         self.available = available
         self.down_since = None if available else dt_util.utcnow()
-        LOGGER.debug(
-            "%s: local HomeKit connection %s%s",
-            self.name,
-            "up" if available else "down",
-            f" ({error})" if error else "",
-        )
+        LOGGER.debug("Local HomeKit connection %s", "up" if available else "down")
         self.__notify()
 
     @callback

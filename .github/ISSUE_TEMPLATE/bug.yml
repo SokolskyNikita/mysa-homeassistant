@@ -5,7 +5,12 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please attach diagnostics: Settings → Devices & services → Mysa Local → ⋮ → Download diagnostics. They're redacted (no tokens, keys, addresses or account IDs), but have a look before posting.
+        Capture once without a shell or manual API calls:
+        1. Settings → Devices & services → Mysa Local → ⋮ → Enable debug logging.
+        2. Record original settings. Reproduce once; note the time/timezone, requested values, and actual HA/app/thermostat results.
+        3. Restore the original settings, then use the account entry's ⋮ → Download diagnostics BEFORE reloading/restarting (history is memory-only).
+        4. Disable debug logging and save the offered log. Review both files for personal data, then attach diagnostics JSON and the debug log here. Integration events are sanitized; HA/third-party logs may still contain personal data.
+        HTTP acceptance is not confirmation of a physical change. Please include what you observed on the thermostat.
   - type: input
     id: model
     attributes:
@@ -33,12 +38,13 @@ body:
   - type: textarea
     id: what
     attributes:
-      label: What happened, and what did you expect?
+      label: Requested values, actual results, and reproduction time
+      description: Include time/timezone, original settings, requested values, and actual HA/app/thermostat results.
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
-      label: Debug log
-      description: Enable debug logging for Mysa Local on its integration page, reproduce, then disable it and paste the relevant part.
+      label: Diagnostics and debug log
+      description: Attach the diagnostics JSON downloaded before reload/restart and the log saved when disabling debug logging. Review both for personal data.
       render: text

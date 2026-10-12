@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.1 (2026-10-12)
+
+- Add bounded, memory-only command and event history to diagnostics, with anonymous thermostat labels, command correlation IDs, requested/baseline values, HTTP route/status/duration, lifecycle transitions and source/fallback/backoff evidence. Retain superseded commands and distinguish acceptance, stored configuration and device reports from physical application.
+- Sanitize events before buffering/logging and again on export; omit unknown payload fields and raw exception/server text. Update debug-capture instructions and V3/model/bug reporting for HA-only reproduction and downloads before reload.
+- Fix the implemented-coverage table rendering in the cloud implementation guide and clarify the experimental-model setup wording.
+
+Validated with 337 automated tests, including diagnostics HTTP downloads, seeded-secret checks, retention bounds, cancellation, cloud fallback and late HomeKit write correlation. Ruff, strict mypy and offline documentation checks pass.
+
+Installed on Home Assistant 2026.10.1 on 2026-10-12 and validated in Google Chrome. Downloaded diagnostics and the debug log through HA's integration page. The diagnostics contained 30 events with no capture failures, including two cloud brightness commands with distinct correlation IDs, HTTP 200 results and device-report confirmation. Brightness was restored from 55% to its original 50%; heating settings were unchanged and debug logging was disabled. Neither download contained any of the 24 checked stored credentials and personal identifiers. HA's debug export also contained unrelated startup messages, so the full log still needs review before sharing. Both Baseboard Lites remained locally connected; newer-model hardware and induced failure paths remain untested live.
+
 ## 0.5.0 (2026-10-12)
 
 - Import app-enrolled Baseboard V3, Central HVAC and Climate Sensor independently of local pairing eligibility. Mark newer-model cloud support experimental.

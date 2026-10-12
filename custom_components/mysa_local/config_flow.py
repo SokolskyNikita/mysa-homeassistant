@@ -145,7 +145,9 @@ class MysaConfigFlow(ThermostatSteps, MysaReauthFlow, domain=DOMAIN):
         try:
             advertisement = discovery_from_zeroconf(discovery_info)
         except HomeKitError as err:
-            LOGGER.debug("Ignoring invalid HomeKit discovery data: %s", err)
+            LOGGER.debug(
+                "Ignoring invalid HomeKit discovery data: %s", type(err).__name__
+            )
             return self.async_abort(reason="invalid_discovery")
         if advertisement is None:
             return self.async_abort(reason="invalid_discovery")

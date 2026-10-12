@@ -80,7 +80,13 @@ async def async_hold(
             # "Device ... is not following any schedule. Cannot create a hold."
             raise translated_error("hold_needs_schedule", name=thermostat.name) from err
 
-    await cloud.async_call(_hold, stale=[f"hold:{device_id}"])
+    await cloud.async_call(
+        _hold,
+        stale=[f"hold:{device_id}"],
+        device_id=thermostat.device_id,
+        operation="set_hold",
+        requested={"temperature": temperature, "mode": mode, "until": until},
+    )
     # Mysa applies the held state from its own scheduler once the hold starts;
     # apply it now as well (local first), so the thermostat changes right away.
     if thermostat.mode != mode:
@@ -94,7 +100,10 @@ async def async_resume_schedule(thermostat: Thermostat) -> None:
     cloud = thermostat.require_legacy_cloud()
     device_id = thermostat.device_id
     await cloud.async_call(
-        lambda: cloud.client.resume_schedule(device_id), stale=[f"hold:{device_id}"]
+        lambda: cloud.client.resume_schedule(device_id),
+        stale=[f"hold:{device_id}"],
+        device_id=thermostat.device_id,
+        operation="resume_schedule",
     )
 
 
@@ -279,7 +288,11 @@ async def _async_create_schedule(
 ) -> None:
     cloud = thermostat.require_legacy_cloud()
     if payload.get("origin"):
-        await cloud.async_call(partial(cloud.client.restore_native_schedule, payload))
+        await cloud.async_call(
+            partial(cloud.client.restore_native_schedule, payload),
+            device_id=thermostat.device_id,
+            operation="schedule_write",
+        )
         return
     await cloud.async_call(
         partial(
@@ -293,6 +306,9 @@ async def _async_create_schedule(
             device_ids=payload["deviceIds"],
         ),
         stale=[f"hold:{thermostat.device_id}"],
+        requested={"event_count": len(payload["events"])},
+        device_id=thermostat.device_id,
+        operation="schedule_write",
     )
 
 
@@ -376,7 +392,9 @@ async def _async_restore_replacement(
             # detach records that still exactly match the saved pre-edit state.
             for old in originals_still_attached:
                 await cloud.async_call(
-                    partial(cloud.client.remove_schedule, old, device_id)
+                    partial(cloud.client.remove_schedule, old, device_id),
+                    device_id=thermostat.device_id,
+                    operation="schedule_write",
                 )
             actual = await _async_all_schedules(thermostat, home_id)
             attached = [s for s in actual if device_id in (s.get("deviceIds") or [])]
@@ -462,8 +480,7 @@ async def _async_restore_replacement(
             errors.append(err)
             LOGGER.error(
                 "Couldn't restore a Mysa schedule for %s; a durable backup was kept",
-                thermostat.name,
-                exc_info=err,
+                thermostat.history.label(thermostat.device_id),
             )
             break
 
@@ -547,7 +564,9 @@ async def _async_finish_clear(
 
     for schedule in attached:
         await cloud.async_call(
-            partial(cloud.client.remove_schedule, schedule, device_id)
+            partial(cloud.client.remove_schedule, schedule, device_id),
+            device_id=thermostat.device_id,
+            operation="schedule_write",
         )
 
     actual = await _async_all_schedules(thermostat, home_id)
@@ -621,7 +640,9 @@ async def async_set_schedule(
                         cloud.client.remove_schedule,
                         schedule,
                         device_id,
-                    )
+                    ),
+                    device_id=thermostat.device_id,
+                    operation="schedule_write",
                 )
 
             actual = await _async_all_schedules(thermostat, home_id)
@@ -658,16 +679,16 @@ async def async_set_schedule(
                 try:
                     await recovery_task
                 except Exception:  # noqa: BLE001 - keep the recovery backup on any failure
-                    LOGGER.exception(
+                    LOGGER.error(
                         "Couldn't finish cancelled schedule recovery for %s; "
                         "the durable backup was kept",
-                        thermostat.name,
+                        thermostat.history.label(thermostat.device_id),
                     )
             except Exception:  # noqa: BLE001 - keep the recovery backup on any failure
-                LOGGER.exception(
+                LOGGER.error(
                     "Couldn't finish cancelled schedule recovery for %s; "
                     "the durable backup was kept",
-                    thermostat.name,
+                    thermostat.history.label(thermostat.device_id),
                 )
             raise
         except Exception as err:
@@ -675,12 +696,11 @@ async def async_set_schedule(
                 outcome = await _async_restore_replacement(
                     thermostat, transaction, store
                 )
-            except Exception as recovery_err:  # noqa: BLE001 - reconcile every failed write
+            except Exception:  # noqa: BLE001 - reconcile every failed write
                 LOGGER.error(
                     "Couldn't reconcile the failed Mysa schedule replacement for %s; "
                     "a durable backup was kept",
-                    thermostat.name,
-                    exc_info=recovery_err,
+                    thermostat.history.label(thermostat.device_id),
                 )
                 outcome = "uncertain"
             if outcome == "completed":
@@ -726,15 +746,15 @@ async def async_clear_schedule(thermostat: Thermostat) -> None:
                 try:
                     await recovery_task
                 except Exception:  # noqa: BLE001 - keep the recovery backup on any failure
-                    LOGGER.exception(
+                    LOGGER.error(
                         "Couldn't finish cancelled schedule clear for %s; "
                         "the durable backup was kept",
-                        thermostat.name,
+                        thermostat.history.label(thermostat.device_id),
                     )
             except Exception:  # noqa: BLE001 - keep the recovery backup on any failure
-                LOGGER.exception(
+                LOGGER.error(
                     "Couldn't finish cancelled schedule clear for %s; "
                     "the durable backup was kept",
-                    thermostat.name,
+                    thermostat.history.label(thermostat.device_id),
                 )
             raise

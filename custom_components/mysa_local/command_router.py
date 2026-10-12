@@ -9,13 +9,16 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
+import time
 from typing import Any
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.util import dt as dt_util
 
 from .cloud_coordinator import MysaCloudCoordinator, translated_error
 from .const import LOCAL_WRITE_TIMEOUT, LOGGER
+from .event_history import EventHistory, error_category
 from .local_adapter import LOCAL_ERRORS, LocalThermostat, LocalWriteRejectedError
 from .protocols.cloud import (
     DeviceState,
@@ -38,8 +41,10 @@ class CommandRouter:
         local: LocalThermostat | None,
         cloud_getter: Callable[[], MysaCloudCoordinator | None],
         notify: CALLBACK_TYPE,
+        history: EventHistory | None = None,
     ) -> None:
         """Attach existing clients without starting any network activity."""
+        self.history = history if history is not None else EventHistory()
         self.hass = hass
         self.device_id = device_id
         self.name = name
@@ -49,9 +54,11 @@ class CommandRouter:
         self._write_lock = asyncio.Lock()
         self._pending_local: asyncio.Task[None] | None = None
         self._pending_values: dict[str, Any] = {}
+        self._late_local: asyncio.Task[None] | None = None
         self._reconcile: dict[
             str, Callable[[MysaCloudCoordinator], Awaitable[None]]
         ] = {}
+        self._reconcile_ids: dict[str, str] = {}
         self._reconcile_task: asyncio.Task[None] | None = None
         self._stopped = False
 
@@ -97,7 +104,18 @@ class CommandRouter:
     def _local_write_done(self, task: asyncio.Task[None]) -> None:
         """Observe late failures and reconcile commands after the request settles."""
         if not task.cancelled():
-            task.exception()
+            error = task.exception()
+            if task is self._late_local:
+                self.history.record(
+                    "request",
+                    operation="local_write",
+                    transport="homekit",
+                    status="failed" if error else "accepted",
+                    detail="late_response",
+                    error=error_category(error) if error else "none",
+                )
+        if task is self._late_local:
+            self._late_local = None
         self.schedule_reconciliation()
 
     @callback
@@ -136,14 +154,26 @@ class CommandRouter:
                         if not any(write is pending for pending in writes):
                             writes.append(write)
                     for write in writes:
-                        await write(cloud)
+                        correlation_id = next(
+                            self._reconcile_ids[key]
+                            for key, pending in self._reconcile.items()
+                            if pending is write
+                        )
+                        with self.history.command(correlation_id, self.device_id):
+                            self.history.record(
+                                "retry", operation="reconcile", transport="cloud"
+                            )
+                            await write(cloud)
                         for key, pending in list(self._reconcile.items()):
                             if pending is write:
                                 del self._reconcile[key]
+                                self._reconcile_ids.pop(key, None)
                 except HomeAssistantError as err:
                     # Keep the desired commands and retry on the next update.
                     LOGGER.warning(
-                        "%s: couldn't reconcile a late write: %s", self.name, err
+                        "%s: couldn't reconcile a late write: %s",
+                        self.history.label(self.device_id),
+                        type(err).__name__,
                     )
                     return
             self._pending_local = None
@@ -159,6 +189,22 @@ class CommandRouter:
         intent: Mapping[str, Any] | None = None,
     ) -> None:
         """Serialize commands and remember those that supersede an in-flight write."""
+        with self.history.command(self.history.command_id(), self.device_id):
+            await self._async_route(
+                local_values=local_values,
+                cloud_write=cloud_write,
+                cloud_applied=cloud_applied,
+                intent=intent,
+            )
+
+    async def _async_route(
+        self,
+        *,
+        local_values: Mapping[Field, Any] | None,
+        cloud_write: Callable[[MysaCloudCoordinator], Awaitable[None]] | None,
+        cloud_applied: Callable[[DeviceState], bool] | None,
+        intent: Mapping[str, Any] | None,
+    ) -> None:
         async with self._write_lock:
             if self._stopped:
                 raise translated_error("thermostat_unreachable", name=self.name)
@@ -182,6 +228,14 @@ class CommandRouter:
                     self._remember_intent(intent_values, cloud_write)
                 raise
             except asyncio.CancelledError:
+                if self._pending_local is not None:
+                    self.history.record(
+                        "command",
+                        operation="local_write",
+                        transport="homekit",
+                        status="ambiguous",
+                        error="cancelled",
+                    )
                 self._remember_intent(intent_values, cloud_write)
                 raise
             else:
@@ -198,10 +252,12 @@ class CommandRouter:
             return
         for key, value in values.items():
             self._reconcile.pop(key, None)
+            self._reconcile_ids.pop(key, None)
             if key not in self._pending_values or value != self._pending_values[key]:
                 # Reassert mode commands too: hardware can change more than one
                 # characteristic. Reinserting keys preserves latest-command order.
                 self._reconcile[key] = cloud_write
+                self._reconcile_ids[key] = self.history.command_id()
         self._notify()
 
     async def _async_route_locked(
@@ -222,6 +278,22 @@ class CommandRouter:
             and self._pending_local is None
             and all(local.supports(k) for k in local_values)
         ):
+            self.history.record(
+                "command",
+                operation="local_write",
+                transport="homekit",
+                status="submitted",
+                requested={k.value: v for k, v in local_values.items()},
+                baseline={
+                    k.value: {
+                        "value": local.values.get(k),
+                        "source": "homekit",
+                        "observed_at": None,
+                    }
+                    for k in local_values
+                },
+            )
+            started = time.monotonic()
             task = local.start_write(local_values)
             self._pending_local = task
             self._pending_values = {
@@ -234,13 +306,42 @@ class CommandRouter:
                 self._pending_values.clear()
                 error = task.exception()
                 if error is None:
+                    self.history.record(
+                        "command",
+                        operation="local_write",
+                        transport="homekit",
+                        status="accepted",
+                        duration_ms=round((time.monotonic() - started) * 1000, 1),
+                        evidence="none",
+                    )
                     self._notify()
                     return
+                self.history.record(
+                    "command",
+                    operation="local_write",
+                    transport="homekit",
+                    status="failed"
+                    if isinstance(error, LocalWriteRejectedError)
+                    else "ambiguous",
+                    error=error_category(error),
+                    duration_ms=round((time.monotonic() - started) * 1000, 1),
+                )
                 if isinstance(error, LocalWriteRejectedError):
-                    raise translated_error("local_write_rejected", error=str(error))
+                    raise translated_error(
+                        "local_write_rejected", error="request_rejected"
+                    )
                 local.mark_unavailable(str(error) or type(error).__name__)
             else:
                 outcome_unknown = True
+                self._late_local = task
+                self.history.record(
+                    "command",
+                    operation="local_write",
+                    transport="homekit",
+                    status="ambiguous",
+                    error="connection_error",
+                    duration_ms=round((time.monotonic() - started) * 1000, 1),
+                )
                 local.mark_unavailable("write timed out")
                 # Read back before retrying anywhere.
                 try:
@@ -248,6 +349,22 @@ class CommandRouter:
                 except LOCAL_ERRORS:
                     values = {}
                 if values and all(values.get(k) == v for k, v in local_values.items()):
+                    self.history.record(
+                        "command",
+                        operation="local_write",
+                        transport="homekit",
+                        status="confirmed",
+                        evidence="device_report",
+                        observations={
+                            k.value: {
+                                "value": v,
+                                "source": "homekit",
+                                "observed_at": None,
+                                "fetched_at": dt_util.utcnow(),
+                            }
+                            for k, v in values.items()
+                        },
+                    )
                     local.mark_available()
                     self._notify()
                     return
@@ -261,10 +378,24 @@ class CommandRouter:
                 state = await cloud.async_fetch_state(self.device_id)
             except MysaError as err:
                 LOGGER.debug(
-                    "%s: couldn't verify the write in the cloud: %s", self.name, err
+                    "%s: couldn't verify the write in the cloud: %s",
+                    self.history.label(self.device_id),
+                    type(err).__name__,
                 )
             else:
                 if cloud_applied(state):
-                    LOGGER.debug("%s: the timed-out local write had landed", self.name)
+                    self.history.record(
+                        "readback",
+                        operation="local_write",
+                        transport="cloud",
+                        status="reported",
+                        observations=state.observations,
+                        evidence="none",
+                    )
                     return
+        self.history.record(
+            "route",
+            transport="cloud",
+            status="fallback" if local_values is not None else "write",
+        )
         await cloud_write(cloud)

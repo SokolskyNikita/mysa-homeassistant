@@ -49,7 +49,9 @@ async def async_sign_in(
     except MysaError as err:
         # Signed in fine; only the account overview failed. The device list
         # has what setup needs.
-        LOGGER.warning("Mysa bootstrap failed (%s); using the device list", err)
+        LOGGER.warning(
+            "Mysa bootstrap failed (%s); using the device list", type(err).__name__
+        )
         bootstrap = Bootstrap(
             user_id=None, home_ids=(), devices=await client.get_devices()
         )
@@ -65,12 +67,12 @@ def sign_in_error(err: Exception) -> str:
     if isinstance(err, MysaInvalidCredentialsError):
         return "invalid_auth"
     if isinstance(err, MysaUnsupportedChallengeError):
-        LOGGER.warning("Mysa sign-in needs an unsupported step: %s", err)
+        LOGGER.warning("Mysa sign-in needs an unsupported step: %s", type(err).__name__)
         return "mfa_unsupported"
     if isinstance(err, MysaConnectionError):
-        LOGGER.warning("Couldn't reach Mysa to sign in: %s", err)
+        LOGGER.warning("Couldn't reach Mysa to sign in: %s", type(err).__name__)
         return "cannot_connect"
-    LOGGER.error("Mysa sign-in failed: %s", err)
+    LOGGER.error("Mysa sign-in failed: %s", type(err).__name__)
     return "unknown"
 
 
