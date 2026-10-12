@@ -607,87 +607,11 @@ The Lite returned 404, "No fleet found containing device", from this availabilit
 
 ## Legacy MQTT
 
-### What was tested
-
-A direct MQTT attempt used Cognito identity credentials and a SigV4-signed WebSocket URL at `wss://a3q27gia9qg3zy-ats.iot.us-east-1.amazonaws.com/mqtt`. TLS and the WebSocket upgrade succeeded with HTTP 101 and subprotocol `mqtt`. The broker then closed the connection after MQTT CONNECT, without CONNACK.
-
-That result applies to the tested identity and connection flow. It does not prove that all app accounts have lost MQTT access.
-
-Later analysis of 3.54.1 found a missing step: the old app calls `AttachPrincipalPolicy` with policy `default` and the Cognito identity ID before connecting. Its old client does so on every connection; its newer client relies on an attachment at sign-in. Neither the tested Mysa_HA flow nor app 4.20.1 performs that call.
-
-That was a hypothesis, not a confirmed cause. A fresh test on **October 11, 2026** found the identity already had `default` attached; no policy attachment was performed. `GetPolicy(default)` returned exactly:
-
-```json
-{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["iot:Connect","iot:Subscribe"],"Resource":"*"}]}
-```
-
-The policy grants neither `iot:Publish` nor `iot:Receive`. These are separate permissions from connecting and subscribing; authenticated Cognito identities need authorization from both their IAM role and attached IoT policies ([AWS documentation](https://docs.aws.amazon.com/iot/latest/developerguide/pub-sub-policy.html)). Live results with fresh identity credentials:
-
-| Check | Result |
-|---|---|
-| SigV4 WebSocket, random UUID, MQTT 3.1.1 | Successful CONNACK (`20 02 00 00`) |
-| Each account device's `/out`, QoS 1 | Successful SUBACK, granted QoS 1 |
-| Official-app harmless echo to an owned device's `/in` | Broker disconnected on publish |
-| Same echo via SDK-signed AWS IoT HTTPS `Publish` | HTTP 403 `ForbiddenException` |
-| Subscribe without publishing; request 20 seconds of reporting through the Mysa HTTPS live-mode route | Both devices' HTTPS reading timestamps advanced; zero MQTT messages during 25 seconds of listening |
-
-Setpoints and modes were unchanged. The successful connection used SigV4 service `iotdevicegateway`, signing with the temporary access key and secret, then appending the URL-encoded session token. A successful CONNACK or SUBACK is not proof of control or incoming telemetry.
-
-The confirmed current blocker is the identity's missing publish/receive authorization. Reattaching the same `default` policy cannot add those actions. The original pre-CONNACK failure was not reproduced, so its exact cause remains unconfirmed. This result applies to this identity and policy, not to every Mysa account. Mysa Local continues to use HTTPS and local HomeKit; no MQTT runtime dependency was added.
-
-Rechecking the old app's sign-in code found no additional per-device policy setup: `getCognitoUserAttr` calls `updateIoTCredentials`, which obtains identity credentials and attaches `default` directly through AWS IoT. It does not send the identity ID to a Mysa `/users` endpoint. The earlier scratch probe also appended the session token after signing, so a token-ordering bug is not established as the cause of the historical failure.
-
-The standalone [MQTT diagnostic](../tools/mqtt_probe.py) reproduces policy inspection and CONNECT/SUBACK with Paho. Install `aiohttp`, `boto3`, and `paho-mqtt>=2` in a separate diagnostic environment, then run:
-
-```sh
-python tools/mqtt_probe.py --credentials /private/path/mysa.json --duration 20
-```
-
-The private JSON contains `refresh_token` and/or `email` + `password`; omit `--credentials` to read it from stdin. Keep it out of Git. The tool never attaches policies or publishes, and reports no tokens, signed URLs, or message payloads. Exit 1 means the probe failed; exit 2 means CONNECT/SUBACK completed without establishing end-to-end MQTT functionality. It recognizes the exact limited policy observed above; other policy shapes are reported as inconclusive, not evaluated as IAM grants. The saved Paho probe was also run against both Lites and confirmed the same successful connection/subscriptions and missing permissions.
-
-### Other implementations checked (October 11, 2026)
-
-- **[bourquep/mysa2mqtt #299](https://github.com/bourquep/mysa2mqtt/issues/299)** reports the same connect/subscribe-success, publish-disconnect pattern on a BB-V1. An independent Python AWS IoT SDK client reproduced it; the reporter verified the newer HTTPS state-write route works. On October 11 the maintainer said his own BB-V1 devices still work and proposed a REST fallback. This is evidence against assuming all accounts lost MQTT access.
-- **[mysa2mqtt #125](https://github.com/bourquep/mysa2mqtt/issues/125)** concerned all-Lite fleets. Its July 21 fix, **[PR #208](https://github.com/bourquep/mysa2mqtt/pull/208)**, adds periodic REST state polling; it does not restore AWS publish permissions. Current SDK source still uses Cognito Identity credentials and the same endpoint/topics. Credential-refresh and reconnect fixes address different failure stages.
-- **[kgelinas/Mysa_HA #27](https://github.com/kgelinas/Mysa_HA/issues/27)** has an unresolved publish/disconnect report for AC devices. Its [signer](https://github.com/kgelinas/Mysa_HA/blob/main/custom_components/mysa/mysa_auth.py) appends the session token after signing; no policy bootstrap fix was found.
-- **[dlenski/mysotherm #6](https://github.com/dlenski/mysotherm/issues/6)** documents a different failure: accepted publishes but no setpoint change. The maintainer reported successful Lite control and described the array/string duplicate command format below. Payload changes can matter after publication is authorized; they cannot repair an AWS 403.
-
-### App 3.54.1 protocol
-
-These details come from decompiling app 3.54.1.
-
-| Item | App behavior |
-|---|---|
-| Connection | MQTT 3.1.1 over SigV4 WebSocket, service `iotdevicegateway`, region `us-east-1`, fresh UUID client ID, 60-second keepalive |
-| Commands | Publish to `/v1/dev/{dev}/in`, normally QoS 1 |
-| Readings | Subscribe to `/v1/dev/{dev}/out` at QoS 1; the app does not subscribe to `/batch` |
-| Publish queue | One message per 350 ms tick |
-| Live reporting | `{"Device":"{dev}","MsgType":11,"Timeout":180}` every 150 seconds while foregrounded |
-| Echo | `{"Device":"{dev}","EventType":4294967295,"MsgType":6,"EchoID":418,"Timestamp":<Unix seconds>}`; expects `MsgType:5` with the same echo ID |
-| Settings notification | REST settings write, then `MsgType:6, EventType:0` |
-| Schedule notification | REST schedule write, then `MsgType:6, EventType:1` |
-
-The Lite always takes the MCM `msg:44` command path in this app. V1, V2 and In-floor require firmware 3.11.0 for that path; AC requires 3.12.0. A Lite setpoint command has this shape:
-
-```json
-{
-  "ver": "1.0",
-  "src": {"type":100,"ref":"<user ID / Cognito sub>"},
-  "dest": {"type":1,"ref":"{dev}"},
-  "time": 1791700000,
-  "msg": 44,
-  "id": 1791700000000,
-  "body": {"ver":1,"type":5,"cmd":[{"tm":-1,"sp":21.5}]}
-}
-```
-
-`time` is seconds and `id` is milliseconds. Device types are 1 baseboard V1, 2 AC, 3 In-floor, 4 V2 and 5 Lite. The app publishes each command twice: first with `cmd` as an array, then with that array encoded as a JSON string. Its newer MQTT client adds a seconds-based `Timestamp`. The generator does not set `resp`.
-
-Command fields include `sp` setpoint, `md` legacy mode (1 off, 3 heat), `ho` schedule behavior (1 follow, 2 hold) and `tm` execution time (`-1` now). A timed hold sends a hold-now entry followed by a follow-schedule entry at the expiry time. Brightness objects use `br`. The app does not send `lk`, `stpt` or `a_sp` as Lite command fields.
-
-An acknowledgement uses `resp_id` to match the command ID and exposes state under `body.state`, including `md`, `sp`, `ho`, `tr`, `fn` and `ss`. The app's parser does not inspect `success`, `trig_src`, `br` or `lk`. Live BB2/Lite readings use MCM `msg:40`, with `body.hum`, `ambTemp`, `stpt` and `dtyCycle`.
-
-Legacy `MsgType` and MCM `msg` are different namespaces. The app enum calls legacy `MsgType:7` REBOOT. Legacy `MsgType:40` is also different from MCM `msg:40` telemetry and from the app's `MsgType:6` echo above. Do not use `MsgType:7` or `MsgType:40` as a liveness probe. The old source enum defines 0 as device manual and 1 as device schedule.
+The [MQTT investigation](../custom_components/mysa_local/protocols/MQTT/README.md)
+is the canonical reference for the legacy app protocol, the October 10–11,
+2026 connection and authorization tests, attempted fixes, AWS permission
+controls, community timeline, and the standalone diagnostic. Mysa Local uses
+the HTTPS client described in this document for cloud operations.
 
 ## Other app endpoints
 
