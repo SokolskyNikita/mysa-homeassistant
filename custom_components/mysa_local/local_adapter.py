@@ -14,7 +14,6 @@ from mysa_client.homekit import (
     AccessoryInfo,
     CharacteristicInfo,
     Field,
-    HomeKitCharacteristicReadError,
     HomeKitConnectionError,
     HomeKitDevice,
     HomeKitError,
@@ -77,8 +76,6 @@ class LocalThermostat:
         self.__poll_unsub: CALLBACK_TYPE | None = None
         self.__started = False
         self.__poll_lock = asyncio.Lock()
-        self.__failed_essential_fields: set[Field] = set()
-        self.__observed_values: dict[Field, Any] = dict(self.__device.state)
         self.available = False
         self.down_since: datetime | None = dt_util.utcnow()
         self.last_error: str | None = None
@@ -170,39 +167,27 @@ class LocalThermostat:
                 )
             return
         if event.capabilities_changed:
-            self.__observed_values = dict(self.__device.state)
             for listener in tuple(self.__capability_listeners):
                 listener()
             if not self.ready:
                 self.__set_available(False, "HomeKit missing required fields")
-        for field in event.failed_fields:
-            if field in _ESSENTIAL_FIELDS:
-                self.__failed_essential_fields.add(field)
-
-        changed = False
-        for field, value in event.values.items():
-            if self.__observed_values.get(field) != value:
-                changed = True
-            self.__observed_values[field] = value
         essential_error = any(
             field in _ESSENTIAL_FIELDS for field in event.failed_fields
         )
         if essential_error:
             self.__set_available(False, self.__format_event_error(event))
-            if changed:
-                self.__notify()
             return
 
         if (
             self.ready
-            and not self.__failed_essential_fields
+            and not (_ESSENTIAL_FIELDS & self.__device.failed_fields.keys())
             and (
                 event.reconnected
                 or any(field in _ESSENTIAL_FIELDS for field in event.values)
             )
         ):
             self.__set_available(True)
-        if (changed and self.available) or event.capabilities_changed:
+        if (event.changed_fields and self.available) or event.capabilities_changed:
             self.__notify()
 
     async def __async_refresh(self) -> None:
@@ -238,7 +223,6 @@ class LocalThermostat:
             async with asyncio.timeout(15):
                 await self.__device.async_connect()
         except (HomeKitError, TimeoutError) as error:
-            self.__failed_essential_fields.update(_ESSENTIAL_FIELDS)
             self.__set_available(False, str(error) or type(error).__name__)
             return
         if not self.ready:
@@ -248,7 +232,7 @@ class LocalThermostat:
                 "HomeKit missing required fields: "
                 + ", ".join(sorted(field.value for field in missing)),
             )
-        elif not self.__failed_essential_fields:
+        elif not (_ESSENTIAL_FIELDS & self.__device.failed_fields.keys()):
             self.__set_available(True)
 
     async def _async_scheduled_poll(self, _now: datetime | None = None) -> None:
@@ -262,31 +246,19 @@ class LocalThermostat:
             try:
                 await self.__device.async_connect()
             except LOCAL_ERRORS as error:
-                self.__failed_essential_fields.update(_ESSENTIAL_FIELDS)
                 self.__set_available(False, str(error) or type(error).__name__)
                 return
 
             try:
-                previous = dict(self.__device.state)
                 await self.async_read(
                     tuple(self.__device.supported_fields | _ESSENTIAL_FIELDS),
                     timeout=LOCAL_READ_TIMEOUT * 3,
                 )
             except LOCAL_ERRORS as error:
-                if isinstance(error, HomeKitCharacteristicReadError) and error.fields:
-                    self.__failed_essential_fields.update(error.fields)
-                else:
-                    self.__failed_essential_fields.update(_ESSENTIAL_FIELDS)
                 self.__set_available(False, str(error) or type(error).__name__)
                 return
 
-            self.__failed_essential_fields.clear()
-            current = dict(self.__device.state)
-            self.__observed_values = current
-            changed = previous != current
             self.__set_available(True)
-            if changed and self.available:
-                self.__notify()
 
     async def async_read(
         self,
@@ -296,18 +268,7 @@ class LocalThermostat:
     ) -> dict[Field, Any]:
         """Read semantic values, updating the protocol cache on success."""
         requested = tuple(fields)
-        try:
-            values = await self.__device.async_read(requested, timeout=timeout)
-        except HomeKitCharacteristicReadError as error:
-            self.__failed_essential_fields.update(error.fields)
-            raise
-        self.__observed_values.update(values)
-        self.__failed_essential_fields.difference_update(
-            field
-            for field in requested
-            if field in _ESSENTIAL_FIELDS and field in self.__device.supported_fields
-        )
-        return values
+        return await self.__device.async_read(requested, timeout=timeout)
 
     def start_write(self, values: Mapping[Field, Any]) -> asyncio.Task[None]:
         """Start a HomeKit write that cannot be cancelled by a caller timeout."""
@@ -318,7 +279,7 @@ class LocalThermostat:
     @callback
     def mark_available(self) -> None:
         """Mark healthy after a successful router read-back."""
-        if not self.__failed_essential_fields and self.ready:
+        if not (_ESSENTIAL_FIELDS & self.__device.failed_fields.keys()) and self.ready:
             self.__set_available(True)
 
     @callback

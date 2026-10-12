@@ -34,13 +34,15 @@ from mysa_client.cloud import (
     Swing,
 )
 from mysa_client.cloud.commands import (
+    CloudCommand,
     button_lock_changes,
     display_brightness_changes,
-    display_unit_settings,
     fan_speed_changes,
     heater_type_settings,
     mode_changes,
     setpoint_limit_changes,
+    settings_command,
+    state_command,
     swing_changes,
     temperature_changes,
     temperature_offset_changes,
@@ -50,9 +52,17 @@ from mysa_client.cloud.const import (
     ModelFamily,
     model_family,
 )
-from mysa_client.cloud.observations import MEASUREMENT_MAX_AGE, STATE_FIELDS, number
+from mysa_client.cloud.device_commands import display_unit_command
+from mysa_client.cloud.observations import MEASUREMENT_MAX_AGE
+from mysa_client.cloud.reconciliation import (
+    PendingCommand,
+    PendingCommandTracker,
+    observation_issue_reason,
+    pending_command,
+    reconcile,
+)
+from mysa_client.cloud.validation import validate_cloud_command
 
-from .cloud_state import PendingCommand, pending_command, reconcile
 from .const import (
     CLOUD_CAPABILITIES_INTERVAL,
     CLOUD_FALLBACK_INTERVAL,
@@ -143,7 +153,10 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         self._last_write = 0.0
         self._due: dict[str, float] = {}
         self.source_health: dict[str, dict[str, Any]] = {}
-        self.pending: dict[str, dict[str, PendingCommand]] = {}
+        self.command_tracker = PendingCommandTracker()
+        # Kept as a compatibility view for entity-level dependent commands and
+        # diagnostics that inspect a live pending operation.
+        self.pending = self.command_tracker.pending
         self._optional_failures: dict[str, int] = {}
         self.live_devices: set[str] = set()
         self.live_sessions: dict[str, tuple[datetime, datetime | None, datetime]] = {}
@@ -501,15 +514,9 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
 
     def command_value(self, device_id: str, name: str, fallback: Any) -> Any:
         """Use current intent for dependent writes, never for entity readings."""
-        command = self.pending.get(device_id, {}).get(name)
-        if (
-            command
-            and command.status
-            in ("pending", "ambiguous", "stored", "confirmed", "unchanged")
-            and dt_util.utcnow() < command.expires_at
-        ):
-            return command.expected.get(name, fallback)
-        return fallback
+        return self.command_tracker.command_value(
+            device_id, name, fallback, dt_util.utcnow()
+        )
 
     def measurement_max_age(self, device_id: str) -> timedelta:
         """Tighten freshness only after telemetry proves live reporting started."""
@@ -559,28 +566,32 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
 
     async def _async_spaced(self, call: Callable[[], Awaitable[Any]]) -> None:
         async with self._write_lock:
-            wait = self._last_write + CLOUD_WRITE_SPACING - time.monotonic()
-            if wait > 0:
-                await asyncio.sleep(wait)
-            try:
-                await call()
-            except MysaAuthError as err:
-                self.config_entry.async_start_reauth(self.hass)
-                raise translated_error("auth_expired") from err
-            except MysaNotFoundError as err:
-                raise translated_error(
-                    "cloud_write_failed", error=error_category(err)
-                ) from err
-            except MysaConnectionError as err:
-                raise translated_error(
-                    "cloud_unavailable", error=error_category(err)
-                ) from err
-            except MysaError as err:
-                raise translated_error(
-                    "cloud_write_failed", error=error_category(err)
-                ) from err
-            finally:
-                self._last_write = time.monotonic()
+            await self._async_spaced_locked(call)
+
+    async def _async_spaced_locked(self, call: Callable[[], Awaitable[Any]]) -> None:
+        """Space one request while the caller owns ``_write_lock``."""
+        wait = self._last_write + CLOUD_WRITE_SPACING - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        try:
+            await call()
+        except MysaAuthError as err:
+            self.config_entry.async_start_reauth(self.hass)
+            raise translated_error("auth_expired") from err
+        except MysaNotFoundError as err:
+            raise translated_error(
+                "cloud_write_failed", error=error_category(err)
+            ) from err
+        except MysaConnectionError as err:
+            raise translated_error(
+                "cloud_unavailable", error=error_category(err)
+            ) from err
+        except MysaError as err:
+            raise translated_error(
+                "cloud_write_failed", error=error_category(err)
+            ) from err
+        finally:
+            self._last_write = time.monotonic()
         self._schedule_refresh_after_write()
 
     @callback
@@ -649,25 +660,8 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         self, device_id: str, changes: Mapping[str, Mapping[str, Any]]
     ) -> None:
         """Write state sections through the cloud."""
-        await self._async_write_state(
-            device_id,
-            lambda: self.client.update_state(device_id, changes),
-            changes,
-        )
-
-    async def _async_write_state(
-        self,
-        device_id: str,
-        call: Callable[[], Awaitable[Any]],
-        changes: Mapping[str, Mapping[str, Any]],
-    ) -> None:
-        """Track intent without manufacturing device-reported state."""
-        expected = {
-            name: changes[section][wire]
-            for name, (section, wire) in STATE_FIELDS.items()
-            if section in changes and wire in changes[section]
-        }
-        await self._tracked_write(device_id, call, expected)
+        payload = {section: dict(fields) for section, fields in changes.items()}
+        await self.async_execute(device_id, state_command(payload))
 
     def _record_observation_issues(
         self, dev: str, states: list[DeviceState], now: datetime
@@ -676,16 +670,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         for state in states:
             for name, obs in state.observations.items():
                 command = self.pending.get(dev, {}).get(name)
-                reason = None
-                if not obs.usable(now):
-                    reason = "invalid_clock"
-                elif command and command.status in {"pending", "ambiguous", "stored"}:
-                    if obs.observed_at is None:
-                        reason = "missing_timestamp"
-                    elif obs.observed_at < command.submitted_at.replace(microsecond=0):
-                        reason = "before_submission"
-                    elif obs.value != command.expected.get(name):
-                        reason = "value_mismatch"
+                reason = observation_issue_reason(name, obs, command, now)
                 if reason:
                     self.history.record(
                         "observation",
@@ -712,150 +697,91 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         )
 
     def _reconcile_pending(self, data: CloudData, now: datetime) -> None:
-        for dev, commands in self.pending.items():
-            seen = set()
-            for command in commands.values():
-                if id(command) in seen:
-                    continue
-                seen.add(id(command))
-                before = (command.status, dict(command.confirmation))
-                command.reconcile(data.states.get(dev), data.records.get(dev), now)
-                if before != (command.status, command.confirmation):
-                    self._command_event(
-                        dev,
-                        command,
-                        command.status,
-                        observations=command.evidence,
-                        evidence="device_report"
-                        if command.status == "confirmed"
-                        else "configuration_storage"
-                        if command.status == "stored"
-                        else "none",
-                    )
+        for (
+            dev,
+            command,
+            _before_status,
+            _before_confirmation,
+        ) in self.command_tracker.reconcile(data.states, data.records, now):
+            self._command_event(
+                dev,
+                command,
+                command.status,
+                observations=command.evidence,
+                evidence="device_report"
+                if command.status == "confirmed"
+                else "configuration_storage"
+                if command.status == "stored"
+                else "none",
+            )
 
-    def _validate_settings(self, device_id: str, expected: dict[str, Any]) -> None:
-        """Validate semantic settings against the discovered device capabilities."""
+    def _validate_command(self, device_id: str, command: CloudCommand) -> None:
+        """Validate a client-encoded command against current device facts."""
         state = self.state(device_id)
         family = self.device_family(device_id)
         caps = self.capabilities(device_id)
-        if family in EXPERIMENTAL_CLOUD_FAMILIES:
-            from mysa_client.cloud.validation import validate_basic_command
-
-            try:
-                validate_basic_command(
-                    family,
-                    caps,
-                    state,
-                    expected,
-                    lambda name, fallback: self.command_value(
-                        device_id, name, fallback
-                    ),
-                )
-            except ValueError as err:
-                raise HomeAssistantError(str(err)) from err
-        if "heat_setpoint" in expected and state:
-            target = number(expected["heat_setpoint"])
-            low = state.reported_observations.get("setpoint_min")
-            high = state.reported_observations.get("setpoint_max")
-            minima = [
-                v
-                for v in (state.setpoint_min, low.value if low else None)
-                if v is not None
-            ]
-            maxima = [
-                v
-                for v in (state.setpoint_max, high.value if high else None)
-                if v is not None
-            ]
-            if (
-                target is None
-                or (minima and target < max(minima))
-                or (maxima and target > min(maxima))
-            ):
-                raise HomeAssistantError("Target exceeds known device limits")
-        caps = self.capabilities(device_id)
-        if caps is None:
-            return
-        choices = {
-            "button_lock": caps.lockout_values,
-            "control_type": caps.control_types,
-            "display_unit": caps.units,
-        }
-        for name, values in choices.items():
-            if name in expected and expected[name] not in values:
-                raise HomeAssistantError(f"Unsupported Mysa setting: {name}")
-        ranges = {
-            "temperature_offset": caps.offset_range,
-            "setpoint_min": caps.heat_setpoint_range,
-            "setpoint_max": caps.heat_setpoint_range,
-        }
-        for name, limits in ranges.items():
-            if name in expected and (
-                limits is None
-                or number(expected[name]) is None
-                or not limits[0] <= expected[name] <= limits[1]
-            ):
-                raise HomeAssistantError(
-                    f"Mysa setting outside supported range: {name}"
-                )
-        if (
-            "active_brightness" in expected or "idle_brightness" in expected
-        ) and not caps.brightness:
-            raise HomeAssistantError("Brightness is unsupported by this device")
-        state = self.state(device_id)
-        if state and ("setpoint_min" in expected or "setpoint_max" in expected):
-            low = expected.get(
-                "setpoint_min",
-                self.command_value(device_id, "setpoint_min", state.setpoint_min),
+        try:
+            validate_cloud_command(
+                family,
+                caps,
+                state,
+                command.expected,
+                lambda name, fallback: self.command_value(device_id, name, fallback),
+                command_kind=command.kind,
             )
-            high = expected.get(
-                "setpoint_max",
-                self.command_value(device_id, "setpoint_max", state.setpoint_max),
-            )
-            if low is not None and high is not None and low > high:
-                raise HomeAssistantError("Minimum setpoint exceeds maximum")
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
 
     async def _tracked_write(
         self,
         device_id: str,
         call: Callable[[], Awaitable[Any]],
-        expected: dict[str, Any],
-        stored: dict[str, Any] | None = None,
+        command_spec: CloudCommand,
+    ) -> None:
+        """Serialize validation, supersession and execution for every command."""
+        async with self._write_lock:
+            await self._tracked_write_locked(device_id, call, command_spec)
+
+    async def _tracked_write_locked(
+        self,
+        device_id: str,
+        call: Callable[[], Awaitable[Any]],
+        command_spec: CloudCommand,
     ) -> None:
         command = pending_command(
-            expected, self.state(device_id), dt_util.utcnow(), stored
+            command_spec.expected,
+            self.state(device_id),
+            dt_util.utcnow(),
+            command_spec.stored_fields,
         )
         command.correlation_id = self.history.command_id()
         self._command_event(
             device_id,
             command,
             "submitted",
-            requested=expected,
-            baseline={k: v for k, v in command.baseline.items() if k in expected},
+            requested=command_spec.expected or command_spec.payload,
+            baseline={
+                key: value
+                for key, value in command.baseline.items()
+                if key in command_spec.expected
+            },
         )
         try:
-            self._validate_settings(device_id, expected)
+            self._validate_command(device_id, command_spec)
         except HomeAssistantError:
             self._command_event(device_id, command, "failed", error="validation_failed")
             raise
-        commands = self.pending.setdefault(device_id, {})
-        keys = list(expected) or [f"record:{key}" for key in (stored or {})]
-        for key in keys:
-            # Supersede every field of an overlapping earlier command together.
-            prior = commands.get(key)
-            if prior and prior.status in ("pending", "ambiguous", "stored"):
-                prior.status = "superseded"
-                if prior.correlation_id != command.correlation_id:
-                    self._command_event(
-                        device_id,
-                        prior,
-                        "superseded",
-                        superseded_by=command.correlation_id,
-                    )
-            commands[key] = command
+        for prior in self.command_tracker.track(device_id, command):
+            if prior.correlation_id != command.correlation_id:
+                self._command_event(
+                    device_id,
+                    prior,
+                    "superseded",
+                    superseded_by=command.correlation_id,
+                )
         try:
             with self.history.command(command.correlation_id, device_id):
-                await self._async_spaced(call)
+                await self._async_spaced_locked(call)
             self._command_event(device_id, command, "accepted", evidence="none")
             if command.status == "unchanged":
                 self._command_event(device_id, command, "unchanged", evidence="none")
@@ -881,156 +807,104 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             self._schedule_refresh_after_write()
             raise
         finally:
-            if stored:
+            if command_spec.stored_fields:
                 self.mark_stale("records")
             self.async_update_listeners()
+
+    async def async_execute(self, device_id: str, command: CloudCommand) -> None:
+        """Validate, send, track, and reconcile one typed cloud write."""
+
+        async def call() -> None:
+            try:
+                await self.client.execute_command(
+                    device_id,
+                    command,
+                    family=self.device_family(device_id),
+                    capabilities=self.capabilities(device_id),
+                    state=self.state(device_id),
+                    command_value=lambda name, fallback: self.command_value(
+                        device_id, name, fallback
+                    ),
+                )
+            except ValueError as err:
+                raise HomeAssistantError(str(err)) from err
+
+        await self._tracked_write(device_id, call, command)
 
     async def async_set_temperature(
         self, device_id: str, mode: Mode | None, temperature: float
     ) -> None:
         """Set a temperature target using the cloud protocol's mode mapping."""
-        await self._async_write_state(
-            device_id,
-            lambda: self.client.set_temperature(device_id, mode, temperature),
-            temperature_changes(mode, temperature),
+        await self.async_execute(
+            device_id, state_command(temperature_changes(mode, temperature))
         )
 
     async def async_set_mode(self, device_id: str, mode: Mode) -> None:
         """Set operating mode through the cloud."""
-        await self._async_write_state(
-            device_id,
-            lambda: self.client.set_mode(device_id, mode),
-            mode_changes(mode),
-        )
+        await self.async_execute(device_id, state_command(mode_changes(mode)))
 
     async def async_set_fan_speed(
         self, device_id: str, speed: AcFan, mode: Mode | None = None
     ) -> None:
         """Set an AC fan speed through the cloud."""
-        await self._async_write_state(
-            device_id,
-            lambda: self.client.set_fan_speed(device_id, speed, mode),
-            fan_speed_changes(speed, mode),
+        await self.async_execute(
+            device_id, state_command(fan_speed_changes(speed, mode))
         )
 
     async def async_set_swing(
         self, device_id: str, direction: str, value: Swing
     ) -> None:
         """Set an AC swing direction through the cloud."""
-        await self._async_write_state(
-            device_id,
-            lambda: self.client.set_swing(device_id, direction, value),
-            swing_changes(direction, value),
+        await self.async_execute(
+            device_id, state_command(swing_changes(direction, value))
         )
 
     async def async_set_display_brightness(
         self, device_id: str, *, active: int, idle: int
     ) -> None:
         """Set both display brightness values through the cloud."""
-        changes = display_brightness_changes(active, idle)
-        await self._async_write_state(
+        await self.async_execute(
             device_id,
-            lambda: self.client.set_display_brightness(
-                device_id, active=active, idle=idle
-            ),
-            changes,
+            state_command(display_brightness_changes(active, idle)),
         )
 
     async def async_set_button_lock(self, device_id: str, value: ButtonLock) -> None:
         """Lock or unlock the thermostat's physical buttons through the cloud."""
-        changes = button_lock_changes(value)
-        await self._async_write_state(
-            device_id,
-            lambda: self.client.set_button_lock(device_id, value),
-            changes,
-        )
+        await self.async_execute(device_id, state_command(button_lock_changes(value)))
 
     async def async_set_setpoint_limit(
         self, device_id: str, value: float, *, minimum: bool
     ) -> None:
         """Set a heating setpoint bound through the cloud."""
-        changes = setpoint_limit_changes(value, minimum=minimum)
-        await self._async_write_state(
+        await self.async_execute(
             device_id,
-            lambda: self.client.set_setpoint_limit(device_id, value, minimum=minimum),
-            changes,
+            state_command(setpoint_limit_changes(value, minimum=minimum)),
         )
 
     async def async_set_temperature_offset(self, device_id: str, value: float) -> None:
         """Set the thermostat's room-temperature correction."""
-        changes = temperature_offset_changes(value)
-        await self._async_write_state(
-            device_id,
-            lambda: self.client.set_temperature_offset(device_id, value),
-            changes,
+        await self.async_execute(
+            device_id, state_command(temperature_offset_changes(value))
         )
 
     async def async_update_settings(
         self, device_id: str, fields: Mapping[str, Any]
     ) -> None:
         """Write settings-record fields through the cloud."""
-        await self._async_write_settings(
-            device_id,
-            lambda: self.client.update_settings(device_id, fields),
-            fields,
-        )
-
-    async def _async_write_settings(
-        self,
-        device_id: str,
-        call: Callable[[], Awaitable[Any]],
-        fields: Mapping[str, Any],
-    ) -> None:
-        """A settings response confirms acceptance; a later read confirms storage."""
-        mapping = {
-            "Format": "display_unit",
-            "DutyCycleOpt": "control_type",
-            "MinSetpoint": "setpoint_min",
-            "MaxSetpoint": "setpoint_max",
-            "MaxBrightness": "active_brightness",
-            "MinBrightness": "idle_brightness",
-            "ButtonState": "button_lock",
-        }
-        if self.device_family(device_id) in EXPERIMENTAL_CLOUD_FAMILIES:
-            raise HomeAssistantError(
-                "Legacy device settings are not implemented for this model"
-            )
-        expected = {
-            mapping[key]: value for key, value in fields.items() if key in mapping
-        }
-        if "Format" in fields:
-            expected["display_unit"] = {"celsius": "C", "fahrenheit": "F"}.get(
-                fields["Format"]
-            )
-        if "ButtonState" in fields:
-            expected["button_lock"] = {"Locked": 3, "Unlocked": 0}.get(
-                fields["ButtonState"]
-            )
-        await self._tracked_write(device_id, call, expected, dict(fields))
+        await self.async_execute(device_id, settings_command(dict(fields)))
 
     async def async_set_display_unit(self, device_id: str, unit: str) -> None:
         """Set the thermostat's display unit through the cloud."""
-        fields = display_unit_settings(unit)
-        if self.device_family(device_id) in EXPERIMENTAL_CLOUD_FAMILIES:
-            await self.async_update_state(
-                device_id, {"physicalInterface": {"format": unit.upper()}}
-            )
-            return
-        await self._async_write_settings(
-            device_id,
-            lambda: self.client.set_display_unit(device_id, unit),
-            fields,
+        await self.async_execute(
+            device_id, display_unit_command(unit, self.device_family(device_id))
         )
 
     async def async_set_heater_type(
         self, device_id: str, heater_type: int | HeaterType
     ) -> None:
         """Set the heater profile through the cloud."""
-        fields = heater_type_settings(heater_type)
-        await self._async_write_settings(
-            device_id,
-            lambda: self.client.set_heater_type(device_id, heater_type),
-            fields,
+        await self.async_execute(
+            device_id, settings_command(heater_type_settings(heater_type))
         )
 
     async def async_call(

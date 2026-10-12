@@ -17,10 +17,12 @@ keeps the previous section anchors for existing links.
 Mysa account schedules may still act on a thermostat alongside Home Assistant
 commands. See the client reference for the observed request formats and
 [schedule routes](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-workflows.md#schedules-holds-and-shortcuts).
-Mysa Local replaces schedules by detaching and recreating them, so that update
-is non-atomic; its [schedule code](../custom_components/mysa_local/schedule.py)
-backs up the original and reconciles ambiguous failures before attempting
-restoration.
+Mysa Local delegates schedule comparison, replacement, clear, and recovery to
+the client's `ScheduleWorkflow`. HA's [schedule adapter](../custom_components/mysa_local/schedule.py)
+provides durable storage, per-device serialization, startup/retry scheduling,
+and translated service errors. Replacement still detaches and recreates
+schedules, so the cloud operation is non-atomic; the client journal protects
+the prior schedule through ambiguous failures.
 
 ### Weekly schedules
 
@@ -38,9 +40,10 @@ Mysa Local does not provide a separate editor for saved templates.
 ### Holds
 
 The [client hold notes](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-workflows.md#holds)
-describe request fields and observed responses. Mysa Local uses a hold only
-when coordinating with an existing Mysa schedule; ordinary local-first climate
-commands do not require one.
+describe request fields, observed responses, and reusable hold resolution and
+application helpers. Mysa Local uses a hold only when coordinating with an
+existing Mysa schedule; ordinary local-first climate commands do not require
+one. HA supplies current state and transport callbacks and presents errors.
 
 ### Home, Away and Vacation shortcuts
 
@@ -58,17 +61,19 @@ client's [Bluetooth protocol reference](https://github.com/SokolskyNikita/mysa-c
 ### Claiming an older model
 
 The [client's older-model claim notes](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-workflows.md#claiming-an-older-model)
-document account fields, defaults, and 409 behavior. For a returning device,
-Mysa Local requests the minimal account claim so existing settings are not
-overwritten by new-device heater defaults.
+document account fields, defaults, and 409 behavior. The client account helper
+builds the minimal claim for a returning device so app defaults do not
+overwrite existing settings; HA gathers the user's home, name, and time-zone
+choices and reports the result.
 
 ### Deletion and re-addition
 
 The account deletion effects and re-add observations are in the
 [client reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-workflows.md#deletion-and-re-addition).
-Mysa Local first attempts schedule and shortcut cleanup, then continues with
-account deletion if cleanup fails. Sensor/HVAC-link and group cleanup are not
-implemented.
+The client's account workflow attempts schedule and shortcut cleanup, returns
+counts and a structured cleanup error, then continues with account deletion.
+Mysa Local turns that result into its user-facing operation status.
+Sensor/HVAC-link and group cleanup are not implemented.
 
 ### Baseboard V3, Central HVAC and Climate Sensor
 

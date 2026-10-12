@@ -220,9 +220,7 @@ async def test_failed_requests_have_safe_lifecycle(hass, cloud, caplog, error, s
     coordinator = entry.runtime_data.cloud
     caplog.set_level(logging.DEBUG, logger=LOGGER)
     with (
-        patch.object(
-            coordinator.client, "set_temperature", AsyncMock(side_effect=error)
-        ),
+        patch.object(coordinator.client, "update_state", AsyncMock(side_effect=error)),
         pytest.raises(HomeAssistantError),
     ):
         await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 24)
@@ -442,7 +440,7 @@ async def test_capture_failure_and_cancellation_do_not_change_commands(hass, clo
         await asyncio.Future()
 
     with (
-        patch.object(coordinator.client, "set_temperature", side_effect=waiting),
+        patch.object(coordinator.client, "update_state", side_effect=waiting),
         patch("custom_components.mysa_local.cloud_coordinator.CLOUD_WRITE_SPACING", 0),
     ):
         task = asyncio.create_task(

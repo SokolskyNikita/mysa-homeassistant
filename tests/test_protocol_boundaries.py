@@ -40,3 +40,22 @@ assert "homeassistant" not in sys.modules
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_integration_does_not_construct_mysa_state_sections() -> None:
+    """Entities and coordinators must use client semantic command builders."""
+    wire_sections = {
+        "targetHeat",
+        "targetCool",
+        "targetAuto",
+        "physicalInterface",
+        "bbConfig",
+        "hvacConfig",
+    }
+    for path in COMPONENT.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Dict):
+                assert not any(
+                    isinstance(key, ast.Constant) and key.value in wire_sections
+                    for key in node.keys
+                ), path

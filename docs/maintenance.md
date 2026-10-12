@@ -8,18 +8,20 @@ references are maintained in [`mysa-client`](https://github.com/SokolskyNikita/m
 | Material | Maintained home |
 | --- | --- |
 | Installation, entities, services, and configuration | [User guide](../README.md) and [newer-model setup/test guide](new-cloud-models.md) |
-| HA lifecycle, polling, routing, freshness, persistence, and recovery | [Architecture](architecture.md) and [account/schedule workflows](cloud-workflows.md) |
-| MQTT controls, value selection, fallback, and hardware evidence in HA | [MQTT guide](mqtt.md) |
+| HA lifecycle, poll cadence, user choices, durable-storage adapters, presentation, and translated errors | [Architecture](architecture.md) and [account/schedule workflows](cloud-workflows.md) |
+| Mysa-specific validation, commands, state reconciliation, confirmation, reusable routing, telemetry freshness, and workflow correctness | [Client runtime guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/runtime.md) and [client cloud guide](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md) |
+| MQTT controls, session lifecycle, HA source preferences, fallback, and hardware evidence | [MQTT guide](mqtt.md) |
 | HA cloud/HomeKit work, acceptance criteria, and product exclusions | [Cloud tracker](implementation/cloud.md) and [HomeKit tracker](implementation/homekit.md) |
 | Integration and management coverage | [Management inventory](implementation/progress.md) |
 | Public client APIs, MQTT authorization and wire protocol, endpoint/payload details, firmware and provisioning research | [Client protocol index](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md) |
 | Raw API method coverage | [Client API inventory](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/api-coverage.md) |
 | Sanitized cloud/MQTT exchanges and protocol tools | [Client examples](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/README.md) and [tools](https://github.com/SokolskyNikita/mysa-client/tree/main/tools) |
 
-Update protocol findings in the client repository, then link to them from HA
-workflow or acceptance criteria where needed. Keep HA configuration, source
-selection, fallback, and hardware evidence in the HA MQTT guide; do not copy the
-wire reference here. Short forwarding links preserve previously published
+Update protocol and reusable Mysa-domain behavior in the client repository,
+then link to it from HA workflow or acceptance criteria where needed. Keep HA
+configuration, source-order choices, polling, storage, lifecycle, presentation,
+and hardware evidence in this repository. Do not copy wire or domain rules into
+the integration guide. Short forwarding links preserve previously published
 protocol bookmarks. Release notes remain historical.
 
 ## Issue format
@@ -28,8 +30,9 @@ Use the issue form's five sections—Summary, Scope, Acceptance criteria,
 Validation, and References—for every issue. Keep observed evidence and
 implementation scope distinct, and make acceptance criteria observable. Link
 dependencies and the stable source tracker ID. Put each task in its owning
-repository: HA lifecycle, entities, and routing here; client API/protocol work
-in the [client repository](https://github.com/SokolskyNikita/mysa-client/issues).
+repository: HA lifecycle, entities, options, storage adapters, and presentation
+here; shared Mysa commands, state semantics, routing correctness, and reusable
+workflows in the [client repository](https://github.com/SokolskyNikita/mysa-client/issues).
 Cross-link shared work instead of creating duplicate tasks.
 
 ## Evidence and checks

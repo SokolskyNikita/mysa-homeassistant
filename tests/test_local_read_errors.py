@@ -123,7 +123,7 @@ async def test_optional_characteristic_error_does_not_fail_essential_read(
     assert local.values[CURRENT_TEMPERATURE] == 21.5
 
 
-async def test_error_event_does_not_update_value_or_restore_health(
+async def test_error_event_preserves_values_and_recovers_field_health_independently(
     hass, controller, cloud
 ):
     """A status-error event cannot update a value or prove a healthy connection."""
@@ -154,13 +154,24 @@ async def test_error_event_does_not_update_value_or_restore_health(
     )
     assert not local.available
 
-    # Even a successful event for the failed field cannot establish that the
-    # complete essential read set is healthy again.
+    # A successful event clears only its own field's failure. The unrelated
+    # target-mode failure keeps the local path unavailable.
+    target_mode = fake_characteristic_address(pairing, FIELD_TYPES[TARGET_STATE])
+    pairing.testing.set_aid_iid_status(
+        [(*current_temperature, -70402), (*target_mode, -70402)]
+    )
+    assert not local.available
+
     update_fake_characteristic(pairing, FIELD_TYPES[CURRENT_TEMPERATURE], 22.0)
     assert not local.available
     assert local.values[CURRENT_TEMPERATURE] == 22.0
 
-    # A complete successful poll clears the failed-field latch.
+    update_fake_characteristic(pairing, FIELD_TYPES[TARGET_STATE], 1)
+    assert local.available
+
+    # A complete successful poll also recovers after a later field failure.
+    pairing.testing.set_aid_iid_status([(*current_temperature, -70402)])
+    assert not local.available
     with patch.object(
         pairing,
         "get_characteristics",

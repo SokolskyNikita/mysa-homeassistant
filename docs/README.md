@@ -7,7 +7,7 @@ entities, services, and integration options.
 
 | Reference | Contents |
 | --- | --- |
-| [Architecture](architecture.md) | HA lifecycle, polling, local-first routing, fallback, persistence, and ownership |
+| [Architecture](architecture.md) | Client domain/runtime ownership, HA adapters, lifecycle, polling, storage, and presentation |
 | [MQTT telemetry](mqtt.md) | HA switches, per-device selection, reading freshness, fallback, and hardware evidence |
 | [Account and schedule workflows](cloud-workflows.md) | HA enrollment, removal, schedule management, and recovery policy |
 | [Experimental newer-model support](new-cloud-models.md) | HA controls, setup, diagnostics, and the V3 hardware test procedure |
@@ -23,16 +23,24 @@ entities, services, and integration options.
 Protocol documentation is maintained in the standalone
 [`mysa-client` documentation](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md).
 That includes cloud authentication, endpoint and payload shapes, account/schedule
-wire mechanics, HomeKit characteristics, Bluetooth/SoftAP setup, MQTT protocol,
-firmware, and Matter research. Sanitized exchanges and protocol diagnostic tools
-live there too. Home Assistant's MQTT switches, value selection, and hardware
-evidence are documented in the [HA MQTT guide](mqtt.md). The
+wire mechanics, Mysa-specific command and state semantics, reusable domain
+workflows and optional runtime, HomeKit characteristics, Bluetooth/SoftAP setup,
+MQTT protocol, firmware, and Matter research. Sanitized exchanges and protocol
+diagnostic tools live there too. Home Assistant lifecycle, polling choices,
+durable-storage adapters, MQTT switches, entity value presentation, and hardware
+evidence remain here. See the [client runtime guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/runtime.md)
+for the client/application boundary and the [HA MQTT guide](mqtt.md) for
+integration policy. The
 [raw API inventory](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/api-coverage.md)
 tracks client methods independently of this integration's management coverage.
 
-The integration consumes [`mysa_client.cloud`](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md)
+The integration consumes the independent cloud, HomeKit, and MQTT clients plus
+the documented semantic helpers and opt-in runtime in `mysa-client`.
+[`mysa_client.cloud`](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md),
 [`mysa_client.homekit`](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md),
-and [`mysa_client.mqtt`](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md).
+and the [optional runtime](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/runtime.md)
+have no Home Assistant dependency. HA creates and closes all sessions and
+supplies persistence and runtime policy.
 The [Wi-Fi setup page](https://github.com/SokolskyNikita/mysa-wifi-setup) remains a
 separate product. Older protocol URLs in this repository forward readers to
 their maintained references.

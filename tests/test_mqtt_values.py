@@ -13,6 +13,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.mysa_local.climate import MysaClimate
+from custom_components.mysa_local.local_adapter import CURRENT_STATE, TARGET_STATE
 from custom_components.mysa_local.sensor import (
     HeatingDutyCycleSensor,
     HumiditySensor,
@@ -20,8 +21,6 @@ from custom_components.mysa_local.sensor import (
 )
 from custom_components.mysa_local.thermostat import (
     ACTION_IDLE,
-    CURRENT_STATE,
-    TARGET_STATE,
     Thermostat,
 )
 

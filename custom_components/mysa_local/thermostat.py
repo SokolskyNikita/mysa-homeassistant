@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import date, datetime
-import math
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
@@ -31,17 +30,26 @@ from mysa_client.cloud import (
     Swing,
     model_family,
 )
-from mysa_client.cloud.commands import (
-    auto_temperature_changes,
-    hvac_fan_changes,
-    mode_changes,
-    temperature_changes,
-)
+from mysa_client.cloud.commands import CloudCommand
 from mysa_client.cloud.const import (
     EXPERIMENTAL_CLOUD_FAMILIES,
     SWING_VERTICAL,
 )
+from mysa_client.cloud.device import (
+    HEATING_FAMILIES,
+    basic_modes,
+    heating_range,
+    hvac_fan_operation,
+)
+from mysa_client.cloud.device_commands import (
+    brightness_command,
+    climate_command,
+    hvac_fan_command,
+    hvac_fan_speed_command,
+)
 from mysa_client.homekit import Field, LocalMode
+from mysa_client.runtime.routing import RouteRequest
+from mysa_client.runtime.state import DeviceView
 
 from .account import cloud_account_status
 from .cloud_coordinator import MysaCloudCoordinator, translated_error
@@ -58,8 +66,6 @@ from .const import (
 )
 from .event_history import EventHistory, error_category
 from .local_adapter import (
-    CURRENT_STATE,
-    CURRENT_TEMPERATURE,
     DISPLAY_UNITS,
     LOCAL_ERRORS,
     TARGET_STATE,
@@ -271,20 +277,26 @@ class Thermostat:
         """The MQTT coordinator, or None when MQTT telemetry is unavailable."""
         return self._mqtt_getter() if self._mqtt_getter is not None else None
 
-    def _mqtt_measurement(
-        self, name: str, *, minimum: float, maximum: float
-    ) -> float | None:
-        """Return a fresh, bounded MQTT measurement."""
-        mqtt = self.mqtt
-        value = mqtt.value(self.device_id, name) if mqtt is not None else None
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, int | float)
-            or not math.isfinite(value)
-            or not minimum <= value <= maximum
-        ):
-            return None
-        return float(value)
+    def _view(self) -> DeviceView:
+        """Compose the library's semantic view using HA's selected sources."""
+        cloud, mqtt = self.cloud, self.mqtt
+        return DeviceView(
+            state=self.cloud_state,
+            record=self.cloud_record,
+            family=self.family,
+            local={str(k): v for k, v in self.local.values.items()}
+            if self.local
+            else {},
+            local_ok=self.local_ok,
+            cloud_ok=self.cloud_ok,
+            cloud_fresh=lambda name: bool(
+                cloud and cloud.measurement_fresh(self.device_id, name)
+            ),
+            mqtt={
+                name: mqtt.value(self.device_id, name) if mqtt else None
+                for name in ("humidity", "duty_cycle")
+            },
+        )
 
     def has_mqtt_value(self, name: str) -> bool:
         """Whether MQTT has reported a valid value for entity discovery."""
@@ -401,10 +413,6 @@ class Thermostat:
         """True if either path works."""
         return self.connection_path != CONNECTION_OFFLINE
 
-    def _local(self, ctype: Field) -> Any:
-        assert self.local is not None
-        return self.local.values.get(ctype)
-
     # ---- device info ---------------------------------------------------
 
     @property
@@ -436,14 +444,7 @@ class Thermostat:
     @property
     def is_heating_model(self) -> bool:
         """Whether this model family can expose a heating duty cycle."""
-        return self.family in {
-            ModelFamily.BASEBOARD_V1,
-            ModelFamily.BASEBOARD_V2,
-            ModelFamily.BASEBOARD_LITE,
-            ModelFamily.BASEBOARD_V3,
-            ModelFamily.INFLOOR,
-            ModelFamily.CENTRAL_HVAC,
-        }
+        return self.family in HEATING_FAMILIES
 
     @property
     def is_hvac(self) -> bool:
@@ -504,150 +505,42 @@ class Thermostat:
     @property
     def current_temperature(self) -> float | None:
         """Room temperature in °C."""
-        if self.local_ok:
-            value = self._local(CURRENT_TEMPERATURE)
-            return float(value) if isinstance(value, int | float) else None
-        state = self.cloud_state
-        return (
-            state.room_temperature
-            if state
-            and self.cloud
-            and self.cloud.measurement_fresh(self.device_id, "room_temperature")
-            else None
-        )
+        return self._view().temperature
 
     @property
     def humidity(self) -> float | None:
         """Room humidity in %, preferring fresh MQTT over fresh cloud data."""
-        mqtt_value = self._mqtt_measurement("humidity", minimum=0, maximum=100)
-        if mqtt_value is not None:
-            return mqtt_value
-        state = self.cloud_state
-        cloud = self.cloud
-        value = state.humidity if state else None
-        if (
-            value is None
-            or not math.isfinite(value)
-            or not 0 <= value <= 100
-            or cloud is None
-            or not cloud.measurement_fresh(self.device_id, "humidity")
-        ):
-            return None
-        return value
+        return self._view().measurement("humidity")[0]
 
     @property
     def humidity_source(self) -> str | None:
         """Source of the current humidity value, when one is fresh."""
-        if self._mqtt_measurement("humidity", minimum=0, maximum=100) is not None:
-            return "mqtt"
-        if self.humidity is not None:
-            return "cloud"
-        return None
+        return self._view().measurement("humidity")[1]
 
     @property
     def duty_cycle(self) -> float | None:
         """Numeric heating fraction, preferring fresh MQTT over cloud telemetry."""
-        mqtt_value = self._mqtt_measurement("duty_cycle", minimum=0, maximum=1)
-        if mqtt_value is not None:
-            return mqtt_value
-        state = self.cloud_state
-        cloud = self.cloud
-        value = state.duty_cycle if state else None
-        if (
-            value is None
-            or not math.isfinite(value)
-            or not 0 <= value <= 1
-            or cloud is None
-            or not cloud.measurement_fresh(self.device_id, "duty_cycle")
-        ):
-            return None
-        return value
+        return self._view().measurement("duty_cycle")[0]
 
     @property
     def duty_cycle_source(self) -> str | None:
         """Source of the current numeric duty-cycle value, when one is fresh."""
-        if self._mqtt_measurement("duty_cycle", minimum=0, maximum=1) is not None:
-            return "mqtt"
-        if self.duty_cycle is not None:
-            return "cloud"
-        return None
+        return self._view().measurement("duty_cycle")[1]
 
     @property
     def mode(self) -> Mode | None:
         """Current mode."""
-        if self.local_ok:
-            value = self._local(TARGET_STATE)
-            return LOCAL_MODE_TO_MODE.get(value)
-        state = self.cloud_state
-        return state.mode if state else None
+        return self._view().mode
 
     @property
     def target_temperature(self) -> float | None:
         """Setpoint in °C for the current mode."""
-        if self.local_ok:
-            value = self._local(TARGET_TEMPERATURE)
-            return float(value) if isinstance(value, int | float) else None
-        state = self.cloud_state
-        return state.setpoint_for(state.mode) if state else None
+        return self._view().target
 
     @property
     def action(self) -> str | None:
-        """off, idle, heating or cooling (the real relay state)."""
-        mode = self.mode
-        if self.is_hvac:
-            state, cloud = self.cloud_state, self.cloud
-            if not state or not cloud:
-                return None
-            if state.hvac_stages is not None and cloud.measurement_fresh(
-                self.device_id, "hvac_stages"
-            ):
-                stages = state.hvac_stages
-                heat = any(
-                    stages[k] for k in ("HeatingStage1", "HeatingStage2", "AuxHeat")
-                )
-                cool = any(stages[k] for k in ("CoolingStage1", "CoolingStage2"))
-                if heat and cool:
-                    return None
-                if heat:
-                    return ACTION_HEATING
-                if cool:
-                    return ACTION_COOLING
-                return ACTION_OFF if mode == Mode.OFF else ACTION_IDLE
-            if state.hvac_state is not None and cloud.measurement_fresh(
-                self.device_id, "hvac_state"
-            ):
-                heat = bool(state.hvac_state & (256 | 512 | 4096))
-                cool = bool(state.hvac_state & (1024 | 2048))
-                if heat and cool:
-                    return None
-                if heat:
-                    return ACTION_HEATING
-                if cool:
-                    return ACTION_COOLING
-                if state.hvac_state & 8192:
-                    return "fan"
-                return ACTION_OFF if mode == Mode.OFF else ACTION_IDLE
-            return None
-        if mode == Mode.OFF:
-            return ACTION_OFF
-        if self.local_ok:
-            value = self._local(CURRENT_STATE)
-            if value == ACTION_HEATING:
-                return ACTION_HEATING
-            if value == ACTION_COOLING:
-                return ACTION_COOLING
-            return ACTION_IDLE if value == ACTION_IDLE else None
-        state = self.cloud_state
-        if (
-            state is None
-            or state.heating is None
-            or not self.cloud
-            or not self.cloud.measurement_fresh(self.device_id, "duty_cycle")
-        ):
-            return None
-        if not state.heating:
-            return ACTION_IDLE
-        return ACTION_COOLING if mode == Mode.COOL else ACTION_HEATING
+        """off, idle, heating or cooling (the reported device activity)."""
+        return self._view().action
 
     @property
     def heating(self) -> bool | None:
@@ -660,47 +553,19 @@ class Thermostat:
     @property
     def heat_fraction(self) -> float | None:
         """Fresh MQTT duty cycle, else local relay state or fresh cloud average."""
-        mqtt_duty = self._mqtt_measurement("duty_cycle", minimum=0, maximum=1)
-        if mqtt_duty is not None:
-            mode = self.mode
-            return 0.0 if mode is not None and mode != Mode.HEAT else mqtt_duty
-        if self.local_ok:
-            heating = self.heating
-            return float(heating) if heating is not None else None
-        state = self.cloud_state
-        if not self.cloud_ok or state is None or state.mode is None:
-            return None
-        if state.mode != Mode.HEAT:
-            return 0.0
-        if not self.cloud or not self.cloud.measurement_fresh(
-            self.device_id, "duty_cycle"
-        ):
-            return None
-        return self.duty_cycle
+        return self._view().heat_fraction
 
     @property
     def display_unit(self) -> str | None:
         """C or F, as shown on the thermostat's own screen."""
-        if self.local_ok:
-            value = self._local(DISPLAY_UNITS)
-            if value in ("C", "F"):
-                return str(value)
-        record = self.cloud_record
-        if not self.basic_cloud_only and record is not None and record.display_unit:
-            return record.display_unit
-        state = self.cloud_state
-        return state.display_unit if state else None
+        return self._view().display_unit
 
     @property
     def supported_modes(self) -> list[Mode]:
         """Modes this model supports, from the capability data or HomeKit."""
         caps = self.capabilities
         if self.basic_cloud_only:
-            modes = caps.basic_modes(self.family) if caps else []
-            state = self.cloud_state
-            if state and state.auto_enabled == 0:
-                modes = [m for m in modes if m != Mode.AUTO]
-            return modes
+            return basic_modes(self.family, caps, self.cloud_state)
         if caps is not None and caps.modes:
             return [m for m in caps.modes if m in SUPPORTED_MODES]
         if self.local is not None and self.local.supports(TARGET_STATE):
@@ -730,21 +595,12 @@ class Thermostat:
                     max(r[1] for r in ranges),
                     min(r[2] for r in ranges),
                 )
-        low = high = step = None
-        if self.local is not None:
-            low, high, step = self.local.temperature_range
-        caps = self.capabilities
-        if caps is not None and caps.heat_setpoint_range is not None:
-            c_low, c_high, c_step = caps.heat_setpoint_range
-            low = c_low if low is None else max(low, c_low)
-            high = c_high if high is None else min(high, c_high)
-            step = step or c_step
-        setpoint_min = self.setpoint_min
-        if setpoint_min is not None:
-            low = setpoint_min if low is None else max(low, setpoint_min)
-        setpoint_max = self.setpoint_max
-        if setpoint_max is not None:
-            high = setpoint_max if high is None else min(high, setpoint_max)
+        low, high, step = heating_range(
+            self.local.temperature_range if self.local else (None, None, None),
+            caps,
+            self.setpoint_min,
+            self.setpoint_max,
+        )
         low = 5.0 if low is None else float(low)
         high = 30.0 if high is None else float(high)
         if high <= low:
@@ -760,16 +616,7 @@ class Thermostat:
     @property
     def hvac_fan_mode(self) -> str | None:
         """Confirmed fan operation; a configured circulation cycle is runtime."""
-        state = self.cloud_state
-        if state is None or state.fan_always_on is None:
-            return None
-        if state.fan_always_on == 1:
-            return "on"
-        if state.fan_runtime is None or state.fan_period is None:
-            return None
-        if state.fan_runtime > 0:
-            return "runtime"
-        return "auto" if state.fan_period > 0 else "off"
+        return hvac_fan_operation(self.cloud_state)
 
     async def async_set_basic_temperature(
         self,
@@ -779,35 +626,19 @@ class Thermostat:
         low: float | None = None,
         high: float | None = None,
     ) -> None:
-        """One validated state update for a mode and its associated targets."""
-        cloud = self.require_cloud()
-        selected = (
-            mode
-            if mode is not None
-            else cloud.command_value(self.device_id, "mode", self.mode)
-        )
-        changes = mode_changes(mode) if mode is not None else {}
-        if low is not None or high is not None:
-            if (
-                not self.is_hvac
-                or temperature is not None
-                or selected != Mode.AUTO
-                or low is None
-                or high is None
-            ):
-                raise HomeAssistantError(
-                    "Supply both low and high setpoints in heat/cool mode"
-                )
-            changes.update(auto_temperature_changes(low, high))
-        if temperature is not None:
-            if selected not in (Mode.HEAT, Mode.COOL, Mode.OFF):
-                raise HomeAssistantError("A single setpoint requires heat or cool mode")
-            changes.update(temperature_changes(selected, temperature))
-        if changes:
-            await self._async_cloud_command(
-                lambda c: c.async_update_state(self.device_id, changes),
-                {"climate": changes},
+        """Set mode and associated targets as one validated library operation."""
+        if mode is None and temperature is None and low is None and high is None:
+            return
+        await self._async_prepared_cloud_command(
+            lambda cloud: climate_command(
+                self.family,
+                cloud.command_value(self.device_id, "mode", self.mode),
+                mode=mode,
+                temperature=temperature,
+                low=low,
+                high=high,
             )
+        )
 
     @property
     def hvac_fan_speeds(self) -> tuple[int, ...]:
@@ -817,22 +648,15 @@ class Thermostat:
 
     async def async_set_hvac_fan_speed(self, speed: int) -> None:
         """Change native fan speed without AC enum conversion."""
-        await self._async_cloud_command(
-            lambda c: c.async_update_state(
-                self.device_id, {"modes": {"fan_mode": speed}}
-            ),
-            {"hvac_fan_speed": speed},
+        await self._async_prepared_cloud_command(
+            lambda _cloud: hvac_fan_speed_command(speed)
         )
 
     async def async_set_hvac_fan_mode(self, mode: str) -> None:
-        """Set native fan operation through the structured state endpoint."""
+        """Set native fan operation through the client command API."""
         if mode not in self.hvac_fan_modes:
             raise HomeAssistantError("Unsupported fan operation")
-        changes = hvac_fan_changes(mode)
-        await self._async_cloud_command(
-            lambda c: c.async_update_state(self.device_id, changes),
-            {"fan_operation": mode},
-        )
+        await self._async_prepared_cloud_command(lambda _cloud: hvac_fan_command(mode))
 
     # ---- Mini-Split AC fan and swing (cloud only) ------------------------
 
@@ -896,24 +720,26 @@ class Thermostat:
         await self.commands.async_stop()
 
     async def async_set_temperature(self, value: float) -> None:
-        """Change the setpoint for the current mode."""
+        """Change the setpoint using the latest serialized operating mode."""
         if self.basic_cloud_only:
             await self.async_set_basic_temperature(temperature=value)
             return
-        mode = (
-            self.cloud.command_value(self.device_id, "mode", self.mode)
-            if self.cloud
-            else self.mode
-        )
 
-        async def _cloud(cloud: MysaCloudCoordinator) -> None:
-            await cloud.async_set_temperature(self.device_id, mode or Mode.HEAT, value)
+        def prepare() -> RouteRequest[Field, Any, MysaCloudCoordinator, DeviceState]:
+            mode = (
+                self.cloud.command_value(self.device_id, "mode", self.mode)
+                if self.cloud
+                else self.mode
+            )
+            return RouteRequest(
+                local_values={TARGET_TEMPERATURE: value},
+                cloud_write=lambda cloud: cloud.async_set_temperature(
+                    self.device_id, mode or Mode.HEAT, value
+                ),
+                cloud_applied=lambda state: state.setpoint_for(mode) == value,
+            )
 
-        await self.commands.async_route(
-            local_values={TARGET_TEMPERATURE: value},
-            cloud_write=_cloud,
-            cloud_applied=lambda state: state.setpoint_for(mode) == value,
-        )
+        await self.commands.async_route_prepared(prepare)
 
     async def async_set_mode(self, mode: Mode) -> None:
         """Change the mode through an available transport."""
@@ -933,18 +759,27 @@ class Thermostat:
         )
 
     async def async_set_fan_speed(self, speed: AcFan) -> None:
-        """Change the AC fan speed, keeping its current mode in the same command."""
-        mode = (
-            self.cloud.command_value(self.device_id, "mode", self.mode)
-            if self.cloud
-            else self.mode
-        )
-        intent: dict[str, Any] = {"fan_speed": speed}
-        if mode is not None:
-            intent[TARGET_STATE] = mode.name.lower()
-        await self._async_cloud_command(
-            lambda cloud: cloud.async_set_fan_speed(self.device_id, speed, mode), intent
-        )
+        """Change the AC fan with its latest serialized operating mode."""
+
+        def prepare() -> RouteRequest[Field, Any, MysaCloudCoordinator, DeviceState]:
+            mode = (
+                self.cloud.command_value(self.device_id, "mode", self.mode)
+                if self.cloud
+                else self.mode
+            )
+            intent: dict[str, Any] = {"fan_speed": speed}
+            if mode is not None:
+                intent[TARGET_STATE] = mode.name.lower()
+            return RouteRequest(
+                local_values=None,
+                cloud_write=lambda cloud: cloud.async_set_fan_speed(
+                    self.device_id, speed, mode
+                ),
+                cloud_applied=None,
+                intent=intent,
+            )
+
+        await self.commands.async_route_prepared(prepare)
 
     async def async_set_swing(self, direction: str, value: Swing) -> None:
         """Change vertical or horizontal AC swing."""
@@ -1002,6 +837,28 @@ class Thermostat:
                     evidence="none",
                 )
 
+    async def _async_prepared_cloud_command(
+        self, build: Callable[[MysaCloudCoordinator], CloudCommand]
+    ) -> None:
+        """Build dependent commands inside the shared thermostat write lock."""
+
+        def prepare() -> RouteRequest[Field, Any, MysaCloudCoordinator, DeviceState]:
+            cloud = self.require_cloud()
+            try:
+                command = build(cloud)
+            except ValueError as err:
+                raise HomeAssistantError(str(err)) from err
+            return RouteRequest(
+                local_values=None,
+                cloud_write=lambda coordinator: coordinator.async_execute(
+                    self.device_id, command
+                ),
+                cloud_applied=None,
+                intent=command.expected,
+            )
+
+        await self.commands.async_route_prepared(prepare)
+
     async def _async_cloud_command(
         self,
         write: Callable[[MysaCloudCoordinator], Awaitable[None]],
@@ -1013,28 +870,24 @@ class Thermostat:
         )
 
     async def async_set_brightness(self, value: float, *, active: bool) -> None:
-        """Adjust brightness in app-sized steps, keeping sleep no brighter than wake."""
-        state = self.cloud_state
-        if state is None:
-            raise translated_error("cloud_required", name=self.name)
-        wake = state.active_brightness if state.active_brightness is not None else 100
-        sleep = state.idle_brightness if state.idle_brightness is not None else 50
-        if self.cloud:
-            wake = self.cloud.command_value(self.device_id, "active_brightness", wake)
-            sleep = self.cloud.command_value(self.device_id, "idle_brightness", sleep)
-        value = round(value / 5) * 5
-        if active:
-            wake = max(10, value)
-            sleep = min(sleep, wake)
-        else:
-            sleep = value
-            wake = max(wake, sleep)
-        await self._async_cloud_command(
-            lambda cloud: cloud.async_set_display_brightness(
-                self.device_id, active=wake, idle=sleep
-            ),
-            {"brightness_active": wake, "brightness_idle": sleep},
-        )
+        """Adjust brightness against the latest serialized pair of settings."""
+
+        def prepare(cloud: MysaCloudCoordinator) -> CloudCommand:
+            state = self.cloud_state
+            if state is None:
+                raise translated_error("cloud_required", name=self.name)
+            wake = (
+                state.active_brightness if state.active_brightness is not None else 100
+            )
+            sleep = state.idle_brightness if state.idle_brightness is not None else 50
+            return brightness_command(
+                value,
+                active=active,
+                wake=cloud.command_value(self.device_id, "active_brightness", wake),
+                sleep=cloud.command_value(self.device_id, "idle_brightness", sleep),
+            )
+
+        await self._async_prepared_cloud_command(prepare)
 
     async def async_set_setpoint_limit(self, value: float, *, minimum: bool) -> None:
         """Change one hardware setpoint limit."""

@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import asyncio
-from collections import deque
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
-from dataclasses import dataclass
-from datetime import datetime
-import math
 import time
 from typing import Any
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.util import dt as dt_util
-from mysa_client.mqtt import MessageKind, MqttError, MqttMessage, MysaMqttClient
+from mysa_client.mqtt import MqttError, MqttMessage, MysaMqttClient
+from mysa_client.runtime.telemetry import (
+    MqttLiveStatusRenewal,
+    MqttTelemetryState,
+    TelemetryReading,
+)
 
 from .const import LOGGER
 from .data import MysaConfigEntry
@@ -27,13 +28,6 @@ MQTT_STREAM_SECONDS = 180
 MQTT_CHECK_SECONDS = 5.0
 MQTT_RETRY_SECONDS = 60.0
 MQTT_MAX_RETRY_SECONDS = 300.0
-
-
-@dataclass(frozen=True, slots=True)
-class _Reading:
-    value: float
-    received_at: datetime
-    expires: float
 
 
 class MysaMqttCoordinator:
@@ -57,20 +51,31 @@ class MysaMqttCoordinator:
         self.history = history
         self._token_provider = token_provider
         self._devices: dict[str, str] = {}
-        self._readings: dict[tuple[str, str], _Reading] = {}
-        self._seen_fields: set[tuple[str, str]] = set()
-        self._message_ids: dict[str, deque[int]] = {}
+        self._telemetry = MqttTelemetryState(
+            max_age=MQTT_MAX_AGE,
+            monotonic=self._monotonic,
+            utcnow=dt_util.utcnow,
+        )
         self._listeners: set[CALLBACK_TYPE] = set()
-        self._visible: frozenset[tuple[str, str]] = frozenset()
         self._client: MysaMqttClient | None = None
         self._task: asyncio.Task[None] | None = None
         self._changed = asyncio.Event()
         self._stopped = False
 
+    @staticmethod
+    def _monotonic() -> float:
+        """Read the monotonic clock through the adapter's injectable module."""
+        return time.monotonic()
+
     @property
     def connected(self) -> bool:
         """Whether the broker has accepted this account's subscriptions."""
         return bool(not self._stopped and self._client and self._client.connected)
+
+    @property
+    def _readings(self) -> Mapping[tuple[str, str], TelemetryReading]:
+        """Compatibility view for diagnostics and existing integration tests."""
+        return self._telemetry.readings
 
     @callback
     def async_add_listener(self, listener: CALLBACK_TYPE) -> CALLBACK_TYPE:
@@ -81,16 +86,9 @@ class MysaMqttCoordinator:
     @callback
     def async_set_devices(self, devices: Mapping[str, str]) -> None:
         """Replace the allowlist after account discovery or account removal."""
-        if self._devices == devices:
+        if not self._telemetry.set_devices(devices):
             return
         self._devices = dict(devices)
-        for key in list(self._readings):
-            if key[0] not in devices:
-                self._readings.pop(key)
-        self._seen_fields = {key for key in self._seen_fields if key[0] in devices}
-        self._message_ids = {
-            dev: ids for dev, ids in self._message_ids.items() if dev in devices
-        }
         self._changed.set()
         self._notify()
 
@@ -112,82 +110,35 @@ class MysaMqttCoordinator:
             with suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
-        self._readings.clear()
+        self._telemetry.clear()
         self._notify()
 
     def value(self, device_id: str, field: str) -> float | None:
         """A fresh live value, independent of HTTPS success and device clocks."""
-        reading = self._readings.get((device_id, field))
-        if (
-            self.connected
-            and device_id in self._devices
-            and reading is not None
-            and time.monotonic() < reading.expires
-        ):
-            return reading.value
-        return None
+        return self._telemetry.value(device_id, field, connected=self.connected)
 
     def has_value(self, device_id: str, field: str) -> bool:
         """Whether a valid reading has established that this field exists."""
-        return (device_id, field) in self._seen_fields
+        return self._telemetry.has_value(device_id, field)
 
     def diagnostics(self, device_id: str) -> dict[str, Any]:
         """Describe freshness without credentials, topic names, or raw packets."""
-        return {
-            "connected": self.connected,
-            "subscribed": device_id in self._devices,
-            "dropped_events": self._client.dropped_events if self._client else 0,
-            "readings": {
-                field: {
-                    "value": reading.value,
-                    "received_at": reading.received_at.isoformat(),
-                    "fresh": self.value(dev, field) is not None,
-                }
-                for (dev, field), reading in self._readings.items()
-                if dev == device_id
-            },
-        }
+        return self._telemetry.diagnostics(
+            device_id,
+            connected=self.connected,
+            dropped_events=self._client.dropped_events if self._client else 0,
+        )
 
     @callback
     def _notify(self) -> None:
-        self._visible = frozenset(
-            key for key in self._readings if self.value(*key) is not None
-        )
+        self._telemetry.note_visibility(connected=self.connected)
         for listener in list(self._listeners):
             listener()
 
     @callback
     def _accept(self, message: MqttMessage) -> None:
-        """Accept only live owned-device telemetry, aging each field separately."""
-        if (
-            message.device_id not in self._devices
-            or message.retained
-            or message.kind != MessageKind.TELEMETRY
-            or message.telemetry is None
-        ):
-            return
-        # received_at is stamped by our library, not the thermostat. Account
-        # snapshots and device timestamps cannot extend these live readings.
-        age = (dt_util.utcnow() - message.received_at).total_seconds()
-        if age < 0 or age >= MQTT_MAX_AGE:
-            return
-        ids = self._message_ids.setdefault(message.device_id, deque(maxlen=128))
-        if message.message_id is not None:
-            if message.message_id in ids:
-                return
-            ids.append(message.message_id)
-        changed = False
-        for field, upper in (("humidity", 100.0), ("duty_cycle", 1.0)):
-            value = getattr(message.telemetry, field)
-            if value is None or not math.isfinite(value) or not 0 <= value <= upper:
-                continue
-            key = (message.device_id, field)
-            self._readings[key] = _Reading(
-                value, message.received_at, time.monotonic() + MQTT_MAX_AGE - age
-            )
-            self._seen_fields.add(key)
-            changed = True
-        if changed:
+        """Delegate telemetry filtering and freshness to the reusable client runtime."""
+        if self._telemetry.accept(message):
             self._notify()
 
     async def _consume(self, client: MysaMqttClient) -> None:
@@ -195,45 +146,36 @@ class MysaMqttCoordinator:
             self._accept(message)
 
     async def _maintain(self, client: MysaMqttClient) -> None:
-        due: dict[str, float] = {}
-        requested: dict[str, float] = {}
-        generation = -1
+        renewal = MqttLiveStatusRenewal(
+            quiet_refresh_seconds=MQTT_QUIET_REFRESH_SECONDS,
+            renew_seconds=MQTT_RENEW_SECONDS,
+            retry_seconds=MQTT_RETRY_SECONDS,
+            stream_seconds=MQTT_STREAM_SECONDS,
+        )
         while not self._changed.is_set():
             if client.connected:
-                if generation != client.connection_generation:
-                    generation = client.connection_generation
-                    due.clear()
-                    requested.clear()
+                renewal.begin_session(client.connection_generation)
                 for device_id in tuple(self._devices):
                     now = time.monotonic()
-                    last_request = requested.get(device_id, 0)
                     readings = [
-                        reading.expires - MQTT_MAX_AGE
+                        reading
                         for (dev, _field), reading in self._readings.items()
                         if dev == device_id
                     ]
-                    # Some devices go quiet despite the advertised 180-second
-                    # stream. Refresh before expiry, but only if the previous
-                    # request produced a reading. Silent devices retain the
-                    # slower renewal/backoff instead of being polled rapidly.
-                    quiet = bool(
-                        readings
-                        and max(readings) >= last_request
-                        and now - min(readings) >= MQTT_QUIET_REFRESH_SECONDS
-                        and now - last_request >= MQTT_QUIET_REFRESH_SECONDS
-                    )
-                    if now < due.get(device_id, 0) and not quiet:
+                    if not renewal.should_request(
+                        device_id, now=now, readings=readings
+                    ):
                         continue
-                    requested[device_id] = now
+                    renewal.request_started(device_id, now=now)
                     try:
                         result = await client.request_live_status(
-                            device_id, timeout_seconds=MQTT_STREAM_SECONDS
+                            device_id, timeout_seconds=renewal.stream_seconds
                         )
                         accepted = result.broker_accepted is True
                     except MqttError:
                         accepted = False
-                    due[device_id] = time.monotonic() + (
-                        MQTT_RENEW_SECONDS if accepted else MQTT_RETRY_SECONDS
+                    renewal.request_finished(
+                        device_id, accepted=accepted, now=time.monotonic()
                     )
                     if self._changed.is_set():
                         return
@@ -242,14 +184,9 @@ class MysaMqttCoordinator:
 
     async def _expire(self, client: MysaMqttClient) -> None:
         # Keep expiry notifications independent of requests to slow devices.
-        was_connected = False
         while not self._changed.is_set():
-            visible = frozenset(
-                key for key in self._readings if self.value(*key) is not None
-            )
-            if visible != self._visible or was_connected != client.connected:
+            if self._telemetry.visibility_changed(connected=client.connected):
                 self._notify()
-            was_connected = client.connected
             with suppress(TimeoutError):
                 await asyncio.wait_for(self._changed.wait(), MQTT_CHECK_SECONDS)
 
@@ -289,7 +226,7 @@ class MysaMqttCoordinator:
                 await asyncio.gather(*tasks, return_exceptions=True)
                 await client.close()
                 self._client = None
-                self._readings.clear()
+                self._telemetry.clear()
                 self._notify()
             if not self._changed.is_set():
                 with suppress(TimeoutError):

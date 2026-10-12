@@ -15,10 +15,10 @@ from mysa_client.cloud import (
     MysaNotFoundError,
     MysaRateLimitError,
 )
+from mysa_client.cloud.reconciliation import reconcile
 from mysa_client.cloud.schedules import WEEKDAYS
 import pytest
 
-from custom_components.mysa_local.cloud_state import pending_command, reconcile
 from custom_components.mysa_local.schedule import (
     async_clear_schedule,
     async_set_schedule,
@@ -55,81 +55,6 @@ def legacy(now=NOW, **fields):
             **fields,
         },
     )
-
-
-def test_per_field_selection_retains_age_and_rejects_future(freezer):
-    freezer.move_to(NOW)
-    old = reconcile(
-        DEVICE_ID,
-        [
-            structured(),
-            legacy(
-                NOW + timedelta(seconds=1),
-                Humidity={"v": 50, "t": (NOW - timedelta(minutes=3)).timestamp()},
-            ),
-        ],
-        None,
-        None,
-        NOW,
-    )
-    assert old.room_temperature == 22
-    assert old.humidity == 40
-    assert old.observations["room_temperature"].source == "R"
-    future = legacy(NOW + timedelta(days=1), Humidity={"v": 99, "t": "bad"})
-    kept = reconcile(DEVICE_ID, [future], None, old, NOW + timedelta(minutes=2))
-    assert kept.room_temperature == 22
-    assert kept.observations["room_temperature"] == old.observations["room_temperature"]
-    assert kept.humidity == 40
-    missing = reconcile(DEVICE_ID, [], None, kept, NOW + timedelta(hours=1))
-    assert missing.room_temperature == 22
-    assert not missing.observations["room_temperature"].fresh(NOW + timedelta(hours=1))
-
-
-def test_unknown_measurement_clock_cannot_replace_known_value(freezer):
-    freezer.move_to(NOW)
-    old = structured()
-    unknown = DeviceState.from_legacy(DEVICE_ID, {"CorrectedTemp": {"v": 99}})
-    state = reconcile(DEVICE_ID, [unknown], None, old, NOW)
-    assert state.room_temperature == 21
-
-
-def test_record_units_are_stored_and_reported_units_remain_available(freezer):
-    freezer.move_to(NOW)
-    state = structured(
-        physicalInterface={"reported": {"timestamp": NOW.timestamp(), "format": "C"}}
-    )
-    record = DeviceRecord.from_api(DEVICE_ID, {"Format": "fahrenheit"})
-    selected = reconcile(DEVICE_ID, [state], record, None, NOW)
-    assert selected.display_unit == "F"
-    assert selected.observations["display_unit"].kind == "stored"
-    assert selected.reported_observations["display_unit"].value == "C"
-
-
-def test_pending_confirmation_needs_changed_report_and_expires(freezer):
-    freezer.move_to(NOW)
-    old = structured(
-        targetHeat={"reported": {"setpoint": 20, "timestamp": NOW.timestamp()}}
-    )
-    command = pending_command({"heat_setpoint": 23}, old, NOW + timedelta(seconds=1))
-    command.reconcile(old, None, NOW + timedelta(seconds=5))
-    assert command.status == "pending"
-    freezer.tick(timedelta(seconds=10))
-    current = structured(
-        NOW + timedelta(seconds=10),
-        targetHeat={
-            "reported": {
-                "setpoint": 23,
-                "timestamp": (NOW + timedelta(seconds=10)).timestamp(),
-            }
-        },
-    )
-    command.reconcile(current, None, NOW + timedelta(seconds=10))
-    assert command.status == "confirmed"
-    assert command.confirmation == {"heat_setpoint": "S"}
-    expired = pending_command({"heat_setpoint": 24}, current, NOW)
-    expired.reconcile(current, None, NOW + timedelta(minutes=3))
-    assert expired.status == "expired"
-    assert pending_command({"heat_setpoint": 23}, current, NOW).status == "unchanged"
 
 
 @pytest.mark.usefixtures("controller")
@@ -337,17 +262,6 @@ async def test_native_replacement_failure_restores_snapshot(hass, cloud):
     assert current == actions
 
 
-def test_invalid_bounds_cannot_be_mixed_with_record(freezer):
-    freezer.move_to(NOW)
-    partial = structured(
-        targetHeat={"reported": {"lockoutMin": 29, "timestamp": NOW.timestamp()}}
-    )
-    record = DeviceRecord.from_api(DEVICE_ID, {"MinSetpoint": 5, "MaxSetpoint": 25})
-    state = reconcile(DEVICE_ID, [partial], record, None, NOW)
-    assert (state.setpoint_min, state.setpoint_max) == (5, 25)
-    assert state.observations["setpoint_min"].kind == "stored"
-
-
 @pytest.mark.usefixtures("controller")
 async def test_shared_native_v2_clear_restores_other_attachment(hass, cloud):
     entry = hub_entry()
@@ -420,7 +334,7 @@ async def test_delayed_write_readbacks_are_bounded(hass, cloud, freezer, confirm
     await setup_entry(hass, entry)
     coordinator = entry.runtime_data.cloud
     with (
-        patch.object(coordinator.client, "set_setpoint_limit", AsyncMock()) as write,
+        patch.object(coordinator.client, "update_state", AsyncMock()) as write,
         patch.object(
             coordinator, "async_refresh", wraps=coordinator.async_refresh
         ) as read,

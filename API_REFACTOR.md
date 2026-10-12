@@ -17,8 +17,10 @@ The extraction is complete in the sibling `mysa-client` repository:
 `src/mysa_client/cloud` and `src/mysa_client/homekit` are the single maintained
 protocol implementation. The client targets Python 3.11+, preserves the MIT
 license and existing API, and offers HomeKit through the `homekit` extra.
-The integration now imports `mysa_client` and retains all HA lifecycle and
-state-confirmation policy.
+The integration now imports `mysa_client` and retains HA lifecycle, polling
+choices, storage, and presentation. The later 0.7.0 boundary cleanup moved
+reusable Mysa state reconciliation and command-confirmation behavior into the
+client; the historical first-extraction plan below is retained as context.
 
 Protocol tests and sanitized reference material have moved to the client.
 The follow-up documentation audit also moved HomeKit, BLE/SoftAP, MQTT, Matter,
@@ -109,9 +111,11 @@ HA project's current `>=3.14.2` requirement.
 | Protocol parsing and validation | Entities, configuration flows, services, and repairs |
 | Protocol unit tests, sanitized fixtures, and protocol documentation | Integration tests, local/cloud routing, reconciliation, and HA lifecycle |
 
-In particular, keep `cloud_coordinator.py`, `cloud_state.py`,
-`homekit_adapter.py`, `local_adapter.py`, `pairing_store.py`, `thermostat.py`,
-and `command_router.py` in this repository for the initial extraction.
+For the initial extraction, keep the HA adapters and coordinator here. The
+former `cloud_state.py` reconciliation implementation has since moved to
+`mysa_client.cloud.reconciliation`; HA keeps cloud acquisition and supplies the
+state used by those helpers. `command_router.py` remains the HA adapter for the
+client's optional runtime router.
 
 The caller continues to own HTTP sessions, Zeroconf lifecycle, credential
 persistence, and application polling. Preserve the callbacks for saving refresh

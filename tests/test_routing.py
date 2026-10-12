@@ -31,6 +31,17 @@ from .conftest import setup_entry
 CLIMATE = "climate.living_room"
 
 
+async def _setup_with_local_write_timeout(
+    hass: HomeAssistant, write_timeout: float
+) -> None:
+    """Set the timeout before the command router captures its runtime config."""
+    with patch(
+        "custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT",
+        write_timeout,
+    ):
+        await setup_entry(hass, hub_entry())
+
+
 def _thermostat(hass: HomeAssistant) -> Any:
     runtime = hass.config_entries.async_entries("mysa_local")[0].runtime_data
     return next(iter(runtime.thermostats.values()))
@@ -58,7 +69,7 @@ async def test_timed_out_write_that_landed(
     hass: HomeAssistant, controller: FakeController, cloud: FakeCloud
 ) -> None:
     """A hung local write that the read-back shows as applied isn't repeated."""
-    await setup_entry(hass, hub_entry())
+    await _setup_with_local_write_timeout(hass, 0.05)
     pairing = controller.aliases[HKID]
     real_put = pairing.put_characteristics
 
@@ -68,7 +79,6 @@ async def test_timed_out_write_that_landed(
 
     with (
         patch.object(pairing, "put_characteristics", slow_put),
-        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.05),
     ):
         await _set_temp(hass, 23)
     assert cloud.updates == []
@@ -79,7 +89,7 @@ async def test_timed_out_write_checked_in_cloud(
     hass: HomeAssistant, controller: FakeController, cloud: FakeCloud
 ) -> None:
     """If the read-back fails too, the cloud state decides; no double apply."""
-    await setup_entry(hass, hub_entry())
+    await _setup_with_local_write_timeout(hass, 0.05)
     pairing = controller.aliases[HKID]
 
     async def hang(*args: Any) -> Any:
@@ -89,7 +99,6 @@ async def test_timed_out_write_checked_in_cloud(
     with (
         patch.object(pairing, "put_characteristics", hang),
         patch.object(pairing, "get_characteristics", hang),
-        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.05),
         patch("custom_components.mysa_local.local_adapter.LOCAL_READ_TIMEOUT", 0.05),
     ):
         await _set_temp(hass, 21.5)

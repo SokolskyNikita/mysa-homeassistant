@@ -15,6 +15,7 @@ from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from mysa_client.cloud import Capabilities, DeviceState
+from mysa_client.cloud.device import BRIGHTNESS_STEP, MIN_WAKE_BRIGHTNESS
 
 from .cloud_coordinator import translated_error
 from .data import MysaConfigEntry
@@ -37,8 +38,6 @@ class MysaNumberDescription(NumberEntityDescription):
 # Mysa's app (4.20.1): brightness in steps of 5 and wake brightness never below
 # 10. These values describe the controls; the thermostat owns paired-value
 # normalization and the cloud protocol owns the request format.
-BRIGHTNESS_STEP = 5
-MIN_WAKE_BRIGHTNESS = 10
 
 
 NUMBERS: tuple[MysaNumberDescription, ...] = (

@@ -7,12 +7,17 @@ off, and keeps a repair issue open while the two don't match.
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, Final
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
-from mysa_client.cloud import WIFI_ONLY_FAMILIES, MysaClient, MysaError, model_family
+from mysa_client.cloud import WIFI_ONLY_FAMILIES, MysaClient, model_family
+from mysa_client.cloud.account_workflow import (
+    async_add_to_account as client_async_add_to_account,
+    async_remove_from_account as client_async_remove_from_account,
+    can_claim as client_can_claim,
+    can_pair_locally as client_can_pair_locally,
+)
 
 from .const import DOMAIN, LOGGER
 
@@ -27,36 +32,24 @@ ACCOUNT_OFF: Final = "not_on_account"
 ISSUE_NOT_ON_ACCOUNT: Final = "not_on_account"
 ISSUE_CLOUD_ONLY: Final = "cloud_only"
 
-_MAC_ID = re.compile(r"[0-9a-f]{12}")
-
 
 def can_claim(device_id: str, model: str | None) -> bool:
-    """True if this thermostat can be put on an account from Home Assistant.
-
-    That needs its real Mysa ID (the Wi-Fi MAC) and a model that joins with
-    Wi-Fi details alone; newer models also need Bluetooth credentials.
-    """
-    return bool(_MAC_ID.fullmatch(device_id)) and (
-        model_family(model) in WIFI_ONLY_FAMILIES
-    )
+    """Expose the client provisioning fact to Home Assistant flows."""
+    return client_can_claim(device_id, model)
 
 
 def can_pair_locally(model: str | None) -> bool:
-    """True for the models that have HomeKit (the newer ones use Matter)."""
-    return model_family(model) in WIFI_ONLY_FAMILIES
+    """Expose the client local-pairing fact to Home Assistant flows."""
+    return client_can_pair_locally(model)
 
 
 def can_import_cloud(model: str | None) -> bool:
-    """Already enrolled devices can be imported, independently of provisioning."""
+    """Cloud import is an HA product choice independent of provisioning."""
     return True
 
 
 def is_supported_model(model: str | None) -> bool:
-    """Local discovery/migration policy; cloud import is independent.
-
-    Newer models lack an implemented local protocol. Unknown models still pass
-    discovery with the untested-model notice, preserving the existing policy.
-    """
+    """HA local discovery policy; unknown models keep the untested notice."""
     family = model_family(model)
     return family is None or family in WIFI_ONLY_FAMILIES
 
@@ -101,13 +94,13 @@ async def async_add_to_account(
     would reset them to its defaults (seen 2026-10-11: Fan Forced became
     Baseboard).
     """
-    return await client.add_device(
-        device_id,
+    return await client_async_add_to_account(
+        client,
+        device_id=device_id,
         home_id=home_id,
-        model=model or "",
+        model=model,
         time_zone=str(hass.config.time_zone),
         name=name,
-        app_defaults=False,
     )
 
 
@@ -120,27 +113,14 @@ async def async_remove_from_account(
     That cleanup is best effort here; the removal itself must succeed. Mysa
     keeps the thermostat's settings, and adding it back restores them.
     """
-    if home_id:
-        try:
-            for schedule in await client.get_all_schedules(home_id):
-                if device_id in (schedule.get("deviceIds") or []):
-                    await client.remove_schedule(schedule, device_id)
-            for shortcut in await client.get_shortcuts(home_id):
-                actions = shortcut.get("DeviceActions") or {}
-                if isinstance(actions, dict) and device_id in actions:
-                    await client.update_shortcut(
-                        str(shortcut.get("Id")),
-                        {k: v for k, v in actions.items() if k != device_id},
-                        all_devices=bool(shortcut.get("AllDevices")),
-                    )
-        except MysaError as err:
-            LOGGER.warning(
-                "Couldn't clean up the schedule and shortcuts of %s before "
-                "removing it from the Mysa account: %s",
-                "[redacted]",
-                type(err).__name__,
-            )
-    await client.delete_device(device_id)
+    result = await client_async_remove_from_account(client, device_id, home_id)
+    if not result.complete:
+        LOGGER.warning(
+            "Couldn't clean up the schedule and shortcuts of %s before "
+            "removing it from the Mysa account: %s",
+            "[redacted]",
+            result.error_type,
+        )
 
 
 async def async_refresh_account(entry: MysaConfigEntry) -> None:

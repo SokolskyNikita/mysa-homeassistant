@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0 (2026-10-12)
+
+- Move reusable Mysa state reconciliation, command confirmation, capability
+  validation, device semantics, and semantic command construction into
+  `mysa-client`; keep Home Assistant polling choices, entity presentation, and
+  lifecycle policy in the integration.
+- Adapt the client runtime's local/cloud command router and MQTT telemetry
+  freshness helpers to HA-owned transports and tasks. Delegate schedule,
+  hold, and account workflow correctness to client helpers while retaining HA
+  storage adapters, startup/retry scheduling, user choices, and translated
+  results.
+- Preserve existing entity/configuration identifiers and the version-1
+  schedule recovery journal. No additional physical hardware validation is
+  claimed for this boundary refactor.
+
 ## 0.6.0 (2026-10-12)
 
 - Add optional `mysa-client` MQTT telemetry for live, read-only humidity and

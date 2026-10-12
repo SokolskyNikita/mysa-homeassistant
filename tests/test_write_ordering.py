@@ -18,13 +18,24 @@ from .common import HKID, hub_entry
 from .conftest import setup_entry
 
 
+async def _setup_with_local_write_timeout(
+    hass, entry, write_timeout: float = 0.001
+) -> None:
+    """Set the timeout before the command router captures its runtime config."""
+    with patch(
+        "custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT",
+        write_timeout,
+    ):
+        await setup_entry(hass, entry)
+
+
 @pytest.mark.parametrize("fail_first_reconciliation", [False, True])
 async def test_late_local_write_reasserts_latest_cloud_command(
     hass, controller, cloud, fail_first_reconciliation
 ) -> None:
     """An older delayed device write cannot remain after a newer cloud command."""
     entry = hub_entry()
-    await setup_entry(hass, entry)
+    await _setup_with_local_write_timeout(hass, entry)
     thermostat = next(iter(entry.runtime_data.thermostats.values()))
     pairing = controller.aliases[HKID]
     release = asyncio.Event()
@@ -47,7 +58,6 @@ async def test_late_local_write_reasserts_latest_cloud_command(
             pairing, "get_characteristics", AsyncMock(side_effect=OSError("offline"))
         ),
         patch.object(thermostat.cloud.client, "update_state", cloud_write),
-        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.001),
     ):
         await thermostat.async_set_temperature(22)
         # A recovery event must not allow a second local write to overtake the
@@ -74,9 +84,9 @@ async def test_late_local_write_reasserts_latest_cloud_command(
     assert physical_setpoints == [22, 19, 18, 22, 18]
     await thermostat.cloud.async_fetch_state(thermostat.device_id)
     assert thermostat.target_temperature == 18
-    assert thermostat.commands._pending_local is None
-    assert not thermostat.commands._reconcile
-    assert not thermostat.commands._reconcile_ids
+    assert thermostat.commands._router.pending_local is None
+    assert not thermostat.commands._router.reconcile
+    assert not thermostat.commands._router.reconcile_ids
     history = entry.runtime_data.history.export()["events"]
     submissions = [
         e
@@ -150,7 +160,7 @@ async def test_unload_closes_and_reconciles_pending_write(
 ) -> None:
     """Close the session and drain the old request before abandoning routing."""
     entry = hub_entry()
-    await setup_entry(hass, entry)
+    await _setup_with_local_write_timeout(hass, entry)
     thermostat = next(iter(entry.runtime_data.thermostats.values()))
     pairing = controller.aliases[HKID]
     release = asyncio.Event()
@@ -165,11 +175,10 @@ async def test_unload_closes_and_reconciles_pending_write(
         patch.object(
             pairing, "get_characteristics", AsyncMock(side_effect=OSError("offline"))
         ),
-        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.001),
     ):
         await thermostat.async_set_temperature(22)
         await thermostat.async_set_temperature(18)
-        pending = thermostat.commands._pending_local
+        pending = thermostat.commands._router.pending_local
         assert await hass.config_entries.async_unload(entry.entry_id)
         assert pending.cancelled()
         release.set()
@@ -189,7 +198,7 @@ async def test_late_setpoint_reasserts_newer_off_command(
 ) -> None:
     """A late temperature write must not undo a subsequently requested off mode."""
     entry = hub_entry()
-    await setup_entry(hass, entry)
+    await _setup_with_local_write_timeout(hass, entry)
     thermostat = next(iter(entry.runtime_data.thermostats.values()))
     pairing = controller.aliases[HKID]
     release = asyncio.Event()
@@ -204,7 +213,6 @@ async def test_late_setpoint_reasserts_newer_off_command(
         patch.object(
             pairing, "get_characteristics", AsyncMock(side_effect=OSError("offline"))
         ),
-        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.001),
     ):
         await thermostat.async_set_temperature(22)
         await thermostat.async_set_mode(Mode.OFF)
@@ -225,7 +233,7 @@ async def test_cloud_only_mode_supersedes_pending_local_mode(
 ) -> None:
     """Fan-only has no HomeKit value, but still supersedes an older mode write."""
     entry = hub_entry()
-    await setup_entry(hass, entry)
+    await _setup_with_local_write_timeout(hass, entry)
     thermostat = next(iter(entry.runtime_data.thermostats.values()))
     pairing = controller.aliases[HKID]
     release = asyncio.Event()
@@ -240,7 +248,6 @@ async def test_cloud_only_mode_supersedes_pending_local_mode(
         patch.object(
             pairing, "get_characteristics", AsyncMock(side_effect=OSError("offline"))
         ),
-        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.001),
     ):
         await thermostat.async_set_mode(Mode.OFF)
         await thermostat.async_set_mode(Mode.FAN_ONLY)
@@ -261,7 +268,7 @@ async def test_multi_field_cloud_write_is_reconciled_once(
 ) -> None:
     """A multi-field command gets one replay after an older local write."""
     entry = hub_entry()
-    await setup_entry(hass, entry)
+    await _setup_with_local_write_timeout(hass, entry)
     thermostat = next(iter(entry.runtime_data.thermostats.values()))
     pairing = controller.aliases[HKID]
     release = asyncio.Event()
@@ -277,7 +284,6 @@ async def test_multi_field_cloud_write_is_reconciled_once(
         patch.object(
             pairing, "get_characteristics", AsyncMock(side_effect=OSError("offline"))
         ),
-        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.001),
     ):
         await thermostat.async_set_temperature(22)
         # A fan command carries the current mode and fan speed together.
@@ -306,7 +312,7 @@ async def test_lost_cloud_response_preserves_latest_intent(
 ) -> None:
     """An applied cloud write with a lost reply must survive an older local write."""
     entry = hub_entry()
-    await setup_entry(hass, entry)
+    await _setup_with_local_write_timeout(hass, entry)
     thermostat = next(iter(entry.runtime_data.thermostats.values()))
     pairing = controller.aliases[HKID]
     release = asyncio.Event()
@@ -331,7 +337,6 @@ async def test_lost_cloud_response_preserves_latest_intent(
             pairing, "get_characteristics", AsyncMock(side_effect=OSError("offline"))
         ),
         patch.object(thermostat.cloud.client, "update_state", update),
-        patch("custom_components.mysa_local.command_router.LOCAL_WRITE_TIMEOUT", 0.001),
     ):
         await thermostat.async_set_temperature(22)
         with pytest.raises(HomeAssistantError):

@@ -12,6 +12,6 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/SokolskyNikita/mysa-homeassistant/issues",
   "loggers": ["custom_components.mysa_local", "mysa_client"],
-  "requirements": ["mysa-client[homekit,mqtt]==0.1.2"],
-  "version": "0.6.0"
+  "requirements": ["mysa-client[homekit,mqtt]==0.2.0"],
+  "version": "0.7.0"
 }
