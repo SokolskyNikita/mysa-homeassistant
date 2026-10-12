@@ -1,0 +1,31 @@
+{
+  "id": "cognito-refresh.request",
+  "kind": "constructed",
+  "evidence": {
+    "source": "../../cloud-auth.md#cognito-sign-in",
+    "observationDate": null,
+    "model": null,
+    "firmware": null,
+    "host": "https://cognito-idp.us-east-1.amazonaws.com",
+    "confirmation": "not established by this example",
+    "notes": "Reconstructed documentation example, not a raw live capture. IDs and request times are illustrative; unknown metadata remains null."
+  },
+  "request": {
+    "method": "POST",
+    "baseUrl": "https://cognito-idp.us-east-1.amazonaws.com",
+    "path": "/",
+    "authentication": "cognito-refresh-token",
+    "headers": {
+      "X-Amz-Target": "AWSCognitoIdentityProviderService.GetTokensFromRefreshToken",
+      "Content-Type": "application/x-amz-json-1.1"
+    },
+    "body": {
+      "ClientId": "6cktj934gasnc72f7jo2cmf6rt",
+      "RefreshToken": "<refresh-token>"
+    }
+  },
+  "response": {
+    "status": null,
+    "representation": "unknown"
+  }
+}

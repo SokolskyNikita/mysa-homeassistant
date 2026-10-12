@@ -1,0 +1,44 @@
+{
+  "id": "legacy-state.mixed-time",
+  "kind": "constructed",
+  "evidence": {
+    "source": "../../cloud-state.md#state-reads",
+    "observationDate": null,
+    "model": "BB-V2-0-L",
+    "firmware": "3.17.5.13",
+    "host": "https://mysa-backend.mysa.cloud",
+    "confirmation": "not established by this example",
+    "notes": "Constructed type/unit illustration, not observed field-specific values. Seconds and milliseconds describe the same instant. Do not assume humidity always uses milliseconds."
+  },
+  "request": {
+    "method": "GET",
+    "baseUrl": "https://mysa-backend.mysa.cloud",
+    "path": "/devices/state",
+    "authentication": "cognito-id-token",
+    "headers": {
+      "accept": "application/json"
+    }
+  },
+  "response": {
+    "status": null,
+    "representation": "projection",
+    "body": {
+      "DeviceStatesObj": {
+        "a1b2c3d4e5f6": {
+          "CorrectedTemp": {
+            "v": 21.4,
+            "t": 1791700000
+          },
+          "Humidity": {
+            "v": 40,
+            "t": 1791700000000
+          },
+          "Connected": {
+            "v": true,
+            "t": 1791700000
+          }
+        }
+      }
+    }
+  }
+}

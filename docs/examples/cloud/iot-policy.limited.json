@@ -1,0 +1,29 @@
+{
+  "id": "iot-policy.limited",
+  "kind": "constructed",
+  "evidence": {
+    "source": "../../mqtt.md#policy-inspection",
+    "observationDate": null,
+    "model": null,
+    "firmware": null,
+    "host": "https://iot.us-east-1.amazonaws.com",
+    "confirmation": "Policy inspected October 11, 2026; reconstruction from retained prose",
+    "notes": "Reconstructed documentation example, not a raw live capture. IDs and request times are illustrative; unknown metadata remains null."
+  },
+  "request": {
+    "method": "GET",
+    "baseUrl": "https://iot.us-east-1.amazonaws.com",
+    "path": "/policies/default",
+    "authentication": "aws-sigv4-iot",
+    "headers": {
+      "accept": "application/json"
+    }
+  },
+  "response": {
+    "status": null,
+    "representation": "projection",
+    "body": {
+      "policyDocument": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"iot:Connect\",\"iot:Subscribe\"],\"Resource\":\"*\"}]}"
+    }
+  }
+}

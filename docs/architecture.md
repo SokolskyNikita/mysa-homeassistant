@@ -136,3 +136,15 @@ Live-device checks are useful for confirming undocumented cloud payloads and
 HomeKit behavior across firmware models. Keep them separate from routine test
 runs: use reversible settings, restore the original values, and avoid pairing
 or removal operations unless the test specifically requires them.
+
+## Cloud protocol findings versus implementation
+
+The [cloud tracker](implementation/cloud.md) owns the detailed implementation
+work list. In particular, proposed S + legacy acquisition, field-level provenance,
+and confirmation changes are not implemented merely because the protocol guide
+recommends them. Current accepted-state cache updates and incomplete schedule
+reads are tracked there. Keep HomeKit/cloud routing and persistence policy in
+this architecture, and cloud-only selection rules in the primary cloud reference.
+
+Run `python3 tools/check_docs.py` for offline documentation checks. It does not
+import the integration, obtain credentials, or contact any service or thermostat.

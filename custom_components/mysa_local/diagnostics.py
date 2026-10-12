@@ -46,7 +46,7 @@ TO_REDACT = {
 def _scrub_device_ids(data: Any, fragments: tuple[str, ...]) -> Any:
     """Redact any string that still contains a thermostat's ID or MAC.
 
-    Its ID is the Wi-Fi MAC, and names like "Mysa-d2cc0c" carry the end of it,
+    Its ID is the Wi-Fi MAC, and names like "Mysa-abcdef" carry the end of it,
     which with the vendor prefix gives the whole ID away.
     """
     if isinstance(data, dict):

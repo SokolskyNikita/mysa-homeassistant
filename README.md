@@ -14,7 +14,7 @@ Only the Baseboard Lite has been tested on hardware. The integration accepts the
 
 | Model | Model IDs | Status |
 |---|---|---|
-| Baseboard Lite | `BB-V2-0-L` | Tested locally and through the cloud on firmware 3.17.5.13 |
+| Baseboard Lite | `BB-V2-0-L` | Hardware-tested on firmware 3.17.5.13; cloud setpoint/mode application differed between the two tested units |
 | Other Baseboard V1 / V2 models | `BB-V1-*`, `BB-V2-*` | Supported in code; untested |
 | In-Floor | `INF-V1-0` | Supported in code; untested |
 | Mini-Split AC | `AC-V1-0` | Supported in code; untested |
@@ -87,7 +87,7 @@ Entities depend on the thermostat's capabilities and reported data. Local contro
 | Heater type | Cloud | Baseboard or fan forced on models that support those profiles |
 | Heating runtime today | Observed heating state, optionally supplemented by cloud history | Resets at midnight; see [Runtime and energy](#runtime-and-energy) |
 | Heater power and energy | Calculated | Created when you set a heater wattage |
-| Firmware update | Cloud | Checks for updates; installation requires an option |
+| Firmware update | Cloud | Checks for updates; installation is optional and has a [known request gap](docs/implementation/cloud.md#c-a01) |
 | Connection path | Integration status | `local`, `cloud` or `offline` |
 
 Other status entities show HomeKit pairing, Mysa account membership, cloud connectivity and schedule hold. The Wi-Fi signal sensor is disabled by default; enable it from the device's entity list when needed.
@@ -107,7 +107,7 @@ Open Mysa Local's options, then Cloud and polling.
 
 Turning cloud access off disables cloud-only entities while keeping their entity IDs, names, areas and history. Your sign-in is retained. Turning it back on restores entities disabled by the integration; entities you disabled yourself stay disabled. A thermostat configured only through the cloud is unavailable while cloud access is off.
 
-Firmware installation has not been verified with an available update. The trigger was tested when the Lite was already up to date; no firmware was installed. The [API reference](docs/cloud-api.md#firmware) records that test and the update flow.
+Firmware installation has not been verified with an available update. A separate API test accepted the trigger when the Lite was already up to date; no firmware was installed. The integration currently omits the required request body, so its update command still needs correction. See the [known implementation gap](docs/implementation/cloud.md#c-a01) and [firmware reference](docs/firmware-and-connectivity.md#firmware).
 
 The options menu also provides sign-in, sign-out and Thermostats on my Mysa account. The account table is read-only: it shows both names and whether each thermostat is paired locally, uses only the cloud or has not been added to Home Assistant.
 
@@ -128,7 +128,7 @@ On the integration page, open the thermostat's menu → Settings and status. It 
 
 Remove from my Mysa account attempts to detach the thermostat's Mysa schedules and remove its shortcut actions before deleting the account record. Cleanup errors are logged and do not stop the removal. If paired locally, HomeKit control remains available. A thermostat without local pairing becomes unreachable.
 
-Re-adding sends the name, home and time zone without the newer app's settings defaults. This avoids explicitly overwriting settings such as heater type. The live tests and limits of settings retention are described under [Adding and removing devices](docs/cloud-api.md#adding-and-removing-devices).
+Re-adding sends the name, home and time zone without the newer app's settings defaults. This avoids explicitly overwriting settings such as heater type. The live tests and limits of settings retention are described under [Adding and removing devices](docs/cloud-workflows.md#adding-and-removing-devices).
 
 Deleting a thermostat from Home Assistant removes Mysa Local's HomeKit pairing. It does not remove the thermostat from your Mysa account.
 
@@ -245,10 +245,12 @@ scripts/lint     # Ruff formatting and fixes, then strict mypy
 scripts/develop  # development Home Assistant using config/
 ```
 
-CI also runs HACS validation and hassfest. The cloud and HomeKit implementations live separately under [protocols/](custom_components/mysa_local/protocols), with no Home Assistant imports or cross-protocol dependencies. HA adapters own lifecycle and polling; the command router owns fallback and ordering. See [Architecture](docs/architecture.md) for the public interfaces, ownership rules, and boundary tests. Cloud endpoints are documented in [docs/cloud-api.md](docs/cloud-api.md); the [Bluetooth protocol reference](custom_components/mysa_local/protocols/BT/README.md) covers Wi-Fi provisioning, network scanning, and newer-model credential transfer. Release history is in [CHANGELOG.md](CHANGELOG.md).
+CI also runs HACS validation and hassfest. The cloud and HomeKit implementations live separately under [protocols/](custom_components/mysa_local/protocols), with no Home Assistant imports or cross-protocol dependencies. HA adapters own lifecycle and polling; the command router owns fallback and ordering. See [Architecture](docs/architecture.md) for the public interfaces, ownership rules, and boundary tests. Cloud endpoints are documented in [the documentation index](docs/README.md); the [Bluetooth protocol reference](docs/bluetooth.md) covers Wi-Fi provisioning, network scanning, and newer-model credential transfer. Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Credits and license
 
 Mysa Local uses [aiohomekit](https://github.com/Jc2k/aiohomekit) for HomeKit. [Mysa_HA](https://github.com/kgelinas/Mysa_HA) and [mysotherm](https://github.com/dlenski/mysotherm) supplied earlier work on Mysa's cloud protocols.
 
 Released under the [MIT License](LICENSE). This project is not affiliated with Mysa or Empowered Homes Inc.
+
+Technical references and implementation status: [documentation index](docs/README.md).

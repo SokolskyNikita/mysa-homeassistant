@@ -1,0 +1,30 @@
+{
+  "id": "live-mode.request",
+  "kind": "constructed",
+  "evidence": {
+    "source": "../../cloud-state.md#live-mode-and-liveness",
+    "observationDate": null,
+    "model": "BB-V2-0-L",
+    "firmware": "3.17.5.13",
+    "host": "https://mysa-backend.mysa.cloud",
+    "confirmation": "not established by this example",
+    "notes": "Reconstructed documentation example, not a raw live capture. IDs and request times are illustrative; unknown metadata remains null."
+  },
+  "request": {
+    "method": "POST",
+    "baseUrl": "https://mysa-backend.mysa.cloud",
+    "path": "/mysa-legacy/stream/home/00000000-0000-4000-8000-0000000000a1",
+    "authentication": "cognito-id-token",
+    "headers": {
+      "accept": "application/json",
+      "content-type": "application/json"
+    },
+    "body": {
+      "timeout": 300
+    }
+  },
+  "response": {
+    "status": null,
+    "representation": "unknown"
+  }
+}

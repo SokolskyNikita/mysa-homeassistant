@@ -5,3 +5,4 @@ cd "$(dirname "$0")/.."
 ruff format .
 ruff check . --fix
 mypy
+python3 tools/check_docs.py

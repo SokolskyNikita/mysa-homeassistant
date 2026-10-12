@@ -6,6 +6,9 @@ mDNS discovery, pairing exchanges, encrypted accessory sessions, and HAP
 requests. It translates Mysa's accessory database and those operations into a
 semantic API; it does not implement the underlying HAP transport or cryptography.
 
+For Mysa-specific hardware observations, unsupported characteristics, and Wi-Fi
+migration limits, see the [accessory reference](../../../../docs/homekit.md).
+
 ## How it is organized
 
 - [`controller.py`](controller.py) wraps `aiohomekit.Controller`: discovery,

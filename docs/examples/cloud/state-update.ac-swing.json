@@ -1,0 +1,35 @@
+{
+  "id": "state-update.ac-swing",
+  "kind": "app-derived",
+  "evidence": {
+    "source": "../../cloud-state.md#ac-swing-and-supported-remote-commands",
+    "observationDate": null,
+    "model": "AC",
+    "firmware": null,
+    "host": "https://mysa-backend.mysa.cloud",
+    "confirmation": "not established by this example",
+    "notes": "Reconstructed documentation example, not a raw live capture. IDs and request times are illustrative; unknown metadata remains null.",
+    "appVersion": "4.20.1",
+    "sourceReference": "Reverse-engineered from the original Mysa app; see the linked protocol reference."
+  },
+  "request": {
+    "method": "POST",
+    "baseUrl": "https://mysa-backend.mysa.cloud",
+    "path": "/state/{dev}/update",
+    "authentication": "cognito-id-token",
+    "headers": {
+      "accept": "application/json",
+      "content-type": "application/json"
+    },
+    "body": {
+      "source": 3,
+      "modes": {
+        "verticalSwingState": 2
+      }
+    }
+  },
+  "response": {
+    "status": null,
+    "representation": "unknown"
+  }
+}

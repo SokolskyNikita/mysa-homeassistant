@@ -10,12 +10,12 @@ has been established.
 [Mysa Wi-Fi setup page](https://sokolskynikita.github.io/mysa-wifi-setup/).**
 Its [source and usage guide](https://github.com/SokolskyNikita/mysa-wifi-setup)
 provide the working browser implementation. The legacy setup flow works without
-the Mysa app or a Mysa account. This directory is a protocol reference, not a
+the Mysa app or a Mysa account. This page is a protocol reference, not a
 Bluetooth implementation inside Mysa Local.
 
 ## Scope and compatibility
 
-The findings below combine the Android app protocols with hardware validation
+The protocols were reverse-engineered from the original Mysa apps, with hardware validation
 on a **Baseboard Lite (`BB-V2-0-L`), firmware `3.17.5.13`**, as of October 11,
 2026. Wi-Fi provisioning and network listing work on that Lite. The common
 Wi-Fi packet format is unchanged between the examined 3.54.1 and 4.20.1 apps;
@@ -234,7 +234,7 @@ end-of-file command.
 
 The broader setup flow also registers the device in its OTA fleet, claims it on
 the Mysa account, verifies fresh cloud state, and calls `/pairing/finalize`.
-See the [newer-model cloud setup sequence](../../../../docs/cloud-api.md#baseboard-v3-central-hvac-and-climate-sensor)
+See the [newer-model cloud setup sequence](cloud-workflows.md#baseboard-v3-central-hvac-and-climate-sensor)
 for the endpoints and fleet names. The app's `REGISTER_DEVICE` and
 `UPDATING_FIRMWARE` names are setup-state enum values, not additional bytes in
 the Wi-Fi notification table above.
@@ -250,7 +250,7 @@ An advertisement establishes that the accessory is discoverable; bit 0 of its
 `sf` field indicates that it is unpaired when set. A cleared bit reports an
 existing pairing but does not identify the controller or prove that its saved
 keys still work. A successful authenticated HomeKit read is the stronger check.
-See the [HomeKit protocol reference](../homekit/README.md).
+See the [HomeKit protocol reference](../custom_components/mysa_local/protocols/homekit/README.md).
 
 The standalone setup webpage cannot perform ordinary mDNS discovery itself. A
 Home Assistant backend or local helper could perform that check after BLE setup.
@@ -261,6 +261,45 @@ On the tested Lite, the known Bluetooth surface provides no identified setpoint,
 temperature, mode, reboot, firmware-upload, or MQTT-credential operation. No BLE
 command to enable a temporary Wi-Fi access point has been established either.
 These limits describe the observed setup interface, not every possible firmware
-mode. Runtime control remains through [HomeKit](../homekit/README.md) or the
-[HTTPS cloud protocol](../cloud/README.md); the separate
-[MQTT reference](../MQTT/README.md) covers MQTT authentication and permissions.
+mode. Runtime control remains through [HomeKit](../custom_components/mysa_local/protocols/homekit/README.md) or the
+[HTTPS cloud protocol](../custom_components/mysa_local/protocols/cloud/README.md); the separate
+[MQTT reference](mqtt.md) covers MQTT authentication and permissions.
+
+## Temporary Wi-Fi access point setup
+
+For Bluetooth setup, use the [protocol reference](bluetooth.md)
+or [Wi-Fi setup page](https://sokolskynikita.github.io/mysa-wifi-setup/).
+SoftAP is a separate local HTTP provisioning path:
+
+The setup server is `http://192.168.4.1:57961`. Read `/pubkey`, `/hwid` and
+`/model`, then send `GET /network/` with an RSA-encrypted JSON `{ssid,pass}`
+value in the `mysa-data` header. Poll `/connected/` (200 joined, 202 pending,
+404 failed), then call `/reboot/`.
+
+The earlier client encoding JSON-quotes the ciphertext header and also calls
+`/identify`. The later encoding removes line breaks and sends the ciphertext
+unquoted. These are client-format variants; their firmware compatibility has
+not been established here.
+
+On two Lite units in normal Wi-Fi mode, port 57961 refused connections. The only open TCP port found was HomeKit on 57959. An unauthenticated HomeKit HTTP request returned 470. These observations do not establish a usable local REST control API.
+
+
+The SoftAP server and its activation on a Lite have not been demonstrated. A
+refused port in normal mode does not prove that the service exists in that
+firmware. The RSA key read from `/pubkey` is a provisioning encryption key,
+not an MQTT client certificate. The older app also contains NFC provisioning:
+`GET /nfc/auth-key` supplies setup data and an NDEF text record carries
+`ssid<RS>password<RS>`. This is app-derived and not an implemented setup-page path.
+
+## Implemented coverage and remaining work
+
+The separate Wi-Fi setup repository implements the legacy BLE transaction and
+network listing, validated on Lite. It owns any browser implementation backlog.
+Mysa Local contains no BLE runtime. Other legacy models require model-specific
+validation; newer credential transfer, SoftAP activation/encoding compatibility,
+and undocumented GATT properties remain unvalidated.
+
+App evidence: 3.26.0, 3.54.1, and 4.20.1. The Lite GATT inspection on
+October 11, 2026 exposed three services, twelve characteristics and eleven
+readable values; an existing bond may have supplied security. No raw private
+GATT values or Wi-Fi credentials are included here.

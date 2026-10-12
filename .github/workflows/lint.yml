@@ -31,3 +31,5 @@ jobs:
         run: ruff check .
       - name: Mypy
         run: mypy
+      - name: Offline documentation checks
+        run: python3 tools/check_docs.py
