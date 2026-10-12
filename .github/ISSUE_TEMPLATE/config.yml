@@ -1,1 +1,5 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Standalone client and protocol reports
+    url: https://github.com/SokolskyNikita/mysa-client/issues/new/choose
+    about: For the Python client API, authentication, protocol behavior, and device communication.

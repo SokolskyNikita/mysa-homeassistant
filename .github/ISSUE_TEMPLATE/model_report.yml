@@ -1,43 +1,43 @@
-name: Model report
-description: Tell us how Mysa Local works with your thermostat model.
-labels: [model-report]
+name: Model or firmware report
+description: Record behavior or validation evidence for a specific Mysa model and firmware.
+labels: [hardware-validation]
 body:
   - type: markdown
     attributes:
       value: |
-        Capture once without a shell or manual API calls:
-        1. Settings → Devices & services → Mysa Local → ⋮ → Enable debug logging.
-        2. Record original settings. Reproduce once; note the time/timezone, requested values, and actual HA/app/thermostat results.
-        3. Restore the original settings, then use the account entry's ⋮ → Download diagnostics BEFORE reloading/restarting (history is memory-only).
-        4. Disable debug logging and save the offered log. Review both files for personal data, then attach diagnostics JSON and the debug log here. Integration events are sanitized; HA/third-party logs may still contain personal data.
-        HTTP acceptance is not confirmation of a physical change. Please include what you observed on the thermostat.
-  - type: input
-    id: model
-    attributes:
-      label: Model and firmware
-      description: For example BB-V1-1, firmware 3.x.y.
-    validations:
-      required: true
-  - type: input
-    id: versions
-    attributes:
-      label: Integration and Home Assistant versions
-    validations:
-      required: true
-  - type: checkboxes
-    id: works
-    attributes:
-      label: What works
-      options:
-        - label: Cloud import/discovery of an app-enrolled device (V3 needs no HomeKit pairing)
-        - label: Temperature and humidity agree with the app/device
-        - label: Small setpoint change and heat/off agree with the app/device
-        - label: Supported display/lock controls work
-        - label: App changes appear in HA
-        - label: HomeKit pairing/local controls/cloud fallback (HomeKit models only)
-        - label: Original settings restored
+        Record the hardware and software versions and original settings. Distinguish a live device observation from app-derived or simulated evidence. Enable debug logging under Settings → Devices & services → Mysa Local; download integration diagnostics from the account entry's ⋮ menu BEFORE reloading or restarting; review all attachments for personal data.
   - type: textarea
-    id: notes
+    id: summary
     attributes:
-      label: Requested values, actual results, and reproduction time
-      description: Include time/timezone, original settings, firmware, pending commands, and what HA, the app and thermostat showed. Attach diagnostics JSON and the debug log.
+      label: Summary
+      description: Name the model, firmware, and behavior being reported.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Identify the feature and connection path (local HomeKit, cloud, or both). Include Mysa Local and HA versions, client version if known, and original settings. Limit claims to the tested model and firmware.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: State expected and actual behavior, requested and observed values, exact reproduction steps, and the observation time with timezone. For a successful test, describe what result should be recorded.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: Record the device(s), test method, repeat count or duration, and what HA, the Mysa app, and thermostat showed. Mark evidence as live, simulated, or app-derived, and note limits. Attach sanitized diagnostics downloaded before reload and a reviewed debug log when available.
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Link source tracker IDs, protocol or integration docs, related issues or PRs, and sanitized diagnostics/logs. Put standalone API or protocol findings in mysa-client.
+    validations:
+      required: false

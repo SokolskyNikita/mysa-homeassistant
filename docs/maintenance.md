@@ -21,6 +21,16 @@ back here. Short forwarding pages preserve previously published URLs; current
 navigation should link directly to the maintained reference. Release notes
 remain historical.
 
+## Issue format
+
+Use the issue form's five sections—Summary, Scope, Acceptance criteria,
+Validation, and References—for every issue. Keep observed evidence and
+implementation scope distinct, and make acceptance criteria observable. Link
+dependencies and the stable source tracker ID. Put each task in its owning
+repository: HA lifecycle, entities, and routing here; client API/protocol work
+in the [client repository](https://github.com/SokolskyNikita/mysa-client/issues).
+Cross-link shared work instead of creating duplicate tasks.
+
 ## Evidence and checks
 
 Keep app-derived behavior, simulated tests, and hardware validation distinct.

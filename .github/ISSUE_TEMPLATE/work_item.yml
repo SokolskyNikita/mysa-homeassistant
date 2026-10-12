@@ -1,0 +1,39 @@
+name: Improvement or research
+description: Propose an integration improvement or a focused research question; use the research label for research-only work.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: State the integration capability to improve or the question research should answer.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Define the HA behavior, entities, models, and boundaries included or excluded. Client protocol work belongs in mysa-client.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: "Use - [ ] checkboxes for observable outcomes. For research, include the evidence and decision the work should enable."
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: Describe checks or hardware/app evidence needed. Distinguish live, simulated, and app-derived evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Link source tracker IDs, related issues or PRs, docs, and dependencies. Link client-owned work instead of duplicating it.
+    validations:
+      required: false

@@ -1,0 +1,39 @@
+name: Tracking issue
+description: Track a defined workstream across linked issues.
+labels: [tracking]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Name the workstream and the outcome this tracker coordinates.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Define what is in and out of scope, which repository owns the work, and the criteria for closing this tracker.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: "List closure criteria and child issues as checkboxes (for example, - [ ] #123). State how removed or out-of-scope items are recorded."
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: Describe the inventory audit that will confirm every in-scope item is linked, completed, or explicitly ruled out.
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Link child issues, source tracker IDs, evidence, and counterpart-repository trackers. Keep individual work in its owning issue.
+    validations:
+      required: false
