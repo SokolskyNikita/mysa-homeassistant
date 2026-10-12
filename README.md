@@ -4,11 +4,13 @@
 [![Validate](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/validate.yml/badge.svg)](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/validate.yml)
 [![Tests](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/tests.yml/badge.svg)](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/tests.yml)
 
-> **Unofficial project.** This project is not affiliated with, endorsed by, or supported by Mysa. **Use at your own risk.** The software is provided "as is", without warranty.
+> Unofficial and unaffiliated with Mysa. Use at your own risk.
 
 Control Mysa thermostats over your local network through HomeKit. Setpoint, mode, room temperature and heating state work without a Mysa account or internet connection. Setup uses Home Assistant's UI.
 
 An optional Mysa sign-in adds settings, humidity, schedules, firmware checks and cloud control when the local connection fails.
+
+**Powered by [`mysa-client`](https://github.com/SokolskyNikita/mysa-client).** The core Mysa API and device communication logic lives in that standalone Python package: cloud authentication and API calls, HomeKit discovery and pairing, commands, and response parsing. This repository connects it to Home Assistant with setup flows, entities, polling, local/cloud routing, and persistence. For API documentation and standalone examples, see the [client repository](https://github.com/SokolskyNikita/mysa-client).
 
 ## Supported models
 
@@ -266,6 +268,6 @@ CI also runs HACS validation and hassfest. The cloud and HomeKit protocols are p
 
 Mysa Local uses [aiohomekit](https://github.com/Jc2k/aiohomekit) for HomeKit. [Mysa_HA](https://github.com/kgelinas/Mysa_HA) and [mysotherm](https://github.com/dlenski/mysotherm) supplied earlier work on Mysa's cloud protocols.
 
-Released under the [MIT License](LICENSE). This project is not affiliated with Mysa or Empowered Homes Inc.
+Released under the [MIT License](LICENSE).
 
 Technical references and implementation status: [documentation index](docs/README.md).
