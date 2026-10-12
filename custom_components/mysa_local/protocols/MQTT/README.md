@@ -336,5 +336,5 @@ the safe echo and fresh telemetry, then test a controlled state change and
 read it back from the device. CONNACK, SUBACK, or a broker-level publish
 acknowledgement alone must not be reported as successful thermostat control.
 
-Source provenance and the Android decompilation/capture process are documented
-under [Investigation method](../../../../docs/cloud-api.md#investigation-method).
+For complementary HTTPS endpoints and model-specific findings, see the
+[cloud API supplementary reference](../../../../docs/cloud-api.md).
