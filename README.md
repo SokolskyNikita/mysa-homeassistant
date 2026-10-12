@@ -4,6 +4,8 @@
 [![Validate](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/validate.yml/badge.svg)](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/validate.yml)
 [![Tests](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/tests.yml/badge.svg)](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/tests.yml)
 
+> **Unofficial project.** This project is not affiliated with, endorsed by, or supported by Mysa. **Use at your own risk.** The software is provided "as is", without warranty.
+
 Control Mysa thermostats over your local network through HomeKit. Setpoint, mode, room temperature and heating state work without a Mysa account or internet connection. Setup uses Home Assistant's UI.
 
 An optional Mysa sign-in adds settings, humidity, schedules, firmware checks and cloud control when the local connection fails.
