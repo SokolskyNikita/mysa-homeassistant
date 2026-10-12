@@ -14,7 +14,7 @@
       },
       "wifi_help": {
         "title": "Put the thermostat on Wi-Fi",
-        "description": "A new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the browser-based setup page: [{url}]({url}). It works in Chrome or Edge on a computer with Bluetooth and doesn't need the Mysa app or a phone.\n\nOnce it's on Wi-Fi, Home Assistant discovers it. Submit to go back."
+        "description": "For Baseboard V3, Central HVAC and Climate Sensor, finish setup in the Mysa app, then add the device from your account. For older models, a new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the browser-based setup page: [{url}]({url}). It works in Chrome or Edge on a computer with Bluetooth and doesn't need the Mysa app or a phone.\n\nOnce it's on Wi-Fi, Home Assistant discovers it. Submit to go back."
       },
       "pick": {
         "title": "Pick a thermostat",
@@ -147,6 +147,10 @@
         "reconfigure": "Settings and status"
       },
       "step": {
+        "cloud_info": {
+          "title": "Experimental cloud support",
+          "description": "This device uses Mysa's cloud. Basic controls depend on its reported capabilities and have not been tested on this hardware yet. Complete setup and manage schedules, equipment settings, sensor linking and firmware updates in the Mysa app. Download integration diagnostics when reporting missing controls or commands that do not apply."
+        },
         "user": {
           "title": "Add a Mysa thermostat",
           "menu_options": {
@@ -158,7 +162,7 @@
         },
         "wifi_help": {
           "title": "Put the thermostat on Wi-Fi",
-          "description": "A new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the browser-based setup page: [{url}]({url}). It works in Chrome or Edge on a computer with Bluetooth and doesn't need the Mysa app or a phone.\n\nOnce it's on Wi-Fi, Home Assistant discovers it. Submit to go back."
+          "description": "For Baseboard V3, Central HVAC and Climate Sensor, finish setup in the Mysa app, then add the device from your account. For older models, a new or reset Mysa shows a Bluetooth icon. Put it on your 2.4 GHz Wi-Fi with the browser-based setup page: [{url}]({url}). It works in Chrome or Edge on a computer with Bluetooth and doesn't need the Mysa app or a phone.\n\nOnce it's on Wi-Fi, Home Assistant discovers it. Submit to go back."
         },
         "pick": {
           "title": "Pick a thermostat",
@@ -186,7 +190,7 @@
         },
         "cloud_pick": {
           "title": "Add from your Mysa account",
-          "description": "Pick a thermostat from your Mysa account. Next, you're offered to pair it locally too.",
+          "description": "Pick a device already set up in the Mysa app. Models with HomeKit can also be paired locally. Baseboard V3, Central HVAC and Climate Sensor have experimental cloud-only support.",
           "data": {
             "device": "Thermostat"
           }
@@ -211,6 +215,7 @@
           "description": "{account}\n\n{local}",
           "menu_options": {
             "settings": "Settings (heater wattage, heating runtime)",
+            "cloud_info": "Experimental cloud support",
             "local_pair": "Pair locally with the HomeKit code",
             "account_add": "Add to my Mysa account",
             "name_from_mysa": "Use the Mysa app's name in Home Assistant",
@@ -279,6 +284,7 @@
         "no_homekit_device_entries": "No Mysa thermostats were found in the HomeKit Device integration.",
         "no_cloud_devices": "Every supported thermostat on your Mysa account is already added (or the cloud is off).",
         "reconfigure_successful": "Saved.",
+        "cloud_info": "Cloud support information acknowledged.",
         "added_to_account": "Added to your Mysa account.",
         "removed_from_account": "{name} was removed from your Mysa account.",
         "local_skipped": "Nothing was changed.",
@@ -436,6 +442,10 @@
       }
     },
     "select": {
+      "hvac_fan_speed": {
+        "name": "Fan speed",
+        "state": {"off": "Off", "auto": "Auto", "sleep": "Sleep", "speed_1": "Speed 1", "speed_2": "Speed 2", "speed_3": "Speed 3", "speed_4": "Speed 4", "speed_5": "Speed 5", "speed_6": "Speed 6", "speed_7": "Speed 7"}
+      },
       "display_unit": {
         "name": "Display units",
         "state": {

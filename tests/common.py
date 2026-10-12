@@ -43,6 +43,7 @@ from custom_components.mysa_local.protocols.cloud.const import (
     API_BASE,
     COGNITO_URL,
     COGNITO_USER_POOL_ID,
+    LEGACY_API_BASE,
 )
 from custom_components.mysa_local.protocols.cloud.srp import BIG_N, G, K, pad_hex
 
@@ -304,6 +305,19 @@ class FakeCloud:
         )
         mock.get(f"{b}/devices", side_effect=self._json(lambda: self.devices))
         mock.post(f"{b}/state/batch", side_effect=self._batch)
+        mock.get(
+            f"{b}/devices/state",
+            side_effect=self._json(lambda: {"DeviceStatesObj": {}}),
+        )
+        mock.get(
+            f"{LEGACY_API_BASE}/devices/state",
+            side_effect=self._json(lambda: {"DeviceStatesObj": {}}),
+        )
+        mock.get(
+            f"{LEGACY_API_BASE}/devices", side_effect=self._json(lambda: self.devices)
+        )
+        mock.get(f"{b}/schedules", json={"Schedules": []})
+        mock.get(re.compile(r".*/schedules/v2/[^/]+$"), status=404)
         mock.post(f"{b}/mysa-legacy/stream/home/{HOME_ID}", side_effect=self._live_mode)
         mock.get(f"{b}/state/{d}", side_effect=self._json(lambda: self.state))
         mock.post(f"{b}/state/{d}/update", side_effect=self._update)
@@ -350,7 +364,7 @@ class FakeCloud:
         self.bootstrap["data"]["user"]["AllowedDevices"] = []
 
     def add_unsupported(self) -> str:
-        """Put a Baseboard V3 (not supported) on the account; return its ID."""
+        """Put a Baseboard V3 (cloud only) on the account; return its ID."""
         device_id = "0a0b0c0d0e0f"
         record = {
             **self.devices["DevicesObj"][DEVICE_ID],
@@ -578,6 +592,7 @@ class FakeCloud:
                 node = self.state.setdefault(section, {})
                 for part in ("desired", "reported"):
                     node.setdefault(part, {}).update(fields)
+                    node[part]["timestamp"] = time.time()
         return self._resp(method, url, body={"message": "ok"})
 
     async def _settings(

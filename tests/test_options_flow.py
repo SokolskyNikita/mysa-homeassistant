@@ -326,10 +326,10 @@ async def test_options_account_page_not_added(
 
 
 @pytest.mark.usefixtures("controller")
-async def test_options_account_page_unsupported(
+async def test_options_account_page_new_model(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
-    """An unsupported model is marked as such, with no hint to add it."""
+    """An app-enrolled newer model can be added from the account."""
     cloud.add_unsupported()
     entry = hub_entry()
     await setup_entry(hass, entry)
@@ -339,10 +339,10 @@ async def test_options_account_page_unsupported(
     )
     placeholders = result["description_placeholders"]
     assert (
-        "| — | Hallway | Mysa Baseboard V3 | ❌ Not supported |"
+        "| — | Hallway | Mysa Baseboard V3 | ⚪ Not added |"
         in placeholders["thermostats"]
     )
-    assert placeholders["add_hint"] == ""
+    assert "Add thermostat" in placeholders["add_hint"]
 
 
 async def test_options_account_hidden_when_signed_out(hass: HomeAssistant) -> None:

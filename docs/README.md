@@ -49,3 +49,5 @@ code/tests and the tracker describe current implementation. The protocols were
 reverse-engineered from the original Mysa apps. See [documentation maintenance](maintenance.md),
 and [release history](../CHANGELOG.md). Validation limits remain beside the
 relevant protocol findings.
+
+- [Experimental newer-model cloud support and V3 test guide](new-cloud-models.md)

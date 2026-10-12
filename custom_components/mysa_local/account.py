@@ -46,12 +46,16 @@ def can_pair_locally(model: str | None) -> bool:
     return model_family(model) in WIFI_ONLY_FAMILIES
 
 
-def is_supported_model(model: str | None) -> bool:
-    """False for the Baseboard V3, Central HVAC and Climate Sensor.
+def can_import_cloud(model: str | None) -> bool:
+    """Already enrolled devices can be imported, independently of provisioning."""
+    return True
 
-    To join, those need a credential file from Mysa's servers sent over
-    Bluetooth, which Mysa Local can't do. A model Mysa's app doesn't know yet
-    is let through, with the untested-model notice.
+
+def is_supported_model(model: str | None) -> bool:
+    """Local discovery/migration policy; cloud import is independent.
+
+    Newer models lack an implemented local protocol. Unknown models still pass
+    discovery with the untested-model notice, preserving the existing policy.
     """
     family = model_family(model)
     return family is None or family in WIFI_ONLY_FAMILIES
@@ -118,9 +122,9 @@ async def async_remove_from_account(
     """
     if home_id:
         try:
-            for schedule in await client.get_schedules(home_id):
+            for schedule in await client.get_all_schedules(home_id):
                 if device_id in (schedule.get("deviceIds") or []):
-                    await client.delete_schedule(str(schedule.get("id")), device_id)
+                    await client.remove_schedule(schedule, device_id)
             for shortcut in await client.get_shortcuts(home_id):
                 actions = shortcut.get("DeviceActions") or {}
                 if isinstance(actions, dict) and device_id in actions:

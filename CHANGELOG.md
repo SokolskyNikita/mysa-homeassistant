@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.0 (2026-10-12)
+
+- Import app-enrolled Baseboard V3, Central HVAC and Climate Sensor independently of local pairing eligibility. Mark newer-model cloud support experimental.
+- Add capability-gated V3 controls, sensor-only Climate Sensor entities, Central HVAC AUTO target pairs, native fan controls and fresh equipment activity. Validate model-specific commands and preserve pending versus reported state.
+- Exclude legacy schedule/usage/firmware/settings routes and deferred extras for these models, including native schedule queries in mixed-model accounts. Add synthetic APK-derived fixtures, HA regression coverage and a V3 hardware test guide. No new hardware validation is claimed.
+
+- Read structured and legacy cloud state independently, with per-field clocks, provenance, invalid-value rejection, partial-failure retention and bounded host fallback.
+- Track accepted cloud commands separately from reported state, including supersession, expiry, stored configuration and device confirmation. Dependent writes use pending intent without presenting it as confirmed state.
+- Add explicit settings-route alternatives, native v1/v2 schedule inspection/cleanup with persistent rollback and shared-device preservation, and strict discovery validation.
+- Send the required JSON `{}` for firmware triggers. Add independent optional-request backoff, verified live-reporting freshness and source/command diagnostics.
+
+- Retry readback twice when a cloud command is still pending after the initial two-second read. This fixes stale limit controls when Mysa reports a successful change several seconds later; commands are never resent automatically.
+
+- Refresh HomeKit characteristic addresses, limits, supported modes and subscriptions after configuration changes/reconnects and every 15 minutes. Missing-characteristic reads receive one bounded refresh/retry; removed fields lose their cached values and subscriptions. Polling remains available when event subscription fails.
+- Discover capability-dependent entities after local recovery, including the display-unit selector after a cloud-disabled offline startup, without reloading or duplicating entities.
+- Retain incomplete HomeKit Device migration markers so setup can retry after unload/takeover failure while preserving entity IDs and existing device metadata.
+
+Validated with 319 automated tests, Ruff, strict mypy and documentation checks. Installed on Home Assistant 2026.10.1 and visually checked in Chrome. Both Baseboard Lites reconnect locally; setpoints, display units, lock, brightness, limits and offset were exercised and restored. Temporary schedule creation/replacement, timed hold, resume and native v2 cleanup were verified; no test schedules or holds remain. Saved configuration and entity IDs are preserved.
+
+Newer-model support, HomeKit metadata-change/migration failure cases, ambiguous cloud failures and firmware installation remain covered by simulations rather than new hardware tests. V3, Central HVAC and Climate Sensor support is experimental; enroll through the Mysa app first. Matter and direct enrollment for these models are not included.
+
 ## 0.4.5 (2026-10-12)
 
 - Fixed schedule holds that replaced an explicit OFF with the current mode or heat. Omitting the mode now preserves OFF when the thermostat is already off. OFF holds send no temperature target or immediate setpoint command, including when a temperature is supplied.

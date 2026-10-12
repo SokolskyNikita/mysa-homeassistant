@@ -44,8 +44,11 @@ async def async_migrate_homekit_controller(
     """Take over the HomeKit Device entry named in the subentry, then forget it."""
     source_id = subentry.data.get(CONF_MIGRATE_FROM)
     source = hass.config_entries.async_get_entry(source_id) if source_id else None
-    if source is not None and source.domain == HKC_DOMAIN:
-        await _async_move(hass, entry, subentry, source)
+    if source is not None:
+        if source.domain != HKC_DOMAIN:
+            return
+        if not await _async_move(hass, entry, subentry, source):
+            return
     hass.config_entries.async_update_subentry(
         entry,
         subentry,
@@ -58,15 +61,16 @@ async def _async_move(
     entry: ConfigEntry,
     subentry: ConfigSubentry,
     source: ConfigEntry,
-) -> None:
-    if (
-        source.state is ConfigEntryState.LOADED
-        and not await hass.config_entries.async_unload(source.entry_id)
-    ):
+) -> bool:
+    if source.state in (
+        ConfigEntryState.LOADED,
+        ConfigEntryState.FAILED_UNLOAD,
+    ) and not await hass.config_entries.async_unload(source.entry_id):
         LOGGER.warning(
-            "Couldn't unload HomeKit Device entry %s; remove it by hand", source.title
+            "Couldn't unload HomeKit Device entry %s; migration will retry on setup",
+            source.title,
         )
-        return
+        return False
 
     ent_reg = er.async_get(hass)
     dev_reg = dr.async_get(hass)
@@ -85,9 +89,9 @@ async def _async_move(
         old = old_devices[0]
         dev_reg.async_update_device(
             new_device.id,
-            area_id=old.area_id,
-            name_by_user=old.name_by_user,
-            labels=set(old.labels),
+            area_id=new_device.area_id or old.area_id,
+            name_by_user=new_device.name_by_user or old.name_by_user,
+            labels=set(new_device.labels) | set(old.labels),
         )
 
     moved = []
@@ -114,3 +118,4 @@ async def _async_move(
         ", ".join(moved) or "no entities",
     )
     await hass.config_entries.async_remove(source.entry_id)
+    return hass.config_entries.async_get_entry(source.entry_id) is None

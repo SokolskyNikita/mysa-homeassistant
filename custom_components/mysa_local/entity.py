@@ -84,11 +84,7 @@ def async_add_when_ready(
     async_add_entities: AddConfigEntryEntitiesCallback,
     factory: Callable[[Thermostat], Iterable[MysaEntity]],
 ) -> None:
-    """Add entities now, and again whenever new cloud data makes more possible.
-
-    Cloud entities depend on each model's capability data, which may arrive
-    after setup (for example when the cloud was briefly down).
-    """
+    """Add entities at setup and after local or cloud capability discovery."""
     added: set[str] = set()
 
     @callback
@@ -103,6 +99,9 @@ def async_add_when_ready(
                 added.update(e.unique_id for e in new if e.unique_id)
                 async_add_entities(new, config_subentry_id=thermostat.subentry_id)
 
+    for thermostat in entry.runtime_data.thermostats.values():
+        if thermostat.local is not None:
+            entry.async_on_unload(thermostat.local.add_capability_listener(_add))
     _add()
     if (cloud := entry.runtime_data.cloud) is not None:
         entry.async_on_unload(cloud.async_add_listener(_add))

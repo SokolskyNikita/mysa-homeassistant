@@ -305,10 +305,10 @@ async def test_live_mode_turned_off(
 
 
 @pytest.mark.usefixtures("controller")
-async def test_cloud_write_shows_immediately(
+async def test_cloud_write_waits_for_confirmation(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
-    """A cloud write updates the entity at once, before the confirming re-read."""
+    """An accepted write remains pending until an independent read confirms it."""
     await setup_entry(hass, hub_entry())
     cloud.apply_updates = False  # the backend hasn't confirmed anything yet
     await hass.services.async_call(
@@ -317,14 +317,18 @@ async def test_cloud_write_shows_immediately(
         {ATTR_ENTITY_ID: "switch.living_room_button_lock"},
         blocking=True,
     )
-    assert hass.states.get("switch.living_room_button_lock").state == "on"
+    assert hass.states.get("switch.living_room_button_lock").state == "off"
     await hass.services.async_call(
         SELECT_DOMAIN,
         SERVICE_SELECT_OPTION,
         {ATTR_ENTITY_ID: "select.living_room_heater_type", "option": "fan_forced"},
         blocking=True,
     )
-    assert hass.states.get("select.living_room_heater_type").state == "fan_forced"
+    assert hass.states.get("select.living_room_heater_type").state == "baseboard"
+
+    commands = _thermostat(hass).cloud.pending[_thermostat(hass).device_id]
+    assert commands["button_lock"].status == "pending"
+    assert commands["control_type"].status == "pending"
 
 
 async def test_fallback_from_startup(

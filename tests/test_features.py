@@ -170,7 +170,7 @@ async def test_local_runtime_and_energy(
     )
     freezer.tick(timedelta(minutes=30))
     async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     runtime = float(hass.states.get("sensor.living_room_heating_runtime_today").state)
     assert runtime == pytest.approx(0.5, abs=0.02)
     assert (
@@ -183,10 +183,10 @@ async def test_local_runtime_and_energy(
     # Relay off: the count stops.
     pairing = controller.aliases[HKID]
     pairing.testing.update_aid_iid([(1, 259, 0)])
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     freezer.tick(timedelta(minutes=30))
     async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert float(
         hass.states.get("sensor.living_room_heating_runtime_today").state
     ) == pytest.approx(0.5, abs=0.02)
@@ -208,11 +208,11 @@ async def test_runtime_and_energy_write_once_a_minute(
     for _ in range(3):  # the relay stays on; HomeKit keeps reporting
         freezer.tick(timedelta(seconds=15))
         _thermostat(hass).notify()
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
     assert [hass.states.get(i).state for i in ids] == first
     freezer.tick(timedelta(seconds=15))
     async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert float(hass.states.get(ids[0]).state) == pytest.approx(1 / 60, abs=0.002)
     assert float(hass.states.get(ids[1]).state) > float(first[1])
 
@@ -254,7 +254,7 @@ async def test_runtime_never_drops(
     for _ in range(4):
         freezer.tick(timedelta(minutes=15))
         async_fire_time_changed(hass)
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         seen.append(runtime())
     assert seen == sorted(seen)
     assert seen[-1] == pytest.approx(2.0, abs=0.02)
@@ -263,17 +263,20 @@ async def test_runtime_never_drops(
     cloud.usage[0]["summary"]["a"]["oH1"] = 3 * 3600
     freezer.tick(timedelta(minutes=15))
     async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     freezer.tick(timedelta(minutes=1))  # shown at the next minute write
     async_fire_time_changed(hass)
-    await hass.async_block_till_done()
-    assert runtime() == pytest.approx(3.0, abs=0.01)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    # Cloud refresh and the minute publication can finish in either order.
+    # If the 3-hour floor was already observed at the previous tick, the relay
+    # has legitimately contributed another minute by this publication.
+    assert 3.0 <= runtime() <= 3.017
 
     # Without the cloud figure the local count carries on from there.
     _thermostat(hass).use_cloud_runtime = False
     freezer.tick(timedelta(minutes=1))
     async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert runtime() >= 3.0
     assert (
         hass.states.get("sensor.living_room_heating_runtime_today").attributes["source"]
@@ -302,7 +305,7 @@ async def test_device_info_kept_and_updated(
     controller.aliases[HKID].available = False
     cloud.backend_status = 500
     assert await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     device = dev_reg.async_get_device_by_identifier((DOMAIN, DEVICE_ID), entry.entry_id)
     assert device is not None
     assert (device.serial_number, device.sw_version) == ("SERIAL0001", "3.17.5.13")
@@ -312,7 +315,7 @@ async def test_device_info_kept_and_updated(
     cloud.state["identity"]["reported"]["fw"] = "3.18.0.2"
     freezer.tick(timedelta(minutes=2))
     async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     device = dev_reg.async_get_device_by_identifier((DOMAIN, DEVICE_ID), entry.entry_id)
     assert device is not None
     assert device.sw_version == "3.18.0.2"
@@ -331,12 +334,12 @@ async def test_local_down_repair_issue(
 
     freezer.tick(timedelta(minutes=10))
     async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert issues.async_get_issue(DOMAIN, issue_id) is None
 
     freezer.tick(timedelta(minutes=6))
     async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     issue = issues.async_get_issue(DOMAIN, issue_id)
     assert issue is not None
     assert issue.translation_key == "local_unreachable"
@@ -345,7 +348,7 @@ async def test_local_down_repair_issue(
     await _thermostat(hass).local.async_poll()
     freezer.tick(timedelta(minutes=1))
     async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert issues.async_get_issue(DOMAIN, issue_id) is None
 
 
@@ -398,7 +401,7 @@ async def test_firmware_install_is_opt_in(
     hass.config_entries.async_update_entry(
         entry, options={**entry.options, CONF_FIRMWARE_INSTALL: True}
     )
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert hass.states.get("update.living_room_firmware").attributes[
         "supported_features"
     ]
@@ -423,7 +426,7 @@ async def test_firmware_install_is_opt_in(
             {ATTR_ENTITY_ID: "update.living_room_firmware"},
             blocking=True,
         )
-    assert cloud.posts == [(f"/devices/{DEVICE_ID}/firmware-update", None)]
+    assert cloud.posts == [(f"/devices/{DEVICE_ID}/firmware-update", "{}")]
 
 
 async def test_remove_subentry_unpairs(
@@ -435,7 +438,7 @@ async def test_remove_subentry_unpairs(
     (subentry_id,) = entry.subentries
     with patch.object(controller, "remove_pairing", AsyncMock()) as remove:
         hass.config_entries.async_remove_subentry(entry, subentry_id)
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
     remove.assert_awaited_once_with(HKID)
     assert hass.states.get(CLIMATE) is None
 
@@ -448,7 +451,7 @@ async def test_remove_entry_unpairs(
     await setup_entry(hass, entry)
     with patch("custom_components.mysa_local.async_unpair", AsyncMock()) as unpair:
         await hass.config_entries.async_remove(entry.entry_id)
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
     unpair.assert_awaited_once()
     assert unpair.await_args.args[1]["iOSPairingId"] == PAIRING_DATA["iOSPairingId"]
 
@@ -483,7 +486,7 @@ async def test_heater_power(hass: HomeAssistant, controller: FakeController) -> 
         update_fake_characteristic(
             pairing, CharacteristicsTypes.HEATING_COOLING_CURRENT, relay
         )
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
         assert hass.states.get("sensor.living_room_heater_power").state == watts
 
 

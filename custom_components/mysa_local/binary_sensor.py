@@ -31,7 +31,7 @@ async def async_setup_entry(
             return []
         entities: list[MysaEntity] = [CloudOnlineSensor(thermostat)]
         caps = thermostat.capabilities
-        if caps is not None and caps.scheduling:
+        if not thermostat.basic_cloud_only and caps is not None and caps.scheduling:
             entities.append(ScheduleHoldSensor(thermostat))
         return entities
 

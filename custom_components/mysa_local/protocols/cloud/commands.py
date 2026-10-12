@@ -64,6 +64,26 @@ def temperature_changes(mode: Mode | None, temperature: float) -> StateChanges:
     return {section: {"setpoint": temperature}}
 
 
+def auto_temperature_changes(low: float, high: float) -> StateChanges:
+    """APK 4.20.1 non-legacy AUTO uses a dedicated pair, never targetHeat/Cool."""
+    return {"targetAuto": {"heatSetpoint": low, "coolSetpoint": high}}
+
+
+def hvac_fan_changes(mode: str) -> StateChanges:
+    """Basic fan operation, matching the app's always-on/runtime combination."""
+    values = {"auto": (0, 0, 1800), "on": (1, 900, 900), "off": (0, 0, 0)}
+    if mode not in values:
+        raise ValueError(f"Unsupported HVAC fan operation: {mode}")
+    always, runtime, period = values[mode]
+    return {
+        "hvacConfig": {
+            "advFanAlwaysOn": always,
+            "advFanRuntimeSeconds": runtime,
+            "advFanRuntimePeriodSeconds": period,
+        }
+    }
+
+
 def mode_changes(mode: Mode) -> StateChanges:
     """Encode an operating mode change."""
     return {"modes": {"mode": int(mode)}}

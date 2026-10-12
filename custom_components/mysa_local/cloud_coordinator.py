@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 import contextlib
-import copy
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 import time
@@ -18,6 +17,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from .cloud_state import PendingCommand, pending_command, reconcile
 from .const import (
     CLOUD_CAPABILITIES_INTERVAL,
     CLOUD_FALLBACK_INTERVAL,
@@ -62,6 +62,12 @@ from .protocols.cloud.commands import (
     temperature_changes,
     temperature_offset_changes,
 )
+from .protocols.cloud.const import (
+    EXPERIMENTAL_CLOUD_FAMILIES,
+    ModelFamily,
+    model_family,
+)
+from .protocols.cloud.observations import MEASUREMENT_MAX_AGE, STATE_FIELDS, number
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -111,6 +117,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         device_ids: Iterable[str],
         scan_interval: int,
         usage_device_ids: Iterable[str] = (),
+        device_models: Mapping[str, str | None] | None = None,
         live_mode: bool = False,
     ) -> None:
         """Create the coordinator; nothing is fetched until the first refresh."""
@@ -124,13 +131,20 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         )
         self.client = client
         self.device_ids: set[str] = set(device_ids)
+        self.device_models = dict(device_models or {})
         self.usage_device_ids: set[str] = set(usage_device_ids)
         self.live_mode = live_mode
         self._refresh_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
         self._last_write = 0.0
         self._due: dict[str, float] = {}
+        self.source_health: dict[str, dict[str, Any]] = {}
+        self.pending: dict[str, dict[str, PendingCommand]] = {}
+        self._optional_failures: dict[str, int] = {}
+        self.live_devices: set[str] = set()
+        self.live_sessions: dict[str, tuple[datetime, datetime | None, datetime]] = {}
         self._refresh_after_write: CALLBACK_TYPE | None = None
+        self._confirmation_generation = 0
         # Thermostats whose LAN path is down while the cloud stands in.
         self.fallback: set[str] = set()
 
@@ -187,7 +201,11 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         homes = set()
         for dev in self.fallback:
             record = records.get(dev)
-            if record is not None and record.home_id:
+            if (
+                record is not None
+                and record.home_id
+                and model_family(record.model) not in EXPERIMENTAL_CLOUD_FAMILIES
+            ):
                 homes.add(record.home_id)
         return homes
 
@@ -229,22 +247,90 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         )
         ids = sorted(self.device_ids)
 
-        if self._is_due("records") or any(dev not in data.records for dev in ids):
-            data.records = await self.client.get_devices()
-            self._mark_done("records", CLOUD_RECORDS_INTERVAL)
+        if self._is_due("records"):
+            try:
+                records = await self.client.get_devices()
+                data.records = records
+                self._mark_done("records", CLOUD_RECORDS_INTERVAL)
+            except MysaAuthError:
+                raise
+            except MysaError as err:
+                self._optional_backoff("records", err)
 
         for home in self._fallback_homes(data.records) if self.live_mode else ():
             if self._is_due(f"live:{home}"):
                 await self._best_effort(self._start_live_mode, data, home)
 
-        data.states = await self.client.get_states(ids)
+        legacy_ids = [
+            dev
+            for dev in ids
+            if model_family(
+                data.records[dev].model
+                if dev in data.records
+                else self.device_models.get(dev)
+            )
+            not in EXPERIMENTAL_CLOUD_FAMILIES
+        ]
+        requests = {"S": self.client.get_states(ids)}
+        if legacy_ids:
+            requests["legacy"] = self.client.get_legacy_states(legacy_ids)
+        results = await asyncio.gather(*requests.values(), return_exceptions=True)
+        now = dt_util.utcnow()
+        successful = []
+        failures = []
+        for source, result in zip(requests, results, strict=True):
+            if isinstance(result, MysaAuthError):
+                raise result
+            if isinstance(result, BaseException):
+                if not isinstance(result, MysaError):
+                    raise result
+                self.source_health[source] = {
+                    "success": False,
+                    "error": type(result).__name__,
+                    "fetched_at": now.isoformat(),
+                }
+                failures.append(result)
+            else:
+                self.source_health[source] = {
+                    "success": True,
+                    "fetched_at": now.isoformat(),
+                    "partial_errors": dict(self.client.source_errors.get(source, {})),
+                    "route": self.client.legacy_source if source == "legacy" else "S",
+                }
+                successful.append(result)
+        if not successful:
+            self._reconcile_pending(data, now)
+            raise failures[0]
+        for dev in ids:
+            data.states[dev] = reconcile(
+                dev,
+                [r[dev] for r in successful if dev in r],
+                data.records.get(dev),
+                old.states.get(dev),
+                now,
+            )
+        for dev, (requested, baseline, expires) in self.live_sessions.items():
+            state = data.states.get(dev)
+            if (
+                now <= expires
+                and state
+                and state.reading_time
+                and state.reading_time >= requested
+                and (baseline is None or state.reading_time > baseline)
+            ):
+                self.live_devices.add(dev)
+            elif now > expires:
+                self.live_devices.discard(dev)
+        self._reconcile_pending(data, now)
 
         # The slower data is best effort: a failure keeps the previous values.
         for dev in ids:
             if dev not in data.records and dev not in data.states:
                 continue
-            if dev not in data.capabilities or self._is_due(f"caps:{dev}"):
+            if self._is_due(f"caps:{dev}"):
                 await self._best_effort(self._fetch_capabilities, data, dev)
+            if dev not in legacy_ids:
+                continue
             if self._is_due(f"firmware:{dev}"):
                 await self._best_effort(self._fetch_firmware, data, dev)
             if self._is_due(f"hold:{dev}"):
@@ -254,16 +340,55 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         return data
 
     async def _best_effort(self, fetch: Any, data: CloudData, dev: str) -> None:
+        prefix = {
+            "_fetch_capabilities": "caps",
+            "_fetch_firmware": "firmware",
+            "_fetch_hold": "hold",
+            "_fetch_usage": "usage",
+            "_start_live_mode": "live",
+        }[fetch.__name__]
+        key = f"{prefix}:{dev}"
         try:
             await fetch(data, dev)
         except MysaAuthError:
             raise
         except MysaError as err:
+            self._optional_backoff(key, err)
             LOGGER.debug("Optional cloud read for %s failed: %s", dev, err)
+        else:
+            self._optional_failures.pop(key, None)
+
+    def _optional_backoff(self, key: str, err: MysaError) -> None:
+        failures = self._optional_failures.get(key, 0) + 1
+        self._optional_failures[key] = failures
+        seconds = min(3600, 30 * 2 ** min(failures, 7))
+        if isinstance(err, MysaRateLimitError) and err.retry_after:
+            seconds = max(seconds, err.retry_after)
+        if isinstance(err, MysaNotFoundError):
+            seconds = 86400
+        self._mark_done(key, timedelta(seconds=seconds))
 
     async def _start_live_mode(self, data: CloudData, home: str) -> None:
         streamed = await self.client.start_live_mode(home, CLOUD_LIVE_MODE_TIMEOUT)
         LOGGER.debug("Live mode for home %s: %s", home, streamed)
+        now = dt_util.utcnow()
+        for dev in streamed:
+            state = data.states.get(dev)
+            baseline = state.reading_time if state else None
+            self.live_sessions[dev] = (
+                now,
+                baseline,
+                now + timedelta(seconds=CLOUD_LIVE_MODE_TIMEOUT),
+            )
+        expected = {
+            dev
+            for dev in self.fallback
+            if dev in data.records and data.records[dev].home_id == home
+        }
+        if not expected.issubset(streamed):
+            raise MysaConnectionError(
+                "Live reporting was not accepted for every requested device"
+            )
         self._mark_done(f"live:{home}", CLOUD_LIVE_MODE_RENEW)
 
     async def _fetch_capabilities(self, data: CloudData, dev: str) -> None:
@@ -295,9 +420,51 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
 
     # ---- reads and writes used by entities ------------------------------
 
+    def device_family(self, device_id: str) -> ModelFamily | None:
+        """Use saved model identity when the account list is unavailable."""
+        record, state = self.record(device_id), self.state(device_id)
+        return model_family(
+            (record.model if record else None)
+            or self.device_models.get(device_id)
+            or (state.model if state else None)
+        )
+
     def state(self, device_id: str) -> DeviceState | None:
         """Latest state of one thermostat, if the cloud has it."""
         return self.data.states.get(device_id) if self.data else None
+
+    def command_value(self, device_id: str, name: str, fallback: Any) -> Any:
+        """Use current intent for dependent writes, never for entity readings."""
+        command = self.pending.get(device_id, {}).get(name)
+        if (
+            command
+            and command.status
+            in ("pending", "ambiguous", "stored", "confirmed", "unchanged")
+            and dt_util.utcnow() < command.expires_at
+        ):
+            return command.expected.get(name, fallback)
+        return fallback
+
+    def measurement_max_age(self, device_id: str) -> timedelta:
+        """Tighten freshness only after telemetry proves live reporting started."""
+        session = self.live_sessions.get(device_id)
+        if (
+            device_id in self.live_devices
+            and session
+            and dt_util.utcnow() <= session[2]
+        ):
+            return max(
+                timedelta(seconds=90), (self.update_interval or self._base_interval) * 3
+            )
+        return MEASUREMENT_MAX_AGE
+
+    def measurement_fresh(self, device_id: str, name: str) -> bool:
+        """Check this field's own clock, independent of the room-temperature clock."""
+        state = self.state(device_id)
+        obs = state.observations.get(name) if state else None
+        return bool(
+            obs and obs.fresh(dt_util.utcnow(), self.measurement_max_age(device_id))
+        )
 
     def record(self, device_id: str) -> DeviceRecord | None:
         """Settings record of one thermostat."""
@@ -311,7 +478,15 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         """Read one thermostat's state right now (used to verify writes)."""
         state = await self.client.get_state(device_id)
         if self.data is not None:
+            state = reconcile(
+                device_id,
+                [state],
+                self.data.records.get(device_id),
+                self.data.states.get(device_id),
+                dt_util.utcnow(),
+            )
             self.data.states[device_id] = state
+            self._reconcile_pending(self.data, dt_util.utcnow())
             self.async_update_listeners()
         return state
 
@@ -336,10 +511,30 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         self._schedule_refresh_after_write()
 
     @callback
-    def _schedule_refresh_after_write(self) -> None:
-        """Re-read shortly after a write; the thermostat confirms within ~1 s."""
+    def _schedule_refresh_after_write(
+        self, attempt: int = 0, generation: int | None = None
+    ) -> None:
+        """Bounded readbacks accommodate reports arriving after the first read."""
+        if generation is None:
+            self._confirmation_generation += 1
+            generation = self._confirmation_generation
         if self._refresh_after_write is not None:
             self._refresh_after_write()
+
+        async def _readback() -> None:
+            await self.async_refresh()
+            if (
+                generation == self._confirmation_generation
+                and self.last_update_success
+                and attempt < 2
+                and any(
+                    command.status in ("pending", "ambiguous", "stored")
+                    and dt_util.utcnow() < command.expires_at
+                    for commands in self.pending.values()
+                    for command in commands.values()
+                )
+            ):
+                self._schedule_refresh_after_write(attempt + 1, generation)
 
         @callback
         def _refresh(_now: datetime) -> None:
@@ -347,11 +542,13 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             # confirmation of back-to-back writes by up to 10 s.
             self._refresh_after_write = None
             self.config_entry.async_create_background_task(
-                self.hass, self.async_refresh(), f"{DOMAIN} refresh after write"
+                self.hass, _readback(), f"{DOMAIN} refresh after write"
             )
 
         self._refresh_after_write = async_call_later(
-            self.hass, CLOUD_REFRESH_AFTER_WRITE, _refresh
+            self.hass,
+            CLOUD_REFRESH_AFTER_WRITE if attempt == 0 else 5 * attempt,
+            _refresh,
         )
 
     async def async_update_state(
@@ -370,16 +567,134 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         call: Callable[[], Awaitable[Any]],
         changes: Mapping[str, Mapping[str, Any]],
     ) -> None:
-        """Serialize a state write, then reflect the accepted command locally."""
-        await self._async_spaced(call)
-        # Show the change now; the re-read 2 s later confirms or corrects it.
-        if self.data is not None and (state := self.data.states.get(device_id)):
-            raw = copy.deepcopy(state.raw)
-            for section, fields in changes.items():
-                node = raw.setdefault(section, {})
-                for part in ("desired", "reported"):
-                    node.setdefault(part, {}).update(fields)
-            self.data.states[device_id] = DeviceState.from_api(device_id, raw)
+        """Track intent without manufacturing device-reported state."""
+        expected = {
+            name: changes[section][wire]
+            for name, (section, wire) in STATE_FIELDS.items()
+            if section in changes and wire in changes[section]
+        }
+        await self._tracked_write(device_id, call, expected)
+
+    def _reconcile_pending(self, data: CloudData, now: datetime) -> None:
+        for dev, commands in self.pending.items():
+            for command in commands.values():
+                command.reconcile(data.states.get(dev), data.records.get(dev), now)
+
+    def _validate_settings(self, device_id: str, expected: dict[str, Any]) -> None:
+        """Validate semantic settings against the discovered device capabilities."""
+        state = self.state(device_id)
+        family = self.device_family(device_id)
+        caps = self.capabilities(device_id)
+        if family in EXPERIMENTAL_CLOUD_FAMILIES:
+            from .protocols.cloud.validation import validate_basic_command
+
+            try:
+                validate_basic_command(
+                    family,
+                    caps,
+                    state,
+                    expected,
+                    lambda name, fallback: self.command_value(
+                        device_id, name, fallback
+                    ),
+                )
+            except ValueError as err:
+                raise HomeAssistantError(str(err)) from err
+        if "heat_setpoint" in expected and state:
+            target = number(expected["heat_setpoint"])
+            low = state.reported_observations.get("setpoint_min")
+            high = state.reported_observations.get("setpoint_max")
+            minima = [
+                v
+                for v in (state.setpoint_min, low.value if low else None)
+                if v is not None
+            ]
+            maxima = [
+                v
+                for v in (state.setpoint_max, high.value if high else None)
+                if v is not None
+            ]
+            if (
+                target is None
+                or (minima and target < max(minima))
+                or (maxima and target > min(maxima))
+            ):
+                raise HomeAssistantError("Target exceeds known device limits")
+        caps = self.capabilities(device_id)
+        if caps is None:
+            return
+        choices = {
+            "button_lock": caps.lockout_values,
+            "control_type": caps.control_types,
+            "display_unit": caps.units,
+        }
+        for name, values in choices.items():
+            if name in expected and expected[name] not in values:
+                raise HomeAssistantError(f"Unsupported Mysa setting: {name}")
+        ranges = {
+            "temperature_offset": caps.offset_range,
+            "setpoint_min": caps.heat_setpoint_range,
+            "setpoint_max": caps.heat_setpoint_range,
+        }
+        for name, limits in ranges.items():
+            if name in expected and (
+                limits is None
+                or number(expected[name]) is None
+                or not limits[0] <= expected[name] <= limits[1]
+            ):
+                raise HomeAssistantError(
+                    f"Mysa setting outside supported range: {name}"
+                )
+        if (
+            "active_brightness" in expected or "idle_brightness" in expected
+        ) and not caps.brightness:
+            raise HomeAssistantError("Brightness is unsupported by this device")
+        state = self.state(device_id)
+        if state and ("setpoint_min" in expected or "setpoint_max" in expected):
+            low = expected.get(
+                "setpoint_min",
+                self.command_value(device_id, "setpoint_min", state.setpoint_min),
+            )
+            high = expected.get(
+                "setpoint_max",
+                self.command_value(device_id, "setpoint_max", state.setpoint_max),
+            )
+            if low is not None and high is not None and low > high:
+                raise HomeAssistantError("Minimum setpoint exceeds maximum")
+
+    async def _tracked_write(
+        self,
+        device_id: str,
+        call: Callable[[], Awaitable[Any]],
+        expected: dict[str, Any],
+        stored: dict[str, Any] | None = None,
+    ) -> None:
+        self._validate_settings(device_id, expected)
+        command = pending_command(
+            expected, self.state(device_id), dt_util.utcnow(), stored
+        )
+        commands = self.pending.setdefault(device_id, {})
+        keys = list(expected) or [f"record:{key}" for key in (stored or {})]
+        for key in keys:
+            # Supersede every field of an overlapping earlier command together.
+            prior = commands.get(key)
+            if prior and prior.status in ("pending", "ambiguous", "stored"):
+                prior.status = "superseded"
+            commands[key] = command
+        try:
+            await self._async_spaced(call)
+        except HomeAssistantError as err:
+            if command.status != "superseded":
+                command.status = (
+                    "ambiguous"
+                    if isinstance(err.__cause__, MysaConnectionError)
+                    else "failed"
+                )
+            self._schedule_refresh_after_write()
+            raise
+        finally:
+            if stored:
+                self.mark_stale("records")
             self.async_update_listeners()
 
     async def async_set_temperature(
@@ -478,18 +793,41 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         call: Callable[[], Awaitable[Any]],
         fields: Mapping[str, Any],
     ) -> None:
-        """Serialize a settings write and update the cached record."""
-        await self._async_spaced(call)
-        self.mark_stale("records")
-        if self.data is not None and (record := self.data.records.get(device_id)):
-            self.data.records[device_id] = DeviceRecord.from_api(
-                device_id, {**record.raw, **fields}
+        """A settings response confirms acceptance; a later read confirms storage."""
+        mapping = {
+            "Format": "display_unit",
+            "DutyCycleOpt": "control_type",
+            "MinSetpoint": "setpoint_min",
+            "MaxSetpoint": "setpoint_max",
+            "MaxBrightness": "active_brightness",
+            "MinBrightness": "idle_brightness",
+            "ButtonState": "button_lock",
+        }
+        if self.device_family(device_id) in EXPERIMENTAL_CLOUD_FAMILIES:
+            raise HomeAssistantError(
+                "Legacy device settings are not implemented for this model"
             )
-            self.async_update_listeners()
+        expected = {
+            mapping[key]: value for key, value in fields.items() if key in mapping
+        }
+        if "Format" in fields:
+            expected["display_unit"] = {"celsius": "C", "fahrenheit": "F"}.get(
+                fields["Format"]
+            )
+        if "ButtonState" in fields:
+            expected["button_lock"] = {"Locked": 3, "Unlocked": 0}.get(
+                fields["ButtonState"]
+            )
+        await self._tracked_write(device_id, call, expected, dict(fields))
 
     async def async_set_display_unit(self, device_id: str, unit: str) -> None:
         """Set the thermostat's display unit through the cloud."""
         fields = display_unit_settings(unit)
+        if self.device_family(device_id) in EXPERIMENTAL_CLOUD_FAMILIES:
+            await self.async_update_state(
+                device_id, {"physicalInterface": {"format": unit.upper()}}
+            )
+            return
         await self._async_write_settings(
             device_id,
             lambda: self.client.set_display_unit(device_id, unit),
@@ -517,6 +855,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
 
     async def async_shutdown(self) -> None:
         """Cancel the pending after-write refresh."""
+        self._confirmation_generation += 1
         if self._refresh_after_write is not None:
             self._refresh_after_write()
             self._refresh_after_write = None

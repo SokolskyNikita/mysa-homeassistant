@@ -29,8 +29,8 @@ from .account import (
     account_client,
     account_status,
     can_claim,
+    can_import_cloud,
     can_pair_locally,
-    is_supported_model,
 )
 from .const import (
     CONF_CLOUD_ENABLED,
@@ -379,7 +379,7 @@ class MysaConfigFlow(ThermostatSteps, MysaReauthFlow, domain=DOMAIN):
         devices = {
             dev: rec
             for dev, rec in self._cloud[3].devices.items()
-            if is_supported_model(rec.model)
+            if can_import_cloud(rec.model)
         }
         if not devices:
             return await self.async_step_finish()

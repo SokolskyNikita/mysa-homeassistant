@@ -52,7 +52,7 @@ async def async_hold(
     until: datetime | None,
 ) -> None:
     """Hold a state over the schedule, permanently or until a time."""
-    cloud = thermostat.require_cloud()
+    cloud = thermostat.require_legacy_cloud()
     if mode is None:
         mode = thermostat.mode
     if mode is None:
@@ -91,7 +91,7 @@ async def async_hold(
 
 async def async_resume_schedule(thermostat: Thermostat) -> None:
     """End a hold so the thermostat follows its schedule again."""
-    cloud = thermostat.require_cloud()
+    cloud = thermostat.require_legacy_cloud()
     device_id = thermostat.device_id
     await cloud.async_call(
         lambda: cloud.client.resume_schedule(device_id), stale=[f"hold:{device_id}"]
@@ -99,8 +99,8 @@ async def async_resume_schedule(thermostat: Thermostat) -> None:
 
 
 async def _async_schedules_for(thermostat: Thermostat) -> list[dict[str, Any]]:
-    cloud = thermostat.require_cloud()
-    schedules = await cloud.client.get_schedules(_home_id(thermostat))
+    cloud = thermostat.require_legacy_cloud()
+    schedules = await cloud.client.get_all_schedules(_home_id(thermostat))
     return [s for s in schedules if thermostat.device_id in (s.get("deviceIds") or [])]
 
 
@@ -155,6 +155,13 @@ def _validate_replaceable(schedules: list[dict[str, Any]]) -> None:
 
 def _schedule_content_matches(actual: dict[str, Any], expected: dict[str, Any]) -> bool:
     """Compare semantic schedule content across Mysa's GET normalization."""
+    if actual.get("origin") or expected.get("origin"):
+        return (
+            actual.get("origin") == expected.get("origin")
+            and actual.get("events") == expected.get("events")
+            and actual.get("deviceType") == expected.get("deviceType")
+            and actual.get("homeId") == expected.get("homeId")
+        )
     actual_name = actual.get("name")
     expected_name = expected.get("name")
     generated_name = (
@@ -241,7 +248,9 @@ def _schedule_matches(
 def _restorable_schedule(
     schedule: dict[str, Any], home_id: str, device_type: str
 ) -> dict[str, Any]:
-    """Extract the fields accepted by POST /schedule from a GET record."""
+    """Extract a restorable snapshot while retaining native schedule origin."""
+    if schedule.get("origin"):
+        return deepcopy(schedule)
     return {
         "name": schedule["name"],
         "homeId": str(schedule.get("homeId") or home_id),
@@ -268,7 +277,10 @@ def _new_schedule_payload(
 async def _async_create_schedule(
     thermostat: Thermostat, payload: dict[str, Any]
 ) -> None:
-    cloud = thermostat.require_cloud()
+    cloud = thermostat.require_legacy_cloud()
+    if payload.get("origin"):
+        await cloud.async_call(partial(cloud.client.restore_native_schedule, payload))
+        return
     await cloud.async_call(
         partial(
             cloud.client.create_schedule,
@@ -287,8 +299,8 @@ async def _async_create_schedule(
 async def _async_all_schedules(
     thermostat: Thermostat, home_id: str
 ) -> list[dict[str, Any]]:
-    cloud = thermostat.require_cloud()
-    return await cloud.client.get_schedules(home_id)
+    cloud = thermostat.require_legacy_cloud()
+    return await cloud.client.get_all_schedules(home_id)
 
 
 async def _async_preserve_other_devices(
@@ -336,7 +348,7 @@ async def _async_restore_replacement(
     store: Store[dict[str, Any]],
 ) -> str:
     """Restore deleted schedules after a failed replacement, retaining backup on uncertainty."""
-    cloud = thermostat.require_cloud()
+    cloud = thermostat.require_legacy_cloud()
     home_id = str(transaction["home_id"])
     old_schedules = transaction["old_schedules"]
     new_payload = transaction["new_schedule"]
@@ -364,7 +376,7 @@ async def _async_restore_replacement(
             # detach records that still exactly match the saved pre-edit state.
             for old in originals_still_attached:
                 await cloud.async_call(
-                    partial(cloud.client.delete_schedule, str(old["id"]), device_id)
+                    partial(cloud.client.remove_schedule, old, device_id)
                 )
             actual = await _async_all_schedules(thermostat, home_id)
             attached = [s for s in actual if device_id in (s.get("deviceIds") or [])]
@@ -511,7 +523,7 @@ async def _async_finish_clear(
     store: Store[dict[str, Any]],
 ) -> None:
     """Continue an interrupted clear without deleting schedules added in the app later."""
-    cloud = thermostat.require_cloud()
+    cloud = thermostat.require_legacy_cloud()
     home_id = str(transaction["home_id"])
     old_schedules = transaction["old_schedules"]
     device_id = thermostat.device_id
@@ -535,7 +547,7 @@ async def _async_finish_clear(
 
     for schedule in attached:
         await cloud.async_call(
-            partial(cloud.client.delete_schedule, str(schedule["id"]), device_id)
+            partial(cloud.client.remove_schedule, schedule, device_id)
         )
 
     actual = await _async_all_schedules(thermostat, home_id)
@@ -602,12 +614,12 @@ async def async_set_schedule(
         await store.async_save(transaction)
 
         async def _replace() -> None:
-            cloud = thermostat.require_cloud()
+            cloud = thermostat.require_legacy_cloud()
             for schedule in existing:
                 await cloud.async_call(
                     partial(
-                        cloud.client.delete_schedule,
-                        str(schedule["id"]),
+                        cloud.client.remove_schedule,
+                        schedule,
                         device_id,
                     )
                 )

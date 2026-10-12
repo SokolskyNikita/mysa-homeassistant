@@ -235,7 +235,8 @@ validated as thermostat functionality.
 
 ## Recommended reconciliation of cloud reads
 
-These are proposed client/integration rules, not claims about current behavior.
+The client and coordinator implement the following acquisition and selection policy;
+the implementation tracker records remaining hardware validation.
 Use **S + R** for normal cloud state acquisition: one S batch and one R legacy
 state request at the configured cloud interval. Cache REC separately. Use L
 as a replacement for a failing R route with backoff, not a third permanent
@@ -251,7 +252,7 @@ poll. Do not average values or count matching R/L responses as corroboration.
    target altered by a hold or other control behavior.
 2. **Validate.** Reject missing, malformed, non-finite, or semantically invalid
    values. Zero and `false` are valid where the field allows them. A timestamp
-   more than five minutes in the future is invalid; do not let it win a
+   more than one minute in the future is invalid (the existing HA guard); do not let it win a
    newest-value comparison. A valid clock on one section does not validate
    another section.
 3. **Choose by the field policy below.** For **Latest** fields, choose the
@@ -375,10 +376,11 @@ owns the reconciled protocol conclusions and selection recommendations.
 The [Cloud implementation status and plan](../../../../docs/implementation/cloud.md)
 is the single work list, reviewed against code on October 12, 2026. Existing
 endpoint methods and semantic encoders cover S control and R settings, with
-AC mappings supported by fixtures rather than hardware validation. Shared
-acquisition, parsing, confirmation, and host-selection gaps remain. The firmware
-trigger currently omits the required JSON `{}` ([C-A01](../../../../docs/implementation/cloud.md#c-a01)).
-Recommendations in this reference are not claims of implementation.
+AC mappings supported by fixtures rather than hardware validation. Dual acquisition, per-field observations, pending commands, verified settings
+route alternatives, native legacy schedule cleanup/recovery and source diagnostics
+are implemented with regression coverage. Firmware triggering sends JSON `{}`.
+Device application and installation of an offered release remain separate hardware
+validation work; see [completion tests](../../../../tests/test_cloud_completion.py).
 
 ### Using the client
 
@@ -412,7 +414,8 @@ async def request_heat_target(
 The package uses the standard library and `aiohttp`. It is bundled with the
 integration, not separately distributed; importing through the integration
 package still initializes Home Assistant code. Polling/confirmation policy
-belongs to [`cloud_coordinator.py`](../../cloud_coordinator.py), not the HTTP
+belongs to [`cloud_coordinator.py`](../../cloud_coordinator.py) and
+[`cloud_state.py`](../../cloud_state.py), not the HTTP
 transport. This document's proposed cloud arbitration should preserve that
 separation.
 

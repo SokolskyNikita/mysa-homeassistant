@@ -8,6 +8,8 @@ from typing import Any
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     ATTR_HVAC_MODE,
+    ATTR_TARGET_TEMP_HIGH,
+    ATTR_TARGET_TEMP_LOW,
     FAN_AUTO,
     FAN_HIGH,
     FAN_LOW,
@@ -44,6 +46,7 @@ PARALLEL_UPDATES = 0
 
 MODE_TO_HVAC: dict[Mode, HVACMode] = {
     Mode.OFF: HVACMode.OFF,
+    Mode.AUTO: HVACMode.HEAT_COOL,
     Mode.HEAT: HVACMode.HEAT,
     Mode.COOL: HVACMode.COOL,
     Mode.FAN_ONLY: HVACMode.FAN_ONLY,
@@ -69,6 +72,7 @@ SWING_NAMES: dict[Swing, str] = {
 SWING_BY_NAME = {v: k for k, v in SWING_NAMES.items()}
 ACTION_TO_HVAC = {
     ACTION_OFF: HVACAction.OFF,
+    "fan": HVACAction.FAN,
     ACTION_IDLE: HVACAction.IDLE,
     ACTION_HEATING: HVACAction.HEATING,
     ACTION_COOLING: HVACAction.COOLING,
@@ -81,7 +85,15 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """One climate entity per thermostat."""
-    async_add_when_ready(entry, async_add_entities, lambda t: [MysaClimate(t)])
+    async_add_when_ready(
+        entry,
+        async_add_entities,
+        lambda t: (
+            [MysaClimate(t)]
+            if not t.is_climate_sensor and (not t.basic_cloud_only or t.supported_modes)
+            else []
+        ),
+    )
 
 
 class MysaClimate(MysaEntity, ClimateEntity):
@@ -99,11 +111,23 @@ class MysaClimate(MysaEntity, ClimateEntity):
     @property
     def supported_features(self) -> ClimateEntityFeature:
         """Setpoint and on/off, plus fan and swing on a Mini-Split AC."""
-        features = ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
-        if self.thermostat.mode not in (Mode.FAN_ONLY, Mode.DRY):
-            features |= ClimateEntityFeature.TARGET_TEMPERATURE
+        modes = self.thermostat.supported_modes
+        if self.thermostat.basic_cloud_only:
+            features = ClimateEntityFeature(0)
+            if Mode.OFF in modes:
+                features |= ClimateEntityFeature.TURN_OFF
+            if any(mode != Mode.OFF for mode in modes):
+                features |= ClimateEntityFeature.TURN_ON
+            if Mode.HEAT in modes or Mode.COOL in modes:
+                features |= ClimateEntityFeature.TARGET_TEMPERATURE
+            if self.thermostat.is_hvac and Mode.AUTO in modes:
+                features |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
+        else:
+            features = ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
+            if self.thermostat.mode not in (Mode.FAN_ONLY, Mode.DRY, Mode.AUTO):
+                features |= ClimateEntityFeature.TARGET_TEMPERATURE
         # Mini-Split AC only, in modes where its remote has them.
-        if self.thermostat.fan_speeds:
+        if self.thermostat.fan_speeds or self.thermostat.hvac_fan_modes:
             features |= ClimateEntityFeature.FAN_MODE
         if self.thermostat.swing_options(SWING_VERTICAL):
             features |= ClimateEntityFeature.SWING_MODE
@@ -119,7 +143,11 @@ class MysaClimate(MysaEntity, ClimateEntity):
             for m in self.thermostat.supported_modes
             if m in MODE_TO_HVAC
         ]
-        return modes or [HVACMode.OFF, HVACMode.HEAT]
+        return (
+            modes
+            if self.thermostat.basic_cloud_only
+            else modes or [HVACMode.OFF, HVACMode.HEAT]
+        )
 
     @property
     def hvac_mode(self) -> HVACMode | None:
@@ -149,13 +177,39 @@ class MysaClimate(MysaEntity, ClimateEntity):
         return self.thermostat.target_temperature
 
     @property
+    def target_temperature_low(self) -> float | None:
+        """Confirmed heating target in Central HVAC auto mode."""
+        state = self.thermostat.cloud_state
+        return (
+            state.auto_heat_setpoint
+            if self.thermostat.is_hvac and state and state.mode == Mode.AUTO
+            else None
+        )
+
+    @property
+    def target_temperature_high(self) -> float | None:
+        """Confirmed cooling target in Central HVAC auto mode."""
+        state = self.thermostat.cloud_state
+        return (
+            state.auto_cool_setpoint
+            if self.thermostat.is_hvac and state and state.mode == Mode.AUTO
+            else None
+        )
+
+    @property
     def fan_modes(self) -> list[str]:
         """The AC's fan speeds in the current mode."""
-        return [FAN_NAMES[s] for s in self.thermostat.fan_speeds]
+        return (
+            self.thermostat.hvac_fan_modes
+            if self.thermostat.is_hvac
+            else [FAN_NAMES[s] for s in self.thermostat.fan_speeds]
+        )
 
     @property
     def fan_mode(self) -> str | None:
         """The AC's fan speed."""
+        if self.thermostat.is_hvac:
+            return self.thermostat.hvac_fan_mode
         speed = self.thermostat.fan_speed
         return FAN_NAMES[speed] if speed is not None else None
 
@@ -207,6 +261,15 @@ class MysaClimate(MysaEntity, ClimateEntity):
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Change the setpoint (and the mode, if given)."""
+        if self.thermostat.basic_cloud_only:
+            hvac_mode = kwargs.get(ATTR_HVAC_MODE)
+            await self.thermostat.async_set_basic_temperature(
+                mode=HVAC_TO_MODE[hvac_mode] if hvac_mode is not None else None,
+                temperature=kwargs.get(ATTR_TEMPERATURE),
+                low=kwargs.get(ATTR_TARGET_TEMP_LOW),
+                high=kwargs.get(ATTR_TARGET_TEMP_HIGH),
+            )
+            return
         if (hvac_mode := kwargs.get(ATTR_HVAC_MODE)) is not None:
             await self.async_set_hvac_mode(hvac_mode)
         if (temperature := kwargs.get(ATTR_TEMPERATURE)) is not None:
@@ -218,6 +281,9 @@ class MysaClimate(MysaEntity, ClimateEntity):
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Change the AC's fan speed."""
+        if self.thermostat.is_hvac:
+            await self.thermostat.async_set_hvac_fan_mode(fan_mode)
+            return
         await self.thermostat.async_set_fan_speed(FAN_BY_NAME[fan_mode])
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
@@ -236,7 +302,8 @@ class MysaClimate(MysaEntity, ClimateEntity):
             if mode != Mode.OFF:
                 await self.thermostat.async_set_mode(mode)
                 return
-        await self.thermostat.async_set_mode(Mode.HEAT)
+        if not self.thermostat.basic_cloud_only:
+            await self.thermostat.async_set_mode(Mode.HEAT)
 
     async def async_turn_off(self) -> None:
         """Turn off."""

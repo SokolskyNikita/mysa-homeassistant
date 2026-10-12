@@ -71,6 +71,8 @@ class LocalThermostat:
         self.name = name
         self.__device: HomeKitDevice = controller.load_pairing(pairing_data)
         self.__listeners: set[CALLBACK_TYPE] = set()
+        self.__capability_listeners: set[CALLBACK_TYPE] = set()
+        self.__refresh_task: asyncio.Task[None] | None = None
         self.__device_unsub: Callable[[], None] | None = None
         self.__poll_unsub: CALLBACK_TYPE | None = None
         self.__started = False
@@ -133,6 +135,12 @@ class LocalThermostat:
         return lambda: self.__listeners.discard(listener)
 
     @callback
+    def add_capability_listener(self, listener: CALLBACK_TYPE) -> CALLBACK_TYPE:
+        """Follow local field discovery and advertised metadata changes."""
+        self.__capability_listeners.add(listener)
+        return lambda: self.__capability_listeners.discard(listener)
+
+    @callback
     def __notify(self) -> None:
         for listener in tuple(self.__listeners):
             listener()
@@ -158,6 +166,20 @@ class LocalThermostat:
     @callback
     def __handle_event(self, event: HomeKitEvent) -> None:
         """Apply translated notifications without inspecting HAP payloads."""
+        if event.refresh_required:
+            if self.__started and (
+                self.__refresh_task is None or self.__refresh_task.done()
+            ):
+                self.__refresh_task = self.hass.async_create_background_task(
+                    self.__async_refresh(), f"mysa {self.name} metadata refresh"
+                )
+            return
+        if event.capabilities_changed:
+            self.__observed_values = dict(self.__device.state)
+            for listener in tuple(self.__capability_listeners):
+                listener()
+            if not self.ready:
+                self.__set_available(False, "HomeKit missing required fields")
         for field in event.failed_fields:
             if field in _ESSENTIAL_FIELDS:
                 self.__failed_essential_fields.add(field)
@@ -185,8 +207,15 @@ class LocalThermostat:
             )
         ):
             self.__set_available(True)
-        if changed and self.available:
+        if (changed and self.available) or event.capabilities_changed:
             self.__notify()
+
+    async def __async_refresh(self) -> None:
+        # Wait for an in-flight poll before checking metadata; dropping this
+        # request could leave a configuration event unhandled until the next poll.
+        async with self.__poll_lock:
+            pass
+        await self.async_poll()
 
     @staticmethod
     def __format_event_error(event: HomeKitEvent) -> str:
@@ -235,28 +264,17 @@ class LocalThermostat:
         if self.__poll_lock.locked():
             return
         async with self.__poll_lock:
-            if not self.ready:
-                try:
-                    async with asyncio.timeout(15):
-                        await self.__device.async_connect()
-                except (HomeKitError, TimeoutError) as error:
-                    self.__failed_essential_fields.update(_ESSENTIAL_FIELDS)
-                    self.__set_available(False, str(error) or type(error).__name__)
-                    return
-                if not self.ready:
-                    missing = _ESSENTIAL_FIELDS - self.__device.supported_fields
-                    self.__failed_essential_fields.update(missing)
-                    self.__set_available(
-                        False,
-                        "HomeKit missing required fields: "
-                        + ", ".join(sorted(field.value for field in missing)),
-                    )
-                    return
+            try:
+                await self.__device.async_connect()
+            except LOCAL_ERRORS as error:
+                self.__failed_essential_fields.update(_ESSENTIAL_FIELDS)
+                self.__set_available(False, str(error) or type(error).__name__)
+                return
 
             try:
                 previous = dict(self.__device.state)
                 await self.async_read(
-                    tuple(self.__device.supported_fields),
+                    tuple(self.__device.supported_fields | _ESSENTIAL_FIELDS),
                     timeout=LOCAL_READ_TIMEOUT * 3,
                 )
             except LOCAL_ERRORS as error:
@@ -269,7 +287,7 @@ class LocalThermostat:
 
             self.__failed_essential_fields.clear()
             current = dict(self.__device.state)
-            self.__observed_values.update(current)
+            self.__observed_values = current
             changed = previous != current
             self.__set_available(True)
             if changed and self.available:
@@ -326,6 +344,11 @@ class LocalThermostat:
             self.__device_unsub()
             self.__device_unsub = None
         self.__listeners.clear()
+        self.__capability_listeners.clear()
+        if self.__refresh_task is not None:
+            self.__refresh_task.cancel()
+            await asyncio.gather(self.__refresh_task, return_exceptions=True)
+            self.__refresh_task = None
         if not self.__started:
             return
         self.__started = False

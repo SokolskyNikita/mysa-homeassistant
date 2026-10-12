@@ -6,7 +6,9 @@ from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 import json
 import logging
-from typing import Any
+import math
+import time
+from typing import Any, Literal
 
 import aiohttp
 
@@ -26,6 +28,7 @@ from .commands import (
 from .const import (
     API_BASE,
     APP_VERSION,
+    EXPERIMENTAL_CLOUD_FAMILIES,
     LEGACY_API_BASE,
     REQUEST_TIMEOUT,
     WIFI_ONLY_FAMILIES,
@@ -162,6 +165,10 @@ class MysaClient:
         self._user_agent = user_agent
         self._base_url = base_url
         self._legacy_base_url = legacy_base_url
+        self._fallback_until: dict[str, float] = {}
+        self.source_errors: dict[str, dict[str, str]] = {}
+        self.legacy_source = "R"
+        self._device_models: dict[str, str | None] = {}
 
     async def _request(
         self,
@@ -221,6 +228,8 @@ class MysaClient:
         if status == 429:
             try:
                 wait = float(retry_after) if retry_after else None
+                if wait is not None and (not math.isfinite(wait) or wait < 0):
+                    wait = None
             except ValueError:
                 wait = None
             msg = f"{method} {path}: rate limited"
@@ -238,6 +247,78 @@ class MysaClient:
         except ValueError:
             return text
 
+    async def _legacy_request(
+        self, operation: str, method: str, path: str, *, body: Any = None
+    ) -> Any:
+        """Use only verified legacy routes; ambiguous writes are never replayed."""
+        if operation not in {
+            "state",
+            "records",
+            "settings",
+            "schedules_v1",
+            "schedules_v2",
+        }:
+            raise ValueError(f"No verified fallback for {operation}")
+        use_old = time.monotonic() < self._fallback_until.get(operation, 0)
+        try:
+            data = await self._request(
+                method,
+                path,
+                body=body,
+                base_url=self._legacy_base_url if use_old else None,
+            )
+        except (MysaConnectionError, MysaApiError, MysaNotFoundError) as err:
+            if operation == "schedules_v2" and isinstance(err, MysaNotFoundError):
+                raise  # A device without a schedule does not imply a missing host route.
+            unsupported = isinstance(err, MysaNotFoundError) or (
+                isinstance(err, MysaApiError) and err.status in (403, 405, 501)
+            )
+            # 429 is a service limit, not evidence another host should be tried.
+            if (
+                use_old
+                or isinstance(err, MysaRateLimitError)
+                or (method != "GET" and not unsupported)
+            ):
+                raise
+            if not unsupported and not isinstance(err, MysaConnectionError):
+                raise
+            self._fallback_until[operation] = time.monotonic() + 300
+            data = await self._request(
+                method, path, body=body, base_url=self._legacy_base_url
+            )
+            use_old = True
+        if operation == "state":
+            self.legacy_source = "L" if use_old else "R"
+        return data
+
+    async def get_legacy_states(
+        self, device_ids: Iterable[str]
+    ) -> dict[str, DeviceState]:
+        """Legacy live state with per-field clocks and independent partial errors."""
+        device_ids = list(device_ids)
+        if not device_ids:
+            return {}
+        data = await self._legacy_request("state", "GET", "/devices/state")
+        if not isinstance(data, dict) or not isinstance(
+            data.get("DeviceStatesObj"), dict
+        ):
+            raise MysaApiError("Unexpected /devices/state response")
+        states = {}
+        errors = {}
+        for dev in device_ids:
+            item = data["DeviceStatesObj"].get(dev)
+            if isinstance(item, dict):
+                states[dev] = DeviceState.from_legacy(
+                    dev,
+                    item,
+                    source=self.legacy_source,
+                    model=self._device_models.get(dev),
+                )
+            else:
+                errors[dev] = "missing_or_invalid_device"
+        self.source_errors["legacy"] = errors
+        return states
+
     # ---- account -------------------------------------------------------
 
     async def bootstrap(self) -> Bootstrap:
@@ -252,11 +333,16 @@ class MysaClient:
 
     async def get_devices(self) -> dict[str, DeviceRecord]:
         """Settings records of every thermostat on the account."""
-        data = await self._request("GET", "/devices")
+        data = await self._legacy_request("records", "GET", "/devices")
         devices = data.get("DevicesObj") if isinstance(data, dict) else None
         if not isinstance(devices, dict):
             msg = "Unexpected /devices response"
             raise MysaApiError(msg)
+        if any(not isinstance(record, dict) for record in devices.values()):
+            raise MysaApiError("Incomplete device records")
+        self._device_models.update(
+            {dev: record.get("Model") for dev, record in devices.items()}
+        )
         return {
             dev_id: DeviceRecord.from_api(dev_id, record)
             for dev_id, record in devices.items()
@@ -369,9 +455,14 @@ class MysaClient:
             msg = "Unexpected /state/batch response"
             raise MysaApiError(msg)
         states = {}
-        for dev_id, item in data.items():
+        errors = {}
+        for dev_id in ids:
+            item = data.get(dev_id)
             if isinstance(item, dict) and isinstance(item.get("data"), dict):
                 states[dev_id] = DeviceState.from_api(dev_id, item["data"])
+            else:
+                errors[dev_id] = "missing_or_invalid_device"
+        self.source_errors["S"] = errors
         return states
 
     async def get_state(self, device_id: str) -> DeviceState:
@@ -411,21 +502,50 @@ class MysaClient:
         await self.update_state(device_id, swing_changes(direction, value))
 
     async def set_display_brightness(
-        self, device_id: str, *, active: int, idle: int
+        self,
+        device_id: str,
+        *,
+        active: int,
+        idle: int,
+        route: Literal["S", "R", "L"] = "S",
     ) -> None:
         """Set both wake and idle screen brightness values."""
-        await self.update_state(device_id, display_brightness_changes(active, idle))
+        if not 0 <= idle <= active <= 100:
+            raise ValueError("Brightness must satisfy 0 <= idle <= active <= 100")
+        await self._setting_route(
+            device_id,
+            display_brightness_changes(active, idle),
+            {"MaxBrightness": active, "MinBrightness": idle},
+            route,
+        )
 
-    async def set_button_lock(self, device_id: str, value: ButtonLock) -> None:
+    async def set_button_lock(
+        self, device_id: str, value: ButtonLock, *, route: Literal["S", "R", "L"] = "S"
+    ) -> None:
         """Lock or unlock the thermostat's physical buttons."""
-        await self.update_state(device_id, button_lock_changes(value))
+        if route != "S" and value not in (ButtonLock.UNLOCKED, ButtonLock.LOCKED):
+            raise ValueError("Legacy settings support only locked/unlocked")
+        await self._setting_route(
+            device_id,
+            button_lock_changes(value),
+            {"ButtonState": "Locked" if int(value) == 3 else "Unlocked"},
+            route,
+        )
 
     async def set_setpoint_limit(
-        self, device_id: str, value: float, *, minimum: bool
+        self,
+        device_id: str,
+        value: float,
+        *,
+        minimum: bool,
+        route: Literal["S", "R", "L"] = "S",
     ) -> None:
         """Set the minimum or maximum allowed heating setpoint."""
-        await self.update_state(
-            device_id, setpoint_limit_changes(value, minimum=minimum)
+        await self._setting_route(
+            device_id,
+            setpoint_limit_changes(value, minimum=minimum),
+            {"MinSetpoint" if minimum else "MaxSetpoint": value},
+            route,
         )
 
     async def set_temperature_offset(self, device_id: str, value: float) -> None:
@@ -434,18 +554,68 @@ class MysaClient:
 
     async def update_settings(self, device_id: str, fields: Mapping[str, Any]) -> None:
         """Change fields of the settings record (Format, DutyCycleOpt, Name, ...)."""
-        # The trailing slash matches the app; without it the route differs.
-        await self._request("POST", f"/devices/{device_id}/", body=dict(fields))
+        # Only verified semantic fields participate in automatic host fallback.
+        allowed = {
+            "ButtonState",
+            "MaxBrightness",
+            "MinBrightness",
+            "MinSetpoint",
+            "MaxSetpoint",
+            "Format",
+            "DutyCycleOpt",
+        }
+        if fields and set(fields) <= allowed:
+            await self._legacy_request(
+                "settings", "POST", f"/devices/{device_id}/", body=dict(fields)
+            )
+        else:
+            await self._request("POST", f"/devices/{device_id}/", body=dict(fields))
 
-    async def set_display_unit(self, device_id: str, unit: str) -> None:
+    async def set_display_unit(
+        self, device_id: str, unit: str, *, route: Literal["S", "R", "L"] = "R"
+    ) -> None:
         """Set the thermostat's screen to Celsius or Fahrenheit."""
-        await self.update_settings(device_id, display_unit_settings(unit))
+        settings = display_unit_settings(unit)
+        await self._setting_route(
+            device_id, {"physicalInterface": {"format": unit.upper()}}, settings, route
+        )
 
     async def set_heater_type(
-        self, device_id: str, heater_type: int | HeaterType
+        self,
+        device_id: str,
+        heater_type: int | HeaterType,
+        *,
+        route: Literal["S", "R", "L"] = "R",
     ) -> None:
         """Set the heater profile in the device settings record."""
-        await self.update_settings(device_id, heater_type_settings(heater_type))
+        await self._setting_route(
+            device_id,
+            {"bbConfig": {"controlType": int(heater_type)}},
+            heater_type_settings(heater_type),
+            route,
+        )
+
+    async def _setting_route(
+        self,
+        device_id: str,
+        state: Mapping[str, Mapping[str, Any]],
+        settings: Mapping[str, Any],
+        route: Literal["S", "R", "L"],
+    ) -> None:
+        """Select one verified semantic encoder; never broadcast a command."""
+        if route == "S":
+            await self.update_state(device_id, state)
+        elif route == "R":
+            await self.update_settings(device_id, settings)
+        elif route == "L":
+            await self._request(
+                "POST",
+                f"/devices/{device_id}/",
+                body=dict(settings),
+                base_url=self._legacy_base_url,
+            )
+        else:
+            raise ValueError(f"Unsupported settings route: {route}")
 
     async def get_capabilities(self, device_id: str) -> Capabilities:
         """What this model supports."""
@@ -475,7 +645,7 @@ class MysaClient:
 
     async def start_firmware_update(self, device_id: str) -> None:
         """Ask Mysa to push the offered firmware. Irreversible."""
-        await self._request("POST", f"/devices/{device_id}/firmware-update")
+        await self._request("POST", f"/devices/{device_id}/firmware-update", body={})
 
     # ---- history -------------------------------------------------------
 
@@ -601,9 +771,132 @@ class MysaClient:
             )
         except MysaNotFoundError:
             return []
-        if isinstance(data, list):
-            return [item for item in data if isinstance(item, dict)]
-        return []
+        if not isinstance(data, list) or any(
+            not isinstance(item, dict) for item in data
+        ):
+            raise MysaApiError("Malformed schedule discovery")
+        for item in data:
+            if (
+                not isinstance(item.get("id"), str)
+                or not isinstance(item.get("deviceIds"), list)
+                or any(not isinstance(dev, str) for dev in item["deviceIds"])
+            ):
+                raise MysaApiError("Incomplete schedule discovery")
+            if not isinstance(item.get("events"), list) or any(
+                not isinstance(event, dict) for event in item["events"]
+            ):
+                raise MysaApiError("Incomplete schedule events")
+        return data
+
+    async def get_all_schedules(self, home_id: str) -> list[dict[str, Any]]:
+        """Complete native discovery; no mutation is safe after an incomplete read."""
+        from .schedules import native_schedule
+
+        modern = await self.get_schedules(home_id)
+        records = await self.get_devices()
+        devices = {
+            dev: record
+            for dev, record in records.items()
+            if record.home_id == home_id
+            and model_family(record.model) not in EXPERIMENTAL_CLOUD_FAMILIES
+        }
+        if not devices:
+            return modern
+        data = await self._legacy_request("schedules_v1", "GET", "/schedules")
+        if not isinstance(data, dict) or not isinstance(data.get("Schedules"), list):
+            raise MysaApiError("Malformed legacy schedule list")
+        native: dict[tuple[str, str], dict[str, Any]] = {}
+        for raw in data["Schedules"]:
+            if not isinstance(raw, dict) or not isinstance(raw.get("Device"), str):
+                raise MysaApiError("Malformed legacy schedule entry")
+            dev = raw["Device"]
+            if dev in devices:
+                entry = native_schedule(
+                    "v1", raw, dev, devices[dev].model or "", home_id
+                )
+                if entry:
+                    native[("v1", entry["id"])] = entry
+        for dev, record in devices.items():
+            try:
+                raw = await self._legacy_request(
+                    "schedules_v2", "GET", f"/schedules/v2/{dev}"
+                )
+            except MysaNotFoundError:
+                continue
+            if not isinstance(raw, dict):
+                raise MysaApiError("Malformed legacy v2 response")
+            entry = native_schedule("v2", raw, dev, record.model or "", home_id)
+            if entry:
+                key = ("v2", entry["id"])
+                if key in native:
+                    if (
+                        native[key]["native"] != entry["native"]
+                        or native[key]["deviceType"] != entry["deviceType"]
+                    ):
+                        raise MysaApiError("Conflicting shared legacy schedule")
+                    native[key]["deviceIds"].append(dev)
+                else:
+                    native[key] = entry
+        native_ids = {item["id"] for item in native.values()}
+        return [item for item in modern if item["id"] not in native_ids] + list(
+            native.values()
+        )
+
+    async def remove_schedule(
+        self, schedule: Mapping[str, Any], device_id: str
+    ) -> None:
+        """Detach through the snapshot's native route, preserving other attachments."""
+        from .schedules import WEEKDAYS
+
+        origin = schedule.get("origin")
+        if origin == "v1":
+            await self._legacy_request(
+                "schedules_v1",
+                "POST",
+                f"/schedules/device/update/{device_id}",
+                body={
+                    "Device": device_id,
+                    "Model": schedule["deviceType"],
+                    "ScheduledActions": {day: [] for day in WEEKDAYS},
+                },
+            )
+        elif origin == "v2":
+            await self._legacy_request(
+                "schedules_v2",
+                "DELETE",
+                f"/schedules/v2/{schedule['id']}",
+                body={"Devices": [device_id], "Model": schedule["deviceType"]},
+            )
+        else:
+            await self.delete_schedule(str(schedule["id"]), device_id)
+
+    async def restore_native_schedule(self, schedule: Mapping[str, Any]) -> None:
+        """Restore a journal snapshot after failed cleanup; no user-facing editor."""
+        raw = dict(schedule["native"])
+        devices = list(schedule["deviceIds"])
+        if schedule["origin"] == "v1":
+            for dev in devices:
+                await self._legacy_request(
+                    "schedules_v1",
+                    "POST",
+                    f"/schedules/device/update/{dev}",
+                    body={
+                        "Device": dev,
+                        "Model": schedule["deviceType"],
+                        "ScheduledActions": raw["ScheduledActions"],
+                    },
+                )
+        else:
+            await self._legacy_request(
+                "schedules_v2",
+                "POST",
+                "/schedules/v2/",
+                body={
+                    "Schedule": raw,
+                    "Devices": devices,
+                    "Model": schedule["deviceType"],
+                },
+            )
 
     async def create_schedule(
         self,

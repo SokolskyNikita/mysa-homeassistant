@@ -98,6 +98,8 @@ class HomeKitEvent:
     values: Mapping[Field, Any]
     failed_fields: Mapping[Field, str]
     reconnected: bool = False
+    refresh_required: bool = False
+    capabilities_changed: bool = False
 
     @classmethod
     def create(
@@ -106,12 +108,16 @@ class HomeKitEvent:
         failed_fields: Mapping[Field, str] | None = None,
         *,
         reconnected: bool = False,
+        refresh_required: bool = False,
+        capabilities_changed: bool = False,
     ) -> HomeKitEvent:
         """Copy event payloads into immutable mappings."""
         return cls(
             MappingProxyType(dict(values or {})),
             MappingProxyType(dict(failed_fields or {})),
             reconnected,
+            refresh_required,
+            capabilities_changed,
         )
 
 

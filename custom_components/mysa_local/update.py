@@ -35,7 +35,11 @@ async def async_setup_entry(
     async_add_when_ready(
         entry,
         async_add_entities,
-        lambda t: [FirmwareUpdate(t, allow_install)] if t.firmware_info else [],
+        lambda t: (
+            [FirmwareUpdate(t, allow_install)]
+            if t.firmware_info and not t.basic_cloud_only
+            else []
+        ),
     )
 
 

@@ -29,8 +29,8 @@ from custom_components.mysa_local.account import (
     async_refresh_account,
     async_remove_from_account,
     can_claim,
+    can_import_cloud,
     can_pair_locally,
-    is_supported_model,
 )
 from custom_components.mysa_local.const import (
     CONF_CLOUD_RUNTIME,
@@ -43,6 +43,10 @@ from custom_components.mysa_local.protocols.cloud import (
     MODEL_NAMES,
     TESTED_MODELS,
     MysaError,
+)
+from custom_components.mysa_local.protocols.cloud.const import (
+    EXPERIMENTAL_CLOUD_FAMILIES,
+    model_family,
 )
 from custom_components.mysa_local.protocols.homekit import AccessoryInfo
 
@@ -87,7 +91,7 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
         return {
             dev: f"{rec.name or dev} ({MODEL_NAMES.get(rec.model or '', rec.model or '?')})"
             for dev, rec in runtime.cloud.data.records.items()
-            if dev not in known and is_supported_model(rec.model)
+            if dev not in known and can_import_cloud(rec.model)
         }
 
     async def async_step_cloud_pick(
@@ -206,16 +210,17 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
         status = account_status(entry, device_id)
         has_client = account_client(entry) is not None
         cloud_name = self._cloud_name()
-        menu = ["settings"]
+        basic = model_family(model) in EXPERIMENTAL_CLOUD_FAMILIES
+        menu = ["cloud_info"] if basic else ["settings"]
         if not paired and can_pair_locally(model):
             menu.append("local_pair")
         if status == ACCOUNT_OFF and has_client and can_claim(device_id, model):
             menu.append("account_add")
         if status == ACCOUNT_ON and names_differ(subentry.title, cloud_name):
             menu.append("name_from_mysa")
-            if has_client:
+            if has_client and not basic:
                 menu.append("name_to_mysa")
-        if status == ACCOUNT_ON and has_client:
+        if status == ACCOUNT_ON and has_client and not basic:
             menu.append("account_remove")
         return self.async_show_menu(
             step_id="reconfigure",
@@ -223,9 +228,19 @@ class ThermostatSubentryFlow(ThermostatSteps, ConfigSubentryFlow):
             description_placeholders={
                 "name": subentry.title,
                 "account": account_line(status, subentry.title, cloud_name),
-                "local": local_line(paired),
+                "local": local_line(paired)
+                if not basic
+                else "Cloud only · experimental support. Manage device setup in the Mysa app.",
             },
         )
+
+    async def async_step_cloud_info(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Explain the experimental cloud-only scope without an empty settings menu."""
+        if user_input is not None:
+            return self.async_abort(reason="cloud_info")
+        return self.async_show_form(step_id="cloud_info", data_schema=vol.Schema({}))
 
     def _cloud_name(self) -> str | None:
         """The thermostat's name in the Mysa app, if known."""

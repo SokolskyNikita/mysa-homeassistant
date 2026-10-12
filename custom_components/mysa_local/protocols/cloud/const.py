@@ -242,6 +242,12 @@ WIFI_ONLY_FAMILIES: Final = frozenset(
 )
 
 
+# Cloud import/control is independent of Bluetooth enrollment and HomeKit.
+EXPERIMENTAL_CLOUD_FAMILIES: Final = frozenset(
+    {ModelFamily.BASEBOARD_V3, ModelFamily.CENTRAL_HVAC, ModelFamily.CLIMATE_SENSOR}
+)
+
+
 def model_family(model: str | None) -> ModelFamily | None:
     """The family of a model string, or None when Mysa's app doesn't know it."""
     return MODEL_FAMILIES.get(model.strip().upper()) if model else None

@@ -52,7 +52,7 @@ async def test_subentry_reconfigure_wattage(hass: HomeAssistant) -> None:
         result["flow_id"], {CONF_HEATER_WATTS: 1500, CONF_CLOUD_RUNTIME: False}
     )
     assert result["reason"] == "reconfigure_successful"
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert subentry.data[CONF_HEATER_WATTS] == 1500
     assert hass.states.get("sensor.living_room_heater_energy_today").state == "0.0"
     power = hass.states.get("sensor.living_room_heater_power")
@@ -110,6 +110,7 @@ async def test_add_thermostat_offers_account(
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert [c["Id"] for c in cloud.claims] == [DEVICE_ID]
+    await hass.async_block_till_done(wait_background_tasks=True)
 
 
 @pytest.mark.usefixtures("unpaired_controller")
@@ -133,6 +134,7 @@ async def test_add_thermostat_on_account_skips_offer(
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert cloud.claims == []
+    await hass.async_block_till_done(wait_background_tasks=True)
 
 
 @pytest.mark.usefixtures("controller")
@@ -193,7 +195,7 @@ async def test_settings_remove_and_add_back(
     assert cloud.shortcut_updates == [
         (cloud.scenes[1]["Id"], {"DeviceActions": {"other": {}}, "AllDevices": True})
     ]
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert hass.states.get("sensor.living_room_mysa_account").state == "not_on_account"
     issue = ir.async_get(hass).async_get_issue(DOMAIN, ACCOUNT_ISSUE)
     assert issue is not None
@@ -209,7 +211,7 @@ async def test_settings_remove_and_add_back(
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], {})
     assert result["reason"] == "added_to_account"
     assert cloud.claims[-1]["Name"] == "Living Room"
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert hass.states.get("sensor.living_room_mysa_account").state == "on_account"
     assert ir.async_get(hass).async_get_issue(DOMAIN, ACCOUNT_ISSUE) is None
 
@@ -233,7 +235,7 @@ async def test_settings_pair_cloud_only_locally(
         result["flow_id"], {"pairing_code": PAIRING_CODE}
     )
     assert result["reason"] == "thermostat_updated"
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert entry.subentries[subentry.subentry_id].data[CONF_PAIRING]
 
 
@@ -261,17 +263,17 @@ async def test_pairing_a_different_thermostat_is_undone(
 
 
 @pytest.mark.usefixtures("controller")
-async def test_add_from_account_skips_unsupported(
+async def test_add_from_account_includes_new_models(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
-    """With only an unsupported model left on the account, there's nothing to add."""
+    """New cloud models remain available when existing local models are imported."""
     cloud.add_unsupported()
     entry = hub_entry()
     await setup_entry(hass, entry)
     result = await hass.config_entries.subentries.async_init(
         (entry.entry_id, "thermostat"), context={"source": config_entries.SOURCE_USER}
     )
-    assert "cloud_pick" not in result["menu_options"]
+    assert "cloud_pick" in result["menu_options"]
 
 
 @pytest.mark.usefixtures("controller")
@@ -310,7 +312,8 @@ async def test_names_shown_and_synced_both_ways(
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], {})
     assert result["reason"] == "renamed_in_mysa"
     assert cloud.settings == [{"Name": "Mysa-d4e5f6"}]
-    await hass.async_block_till_done()
+    await entry.runtime_data.cloud.async_refresh()
+    await hass.async_block_till_done(wait_background_tasks=True)
     device = dr.async_get(hass).async_get_device_by_identifier(
         (DOMAIN, DEVICE_ID), entry.entry_id
     )
@@ -329,7 +332,7 @@ async def test_names_shown_and_synced_both_ways(
     assert result["step_id"] == "name_from_mysa"
     result = await hass.config_entries.subentries.async_configure(result["flow_id"], {})
     assert result["reason"] == "renamed_here"
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert entry.subentries[subentry.subentry_id].title == "Living Room"
     device = dr.async_get(hass).async_get_device_by_identifier(
         (DOMAIN, DEVICE_ID), entry.entry_id

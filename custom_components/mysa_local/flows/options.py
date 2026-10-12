@@ -13,7 +13,7 @@ from homeassistant.helpers.selector import (
 )
 import voluptuous as vol
 
-from custom_components.mysa_local.account import is_supported_model
+from custom_components.mysa_local.account import can_import_cloud
 from custom_components.mysa_local.cloud_coordinator import CloudData
 from custom_components.mysa_local.const import (
     CONF_CLOUD_ENABLED,
@@ -109,7 +109,7 @@ class MysaOptionsFlow(OptionsFlow):
             model = record.model or ""
             cloud_name = record.name or device_id
             subentry = in_ha.get(device_id)
-            if subentry is None and not is_supported_model(model):
+            if subentry is None and not can_import_cloud(model):
                 ha_name, where = "—", "❌ Not supported"
             elif subentry is None:
                 not_added += 1

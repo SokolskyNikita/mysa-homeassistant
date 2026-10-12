@@ -35,7 +35,13 @@ async def async_setup_entry(
         if thermostat.supports_display_unit:
             entities.append(DisplayUnitSelect(thermostat))
         caps = thermostat.capabilities
-        if caps is not None and set(HEATER_OPTIONS) <= set(caps.control_types):
+        if thermostat.hvac_fan_speeds:
+            entities.append(HvacFanSpeedSelect(thermostat))
+        if (
+            not thermostat.basic_cloud_only
+            and caps is not None
+            and set(HEATER_OPTIONS) <= set(caps.control_types)
+        ):
             entities.append(HeaterTypeSelect(thermostat))
         return entities
 
@@ -95,3 +101,46 @@ class HeaterTypeSelect(MysaCloudEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         """Change the heater type."""
         await self.thermostat.async_set_heater_type(HEATER_BY_OPTION[option])
+
+
+HVAC_FAN_SPEEDS = {
+    0: "off",
+    **{n: f"speed_{n}" for n in range(1, 8)},
+    8: "sleep",
+    9: "auto",
+}
+
+
+class HvacFanSpeedSelect(MysaCloudEntity, SelectEntity):
+    """Native Central HVAC speeds, separate from fan on/auto/circulation."""
+
+    _attr_translation_key = "hvac_fan_speed"
+
+    def __init__(self, thermostat: Thermostat) -> None:
+        """Create the optional speed control."""
+        super().__init__(thermostat, "hvac_fan_speed")
+
+    @property
+    def available(self) -> bool:
+        """Unavailable in modes without supported fan speeds."""
+        return super().available and bool(self.thermostat.hvac_fan_speeds)
+
+    @property
+    def options(self) -> list[str]:
+        """Only the speeds the capability document allows in this mode."""
+        return [HVAC_FAN_SPEEDS[n] for n in self.thermostat.hvac_fan_speeds]
+
+    @property
+    def current_option(self) -> str | None:
+        """Reported native fan speed."""
+        state = self.cloud_state
+        return (
+            HVAC_FAN_SPEEDS.get(state.fan_mode)
+            if state and state.fan_mode is not None
+            else None
+        )
+
+    async def async_select_option(self, option: str) -> None:
+        """The command boundary rechecks against the latest mode intent."""
+        speed = next(n for n, label in HVAC_FAN_SPEEDS.items() if label == option)
+        await self.thermostat.async_set_hvac_fan_speed(speed)

@@ -123,12 +123,20 @@ async def async_setup_entry(
 
     def _entities(thermostat: Thermostat) -> list[MysaEntity]:
         caps = thermostat.capabilities
-        if caps is None or thermostat.cloud_state is None:
+        if (
+            caps is None
+            or thermostat.cloud_state is None
+            or thermostat.is_climate_sensor
+        ):
             return []
         return [
             MysaNumber(thermostat, description)
             for description in NUMBERS
             if description.supported(caps)
+            and (
+                not thermostat.basic_cloud_only
+                or description.key in ("brightness_active", "brightness_idle")
+            )
         ]
 
     async_add_when_ready(entry, async_add_entities, _entities)

@@ -26,7 +26,11 @@ async def async_setup_entry(
 
     def _entities(thermostat: Thermostat) -> list[MysaEntity]:
         caps = thermostat.capabilities
-        if caps is None or ButtonLock.LOCKED not in caps.lockout_values:
+        if (
+            thermostat.is_climate_sensor
+            or caps is None
+            or ButtonLock.LOCKED not in caps.lockout_values
+        ):
             return []
         return [ButtonLockSwitch(thermostat)]
 

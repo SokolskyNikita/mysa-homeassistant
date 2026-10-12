@@ -176,7 +176,7 @@ async def test_discovery_paired_elsewhere(hass: HomeAssistant) -> None:
 
 @pytest.mark.parametrize("model", ["BB-V3-0", "ST-V1-0", "CS-V1-0"])
 async def test_discovery_of_unsupported_model(hass: HomeAssistant, model: str) -> None:
-    """The Baseboard V3, Central HVAC and Climate Sensor aren't supported."""
+    """Newer models remain excluded from HomeKit discovery."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_HOMEKIT},
@@ -229,11 +229,11 @@ async def test_cloud_only_setup(hass: HomeAssistant, cloud: FakeCloud) -> None:
     assert subentry.title == "Living Room"
 
 
-async def test_cloud_only_setup_skips_unsupported(
+async def test_cloud_only_setup_includes_new_models(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
-    """An unsupported model on the account isn't offered."""
-    cloud.add_unsupported()
+    """Enrollment restrictions do not exclude already enrolled cloud models."""
+    added = cloud.add_unsupported()
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -245,7 +245,7 @@ async def test_cloud_only_setup_skips_unsupported(
     )
     assert result["step_id"] == "cloud_devices"
     (key,) = result["data_schema"].schema
-    assert key.default() == [DEVICE_ID]
+    assert key.default() == [DEVICE_ID, added]
 
 
 async def test_sign_in_survives_bootstrap_failure(
@@ -446,3 +446,5 @@ async def test_discovered_thermostat_offered_the_account(
     assert result["reason"] == "thermostat_added"
     assert cloud.on_account
     assert len(entry.subentries) == 1
+
+    await hass.async_block_till_done(wait_background_tasks=True)

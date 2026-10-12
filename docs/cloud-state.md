@@ -45,7 +45,10 @@ Legacy Baseboard, AC and In-floor devices are exposed through the current `/stat
 See the [cloud request table](../custom_components/mysa_local/protocols/cloud/README.md#requests-and-state)
 for the single-device and batch endpoints. A single-device read returns the
 state object directly; a batch returns `{"{dev}":{"data":<state>}}`, with errors
-possible for individual IDs. `get_states()` omits failed entries.
+possible for individual IDs. `get_states()` returns successful entries and records per-device errors in
+`source_errors`. The coordinator retains previous missing observations and reads
+legacy `/devices/state` independently. Each selected field retains its own source
+and clock; the fetch time never makes a stale measurement fresh.
 
 Online status can remain true while readings are stale. Assess each field/source timestamp rather than trusting the connection flag; the
 [live reporting behavior](#live-mode-and-liveness) explains the delay.

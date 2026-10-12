@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.components.diagnostics import REDACTED, async_redact_data
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_PAIRING,
@@ -50,7 +51,10 @@ def _scrub_device_ids(data: Any, fragments: tuple[str, ...]) -> Any:
     which with the vendor prefix gives the whole ID away.
     """
     if isinstance(data, dict):
-        return {key: _scrub_device_ids(value, fragments) for key, value in data.items()}
+        return {
+            _scrub_device_ids(key, fragments): _scrub_device_ids(value, fragments)
+            for key, value in data.items()
+        }
     if isinstance(data, list):
         return [_scrub_device_ids(value, fragments) for value in data]
     if isinstance(data, str):
@@ -71,6 +75,11 @@ async def async_get_config_entry_diagnostics(
         cloud = thermostat.cloud
         item: dict[str, Any] = {
             "model": thermostat.model,
+            "support_status": "experimental_cloud"
+            if thermostat.basic_cloud_only
+            else "existing",
+            "model_family": thermostat.family,
+            "sensor_only": thermostat.is_climate_sensor,
             "firmware": thermostat.firmware,
             "connection_path": thermostat.connection_path,
             "supported_modes": [m.name for m in thermostat.supported_modes],
@@ -94,6 +103,35 @@ async def async_get_config_entry_diagnostics(
                 "record": async_redact_data(record.raw, TO_REDACT) if record else None,
                 "firmware": asdict(firmware) if firmware else None,
                 "hold": thermostat.hold is not None,
+                "sources": cloud.source_health,
+                "observations": {
+                    name: {
+                        "source": obs.source,
+                        "kind": obs.kind,
+                        "observed_at": obs.observed_at.isoformat()
+                        if obs.observed_at
+                        else None,
+                        "fetched_at": obs.fetched_at.isoformat(),
+                        "age_seconds": (
+                            dt_util.utcnow() - obs.observed_at
+                        ).total_seconds()
+                        if obs.observed_at
+                        else None,
+                        "fresh": obs.fresh(dt_util.utcnow()),
+                    }
+                    for name, obs in state.observations.items()
+                }
+                if state
+                else {},
+                "commands": {
+                    name: {
+                        "status": command.status,
+                        "submitted_at": command.submitted_at.isoformat(),
+                        "expires_at": command.expires_at.isoformat(),
+                        "confirmation": command.confirmation,
+                    }
+                    for name, command in cloud.pending.get(dev, {}).items()
+                },
             }
         thermostats.append(item)
 

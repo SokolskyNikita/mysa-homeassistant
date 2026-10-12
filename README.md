@@ -10,7 +10,7 @@ An optional Mysa sign-in adds settings, humidity, schedules, firmware checks and
 
 ## Supported models
 
-Only the Baseboard Lite has been tested on hardware. The integration accepts the other older models below, but their controls and pairing still need testing.
+Only the Baseboard Lite has been tested on hardware. Other models are supported in code with the limits below; their controls still need hardware testing.
 
 | Model | Model IDs | Status |
 |---|---|---|
@@ -18,13 +18,13 @@ Only the Baseboard Lite has been tested on hardware. The integration accepts the
 | Other Baseboard V1 / V2 models | `BB-V1-*`, `BB-V2-*` | Supported in code; untested |
 | In-Floor | `INF-V1-0` | Supported in code; untested |
 | Mini-Split AC | `AC-V1-0` | Supported in code; untested |
-| Central HVAC | `ST-V1-0` | Not supported |
-| Baseboard V3 | `BB-V3-0` | Not supported |
-| Climate Sensor | `CS-V1-0` | Not supported |
+| Central HVAC | `ST-V1-0`, `ST-V1`, `LV` | Experimental cloud support after setup in the Mysa app |
+| Baseboard V3 | `BB-V3-0` | Experimental cloud support after setup in the Mysa app |
+| Climate Sensor | `CS-V1-0`, `CS-V1` | Experimental cloud readings; no climate entity |
 
-Baseboard V3, Central HVAC and Climate Sensor need a cloud-issued credential file during Bluetooth setup. Mysa Local does not implement that flow and excludes these models from discovery and account selection. Set them up with the Mysa app, then use Home Assistant's [Matter integration](https://www.home-assistant.io/integrations/matter/).
+For these newer models, finish setup in the Mysa app, then sign in here and import them from your account. V3 provides basic heat/off and setpoint control. Central HVAC adds heat/cool auto targets and supported fan controls. Climate Sensor provides readings only. Controls depend on the returned capabilities. Schedules/holds, energy/runtime, sensor linking and newer-model OTA are deferred. See [experimental cloud support and the V3 test guide](docs/new-cloud-models.md).
 
-AC fan and swing controls were implemented from Mysa app 4.20.1 and tested with simulated responses. They show the remote's options for the current mode and are hidden while the AC is off. Toggle-only swing, AC auto mode and separate heating/cooling target ranges are not implemented. In-Floor's floor-sensor reading is not exposed.
+AC fan and swing controls were implemented from Mysa app 4.20.1 and tested with simulated responses. They show the remote's options for the current mode and are hidden while the AC is off. Toggle-only swing, AC auto mode and AC heating/cooling target ranges are not implemented. In-Floor's floor-sensor reading is not exposed.
 
 If you test another model, [submit a model report](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=model_report.yml) with its firmware version and integration diagnostics.
 
@@ -63,7 +63,7 @@ The migration transfers matching climate, temperature, display-units and Identif
 
 ### Add thermostats from your Mysa account
 
-Sign in during setup or through the integration's options, then select thermostats from the account. You can pair each one locally with its HomeKit code or leave it under cloud control. A thermostat without local pairing needs Mysa's servers and an internet connection to work.
+Sign in during setup or through the integration's options, then select thermostats from the account. For models with HomeKit, you can pair each one locally with its code or leave it under cloud control. V3, Central HVAC and Climate Sensor use cloud control here. A thermostat without local pairing needs Mysa's servers and an internet connection to work.
 
 Local pairing and Mysa account membership are separate. While signed in, Mysa Local offers to add a locally paired thermostat to the account if it is missing there. If the account has no home, create one in the Mysa app first.
 
@@ -71,7 +71,7 @@ Repairs notices identify thermostats that are only on the cloud, missing from th
 
 ## Entities and controls
 
-Entities depend on the thermostat's capabilities and reported data. Local controls use cloud fallback where listed, provided the thermostat is on your account and cloud access is enabled.
+Entities depend on the thermostat's capabilities and reported data. The [newer-model subset](docs/new-cloud-models.md#implemented-controls) excludes the deferred extras listed there. Local controls use cloud fallback where listed, provided the thermostat is on your account and cloud access is enabled.
 
 | Entity or control | Connection | Behavior |
 |---|---|---|

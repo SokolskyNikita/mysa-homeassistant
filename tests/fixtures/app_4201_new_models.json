@@ -1,0 +1,599 @@
+{
+  "provenance": {
+    "kind": "synthetic-app-derived",
+    "app_version": "4.20.1",
+    "bundle_sha256": "1cf8a5c0fd83fd1e2a355abd9d22fb70434ca023140d18bc56f5be4927538dde",
+    "note": "Field paths and enum encodings from decompiled app. Capability values and readings are test scenarios, not device captures."
+  },
+  "models": {
+    "BB-V3-0": {
+      "capabilities": {
+        "hardware": {
+          "sensors": {
+            "internalTemperatureSensor": true,
+            "humiditySensor": true
+          }
+        },
+        "features": {
+          "interface": {
+            "brightness": {
+              "userControllable": true
+            },
+            "lockout": {
+              "userControllable": true,
+              "validValues": [
+                0,
+                3
+              ]
+            },
+            "unit": {
+              "userControllable": true,
+              "validValues": [
+                "C",
+                "F"
+              ]
+            }
+          },
+          "smart": {
+            "scheduling": true
+          },
+          "connectivity": {
+            "matter": true,
+            "homekit": false
+          },
+          "climateControl": {
+            "mode": {
+              "userControllable": true,
+              "validValues": [
+                "off",
+                "heat"
+              ]
+            },
+            "heat": {
+              "setpoint": {
+                "userControllable": true,
+                "validValues": [
+                  5.0,
+                  5.5,
+                  6.0,
+                  6.5,
+                  7.0,
+                  7.5,
+                  8.0,
+                  8.5,
+                  9.0,
+                  9.5,
+                  10.0,
+                  10.5,
+                  11.0,
+                  11.5,
+                  12.0,
+                  12.5,
+                  13.0,
+                  13.5,
+                  14.0,
+                  14.5,
+                  15.0,
+                  15.5,
+                  16.0,
+                  16.5,
+                  17.0,
+                  17.5,
+                  18.0,
+                  18.5,
+                  19.0,
+                  19.5,
+                  20.0,
+                  20.5,
+                  21.0,
+                  21.5,
+                  22.0,
+                  22.5,
+                  23.0,
+                  23.5,
+                  24.0,
+                  24.5,
+                  25.0,
+                  25.5,
+                  26.0,
+                  26.5,
+                  27.0,
+                  27.5,
+                  28.0,
+                  28.5,
+                  29.0,
+                  29.5,
+                  30.0
+                ]
+              }
+            }
+          }
+        },
+        "system": {
+          "model": "BB-V3-0"
+        }
+      },
+      "state": {
+        "latestTelemetry": {
+          "isConnected": true,
+          "lastConnected": 0,
+          "reading": {
+            "roomTemperature": 21.5,
+            "humidity": 42,
+            "rssi": -52,
+            "timestamp": 0,
+            "dutyCycle": 0.5
+          }
+        },
+        "identity": {
+          "reported": {
+            "model": "BB-V3-0",
+            "fw": "synthetic"
+          }
+        },
+        "physicalInterface": {
+          "reported": {
+            "format": "C",
+            "lockout": 0,
+            "activeIntensity": 80,
+            "idleIntensity": 20
+          }
+        },
+        "modes": {
+          "reported": {
+            "mode": 4
+          }
+        },
+        "targetHeat": {
+          "reported": {
+            "setpoint": 20,
+            "lockoutMin": 5,
+            "lockoutMax": 30
+          }
+        }
+      }
+    },
+    "ST-V1-0": {
+      "capabilities": {
+        "hardware": {
+          "sensors": {
+            "internalTemperatureSensor": true,
+            "humiditySensor": true
+          }
+        },
+        "features": {
+          "interface": {
+            "brightness": {
+              "userControllable": true
+            },
+            "lockout": {
+              "userControllable": true,
+              "validValues": [
+                0,
+                3
+              ]
+            },
+            "unit": {
+              "userControllable": true,
+              "validValues": [
+                "C",
+                "F"
+              ]
+            }
+          },
+          "smart": {
+            "scheduling": true
+          },
+          "connectivity": {
+            "matter": true,
+            "homekit": false
+          },
+          "climateControl": {
+            "mode": {
+              "userControllable": true,
+              "validValues": [
+                "off",
+                "heat",
+                "cool",
+                "auto",
+                "fanOnly"
+              ]
+            },
+            "heat": {
+              "setpoint": {
+                "userControllable": true,
+                "validValues": [
+                  10.0,
+                  10.5,
+                  11.0,
+                  11.5,
+                  12.0,
+                  12.5,
+                  13.0,
+                  13.5,
+                  14.0,
+                  14.5,
+                  15.0,
+                  15.5,
+                  16.0,
+                  16.5,
+                  17.0,
+                  17.5,
+                  18.0,
+                  18.5,
+                  19.0,
+                  19.5,
+                  20.0,
+                  20.5,
+                  21.0,
+                  21.5,
+                  22.0,
+                  22.5,
+                  23.0,
+                  23.5,
+                  24.0,
+                  24.5,
+                  25.0,
+                  25.5,
+                  26.0,
+                  26.5,
+                  27.0,
+                  27.5,
+                  28.0,
+                  28.5,
+                  29.0,
+                  29.5,
+                  30.0
+                ]
+              },
+              "fan": {
+                "fanMode": {
+                  "userControllable": true,
+                  "validValues": [
+                    "auto",
+                    "manual"
+                  ]
+                },
+                "fanSpeed": {
+                  "userControllable": true,
+                  "validValues": [
+                    1,
+                    2,
+                    3,
+                    9
+                  ]
+                }
+              }
+            },
+            "cool": {
+              "setpoint": {
+                "userControllable": true,
+                "validValues": [
+                  16.0,
+                  16.5,
+                  17.0,
+                  17.5,
+                  18.0,
+                  18.5,
+                  19.0,
+                  19.5,
+                  20.0,
+                  20.5,
+                  21.0,
+                  21.5,
+                  22.0,
+                  22.5,
+                  23.0,
+                  23.5,
+                  24.0,
+                  24.5,
+                  25.0,
+                  25.5,
+                  26.0,
+                  26.5,
+                  27.0,
+                  27.5,
+                  28.0,
+                  28.5,
+                  29.0,
+                  29.5,
+                  30.0,
+                  30.5,
+                  31.0,
+                  31.5,
+                  32.0,
+                  32.5,
+                  33.0,
+                  33.5,
+                  34.0,
+                  34.5,
+                  35.0
+                ]
+              },
+              "fan": {
+                "fanMode": {
+                  "userControllable": true,
+                  "validValues": [
+                    "auto",
+                    "manual"
+                  ]
+                },
+                "fanSpeed": {
+                  "userControllable": true,
+                  "validValues": [
+                    1,
+                    2,
+                    3,
+                    9
+                  ]
+                }
+              }
+            },
+            "auto": {
+              "heatSetpoint": {
+                "userControllable": true,
+                "validValues": [
+                  10.0,
+                  10.5,
+                  11.0,
+                  11.5,
+                  12.0,
+                  12.5,
+                  13.0,
+                  13.5,
+                  14.0,
+                  14.5,
+                  15.0,
+                  15.5,
+                  16.0,
+                  16.5,
+                  17.0,
+                  17.5,
+                  18.0,
+                  18.5,
+                  19.0,
+                  19.5,
+                  20.0,
+                  20.5,
+                  21.0,
+                  21.5,
+                  22.0,
+                  22.5,
+                  23.0,
+                  23.5,
+                  24.0,
+                  24.5,
+                  25.0,
+                  25.5,
+                  26.0,
+                  26.5,
+                  27.0,
+                  27.5,
+                  28.0
+                ]
+              },
+              "coolSetpoint": {
+                "userControllable": true,
+                "validValues": [
+                  18.0,
+                  18.5,
+                  19.0,
+                  19.5,
+                  20.0,
+                  20.5,
+                  21.0,
+                  21.5,
+                  22.0,
+                  22.5,
+                  23.0,
+                  23.5,
+                  24.0,
+                  24.5,
+                  25.0,
+                  25.5,
+                  26.0,
+                  26.5,
+                  27.0,
+                  27.5,
+                  28.0,
+                  28.5,
+                  29.0,
+                  29.5,
+                  30.0,
+                  30.5,
+                  31.0,
+                  31.5,
+                  32.0,
+                  32.5,
+                  33.0,
+                  33.5,
+                  34.0,
+                  34.5,
+                  35.0
+                ]
+              },
+              "constraints": {
+                "minSetpointDelta": {
+                  "value": 2
+                }
+              },
+              "fan": {
+                "fanMode": {
+                  "userControllable": true,
+                  "validValues": [
+                    "auto",
+                    "manual"
+                  ]
+                },
+                "fanSpeed": {
+                  "userControllable": true,
+                  "validValues": [
+                    1,
+                    2,
+                    3,
+                    9
+                  ]
+                }
+              }
+            },
+            "fanOnly": {
+              "fanMode": {
+                "userControllable": true,
+                "validValues": [
+                  "auto",
+                  "manual"
+                ]
+              },
+              "fanSpeed": {
+                "userControllable": true,
+                "validValues": [
+                  1,
+                  2,
+                  3,
+                  9
+                ]
+              }
+            },
+            "off": {
+              "fanMode": {
+                "userControllable": true,
+                "validValues": [
+                  "auto",
+                  "manual"
+                ]
+              },
+              "fanSpeed": {
+                "userControllable": true,
+                "validValues": [
+                  1,
+                  2,
+                  3,
+                  9
+                ]
+              }
+            },
+            "advancedConfig": {
+              "misc": {
+                "enableAutoMode": {
+                  "value": true
+                },
+                "fanRuntimePeriod": {
+                  "minValue": 0,
+                  "maxValue": 3600,
+                  "value": 1800,
+                  "userControllable": true
+                }
+              }
+            }
+          }
+        },
+        "system": {
+          "model": "ST-V1-0"
+        }
+      },
+      "state": {
+        "latestTelemetry": {
+          "isConnected": true,
+          "lastConnected": 0,
+          "reading": {
+            "roomTemperature": 21.5,
+            "humidity": 42,
+            "rssi": -52,
+            "timestamp": 0,
+            "hvacState": 1024
+          }
+        },
+        "identity": {
+          "reported": {
+            "model": "ST-V1-0",
+            "fw": "synthetic"
+          }
+        },
+        "physicalInterface": {
+          "reported": {
+            "format": "C",
+            "lockout": 0,
+            "activeIntensity": 80,
+            "idleIntensity": 20
+          }
+        },
+        "modes": {
+          "reported": {
+            "mode": 1,
+            "fan_mode": 9
+          }
+        },
+        "targetHeat": {
+          "reported": {
+            "setpoint": 20,
+            "lockoutMin": 5,
+            "lockoutMax": 30
+          }
+        },
+        "targetCool": {
+          "reported": {
+            "setpoint": 24,
+            "lockoutMin": 16,
+            "lockoutMax": 35
+          }
+        },
+        "targetAuto": {
+          "reported": {
+            "heatSetpoint": 20,
+            "coolSetpoint": 24,
+            "enabled": true,
+            "deadband": 2
+          }
+        },
+        "hvacConfig": {
+          "reported": {
+            "advFanAlwaysOn": 0,
+            "advFanRuntimeSeconds": 0,
+            "advFanRuntimePeriodSeconds": 1800
+          }
+        }
+      }
+    },
+    "CS-V1-0": {
+      "capabilities": {
+        "hardware": {
+          "sensors": {
+            "internalTemperatureSensor": true,
+            "humiditySensor": true
+          }
+        },
+        "features": {
+          "interface": {},
+          "smart": {
+            "scheduling": true
+          },
+          "connectivity": {
+            "matter": true,
+            "homekit": false
+          }
+        },
+        "system": {
+          "model": "CS-V1-0"
+        }
+      },
+      "state": {
+        "latestTelemetry": {
+          "isConnected": true,
+          "lastConnected": 0,
+          "reading": {
+            "roomTemperature": 21.5,
+            "humidity": 42,
+            "rssi": -52,
+            "timestamp": 0
+          }
+        },
+        "identity": {
+          "reported": {
+            "model": "CS-V1-0",
+            "fw": "synthetic"
+          }
+        }
+      }
+    }
+  }
+}

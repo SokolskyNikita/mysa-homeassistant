@@ -50,7 +50,10 @@ class HomeKitWriteRejectedError(HomeKitError):
 class HomeKitCharacteristicReadError(HomeKitError):
     """One or more required semantic values could not be read."""
 
-    def __init__(self, message: str, fields: Iterable[Field] = ()) -> None:
+    def __init__(
+        self, message: str, fields: Iterable[Field] = (), *, missing: bool = False
+    ) -> None:
         """Keep the failed fields available without exposing HAP identifiers."""
         super().__init__(message)
         self.fields = frozenset(fields)
+        self.missing = missing

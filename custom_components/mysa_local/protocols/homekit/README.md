@@ -61,8 +61,18 @@ async def read_temperature(protocol: HomeKitProtocol, saved_pairing: dict):
         await device.async_close()
 ```
 
-`async_connect()` loads the accessory database and subscribes to events. Reads
-update the semantic cache but do not emit value events. A failed or missing
+`async_connect()` loads the accessory database and subscribes to events. Later
+calls refresh only when requested or due. Configuration/reconnect notifications
+request remapping; HA immediately schedules a poll, and normal polling provides
+a 15-minute metadata backstop. A failed refresh has a 60-second retry cooldown.
+Refresh replaces field addresses, limits, supported modes, cached values and
+subscriptions, removing vanished fields. Capability-change events allow HA to
+create newly discovered entities after an offline startup. Subscription failure
+still permits polling. Missing-address reads get one refresh/retry per request,
+with a 60-second cooldown between such recovery attempts.
+
+Reads update the semantic cache but do not emit ordinary value events; an
+associated metadata refresh can emit a capability/value event. A failed or missing
 requested essential field raises `HomeKitCharacteristicReadError`; a missing
 optional display-unit reading can be omitted. `state` is a read-only view of
 the latest observed or accepted values, not a freshness guarantee.

@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 import logging
+from time import monotonic
 from types import MappingProxyType
 from typing import Any
 
@@ -38,6 +39,9 @@ from .models import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+_METADATA_REFRESH_INTERVAL = 15 * 60
+_REFRESH_COOLDOWN = 60
 
 _ENDPOINT_KEYS = ("AccessoryIP", "AccessoryIPs", "AccessoryPort")
 _KNOWN_PROTOCOL_ERRORS = (HomeKitException, TimeoutError, OSError)
@@ -243,6 +247,13 @@ class HomeKitDevice:
         self.__listeners: set[Callable[[HomeKitEvent], None]] = set()
         self.__endpoint_listeners: set[Callable[[HomeKitEndpoint], None]] = set()
         self.__dispatcher_unsubscribe: Callable[[], None] | None = None
+        self.__config_unsubscribe: Callable[[], None] | None = None
+        self.__operation_lock = asyncio.Lock()
+        self.__refresh_pending = True
+        self.__refreshing = False
+        self.__last_refresh = float("-inf")
+        self.__last_refresh_attempt = float("-inf")
+        self.__last_missing_retry = float("-inf")
 
     @property
     def pairing_data(self) -> dict[str, Any]:
@@ -342,40 +353,89 @@ class HomeKitDevice:
         return self.__info
 
     async def async_connect(self) -> None:
-        """Load characteristics, subscribe to changes and update semantic state."""
+        """Refresh characteristics and subscriptions, with bounded retries."""
+        async with self.__operation_lock:
+            await self.__refresh_if_needed()
+
+    async def __refresh_if_needed(self, *, missing: bool = False) -> bool:
+        now = monotonic()
+        if (
+            self.__last_refresh_attempt > self.__last_refresh
+            and now - self.__last_refresh_attempt < _REFRESH_COOLDOWN
+        ):
+            return False
+        if missing:
+            if now - self.__last_missing_retry < _REFRESH_COOLDOWN:
+                return False
+            self.__last_missing_retry = now
+        elif not (
+            self.__refresh_pending
+            or now - self.__last_refresh >= _METADATA_REFRESH_INTERVAL
+        ):
+            return False
+        self.__last_refresh_attempt = now
+        self.__refresh_pending = False
+        self.__refreshing = True
         try:
             async with asyncio.timeout(15):
-                await self.__pairing.async_populate_accessories_state(force_update=True)
-        except HomeKitError:
-            raise
+                await self.__refresh_metadata()
         except _KNOWN_PROTOCOL_ERRORS as error:
+            self.__refresh_pending = True
             raise _translate_error(error) from error
+        except HomeKitError, asyncio.CancelledError:
+            self.__refresh_pending = True
+            raise
+        finally:
+            self.__refreshing = False
+        self.__last_refresh = monotonic()
+        return True
+
+    async def __refresh_metadata(self) -> None:
+        await self.__pairing.async_populate_accessories_state(force_update=True)
         self.__refresh_pairing_data()
         accessories = self.__pairing.accessories
         if accessories is None:
             raise HomeKitError("HomeKit accessory did not provide its database")
-        self.__info, self.__fields, values, self.__identify_address = (
-            _parse_accessories(accessories)
-        )
-        self.__values.update(values)
-        if self.__dispatcher_unsubscribe is None:
+        info, fields, values, identify = _parse_accessories(accessories)
+        changed = fields != self.__fields
+        addresses = {(address.aid, address.iid) for address in fields.values()}
+        stale = set(self.__pairing.subscriptions) - addresses
+        if stale:
             try:
-                self.__dispatcher_unsubscribe = self.__pairing.dispatcher_connect(
-                    self.__handle_events
-                )
+                async with asyncio.timeout(3):
+                    await self.__pairing.unsubscribe(stale)
             except _KNOWN_PROTOCOL_ERRORS as error:
-                raise _translate_error(error) from error
-        addresses = [(address.aid, address.iid) for address in self.__fields.values()]
+                _LOGGER.debug("HomeKit unsubscribe failed (%s)", type(error).__name__)
+            finally:
+                # Removed characteristics can reject unsubscribe. They must also
+                # leave aiohomekit's reconnect subscription set in that case.
+                self.__pairing.subscriptions.difference_update(stale)
+        self.__info, self.__fields, self.__identify_address = info, fields, identify
+        self.__values = values
+        if self.__dispatcher_unsubscribe is None:
+            self.__dispatcher_unsubscribe = self.__pairing.dispatcher_connect(
+                self.__handle_events
+            )
+        if self.__config_unsubscribe is None:
+            self.__config_unsubscribe = (
+                self.__pairing.dispatcher_connect_config_changed(
+                    self.__handle_config_changed
+                )
+            )
         if addresses:
             try:
-                await self.__pairing.subscribe(addresses)
+                async with asyncio.timeout(3):
+                    await self.__pairing.subscribe(addresses)
             except _KNOWN_PROTOCOL_ERRORS as error:
-                # Polling remains a valid connection even if event subscription
-                # is not available; the HA adapter owns the retry cadence.
+                # Metadata and polling remain usable without event subscriptions.
                 _LOGGER.debug(
                     "HomeKit event subscription failed (%s)", type(error).__name__
                 )
-        self.__notify(HomeKitEvent.create(values, reconnected=True))
+        self.__notify(HomeKitEvent.create(values, capabilities_changed=changed))
+
+    def __handle_config_changed(self, _config_num: int) -> None:
+        self.__refresh_pending = True
+        self.__notify(HomeKitEvent.create(refresh_required=True))
 
     async def async_read(
         self,
@@ -384,13 +444,42 @@ class HomeKitDevice:
         timeout: float | None = None,  # noqa: ASYNC109 - per-request read deadline
     ) -> dict[Field, Any]:
         """Read semantic fields and update the cached values on success."""
+        requested = tuple(fields)
+        async with self.__operation_lock:
+            await self.__refresh_if_needed()
+            try:
+                values, missing = await self.__read_fields(requested, timeout=timeout)
+            except HomeKitCharacteristicReadError as error:
+                if not error.missing or not await self.__refresh_if_needed(
+                    missing=True
+                ):
+                    raise
+                values, _missing = await self.__read_fields(requested, timeout=timeout)
+                return values
+            if missing and await self.__refresh_if_needed(missing=True):
+                values, _missing = await self.__read_fields(requested, timeout=timeout)
+            return values
+
+    async def __read_fields(
+        self,
+        fields: tuple[Field, ...],
+        *,
+        timeout: float | None,  # noqa: ASYNC109 - caller's read deadline
+    ) -> tuple[dict[Field, Any], bool]:
         wanted = {
             (self.__fields[field].aid, self.__fields[field].iid): field
             for field in fields
             if field in self.__fields
         }
+        absent = set(fields) - self.__fields.keys()
+        if absent & _ESSENTIAL_FIELDS:
+            raise HomeKitCharacteristicReadError(
+                "HomeKit is missing required fields",
+                absent & _ESSENTIAL_FIELDS,
+                missing=True,
+            )
         if not wanted:
-            return {}
+            return {}, False
         required = {field for field in wanted.values() if field in _ESSENTIAL_FIELDS}
         try:
             async with asyncio.timeout(timeout or 3.0):
@@ -406,9 +495,14 @@ class HomeKitDevice:
         values: dict[Field, Any] = {}
         failures: list[str] = []
         failed_required: set[Field] = set()
+        missing = False
         for address, field in wanted.items():
             payload = result.get(address)
             if not isinstance(payload, Mapping) or _status_failed(payload):
+                missing |= (
+                    not isinstance(payload, Mapping)
+                    or _status_text(payload) == "-70409"
+                )
                 if field in _ESSENTIAL_FIELDS:
                     status = (
                         _status_text(payload)
@@ -429,12 +523,20 @@ class HomeKitDevice:
             raise HomeKitCharacteristicReadError(
                 "HomeKit failed to read required fields: " + ", ".join(failures),
                 failed_required,
+                missing=missing,
             )
         self.__values.update(values)
-        return values
+        return values, missing
 
     async def async_write(self, values: Mapping[Field, Any]) -> None:
         """Write semantic fields, rejecting unsupported or failed operations."""
+        async with self.__operation_lock:
+            await self.__refresh_if_needed()
+        # A timed-out write stays alive while HA independently reads back its
+        # result. Do not hold the metadata/read lock over the network write.
+        await self.__write_fields(values)
+
+    async def __write_fields(self, values: Mapping[Field, Any]) -> None:
         payload: list[tuple[int, int, Any]] = []
         fields_by_address: dict[tuple[int, int], Field] = {}
         for field, value in values.items():
@@ -470,7 +572,12 @@ class HomeKitDevice:
                 raise HomeKitWriteRejectedError(
                     "HomeKit refused fields: " + ", ".join(failed)
                 )
-        semantic_values = dict(values)
+        semantic_values = {
+            field: values[field]
+            for key, field in fields_by_address.items()
+            if (current := self.__fields.get(field)) is not None
+            and (current.aid, current.iid) == key
+        }
         self.__values.update(semantic_values)
         self.__notify(HomeKitEvent.create(semantic_values))
 
@@ -498,6 +605,11 @@ class HomeKitDevice:
 
     async def async_close(self) -> None:
         """Unsubscribe and close this pairing session."""
+        if self.__config_unsubscribe is not None:
+            self.__config_unsubscribe()
+            self.__config_unsubscribe = None
+        self.__refresh_pending = True
+        self.__last_refresh_attempt = float("-inf")
         if self.__dispatcher_unsubscribe is not None:
             self.__dispatcher_unsubscribe()
             self.__dispatcher_unsubscribe = None
@@ -531,6 +643,14 @@ class HomeKitDevice:
 
     def __handle_events(self, events: Mapping[tuple[int, int], Any]) -> None:
         """Translate a raw characteristic notification into a safe event."""
+        if not events:
+            # A connection opened by the refresh itself is already being mapped.
+            if not self.__refreshing:
+                self.__refresh_pending = True
+                self.__notify(
+                    HomeKitEvent.create(reconnected=True, refresh_required=True)
+                )
+            return
         fields_by_address = {
             (address.aid, address.iid): field
             for field, address in self.__fields.items()

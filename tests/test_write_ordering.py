@@ -72,6 +72,7 @@ async def test_late_local_write_reasserts_latest_cloud_command(
         await hass.async_block_till_done(wait_background_tasks=True)
 
     assert physical_setpoints == [22, 19, 18, 22, 18]
+    await thermostat.cloud.async_fetch_state(thermostat.device_id)
     assert thermostat.target_temperature == 18
     assert thermostat.commands._pending_local is None
     assert not thermostat.commands._reconcile
@@ -141,7 +142,12 @@ async def test_unload_closes_and_reconciles_pending_write(
         assert pending.cancelled()
         release.set()
         await hass.async_block_till_done(wait_background_tasks=True)
-        assert thermostat.cloud_state.heat_setpoint == 18
+        assert (
+            thermostat.cloud.pending[thermostat.device_id]["heat_setpoint"].expected[
+                "heat_setpoint"
+            ]
+            == 18
+        )
 
     assert [item["targetHeat"]["setpoint"] for item in cloud.updates] == [22, 18, 18]
 
@@ -178,6 +184,7 @@ async def test_late_setpoint_reasserts_newer_off_command(
         {"mode": 0},
         {"mode": 0},
     ]
+    await thermostat.cloud.async_fetch_state(thermostat.device_id)
     assert thermostat.mode == Mode.OFF
 
 
@@ -213,6 +220,7 @@ async def test_cloud_only_mode_supersedes_pending_local_mode(
         int(Mode.FAN_ONLY),
         int(Mode.FAN_ONLY),
     ]
+    await thermostat.cloud.async_fetch_state(thermostat.device_id)
     assert thermostat.mode == Mode.FAN_ONLY
 
 
@@ -257,6 +265,7 @@ async def test_multi_field_cloud_write_is_reconciled_once(
         changes["modes"],
         changes["modes"],
     ]
+    await thermostat.cloud.async_fetch_state(thermostat.device_id)
     assert thermostat.mode == Mode.FAN_ONLY
 
 
@@ -299,4 +308,5 @@ async def test_lost_cloud_response_preserves_latest_intent(
         await hass.async_block_till_done(wait_background_tasks=True)
 
     assert [item["targetHeat"]["setpoint"] for item in cloud.updates] == [22, 18, 18]
+    await thermostat.cloud.async_fetch_state(thermostat.device_id)
     assert thermostat.target_temperature == 18

@@ -195,6 +195,9 @@ async def test_stale_telemetry_keeps_connected_cloud_settings_available(
         },
         blocking=True,
     )
+    assert hass.states.get("number.living_room_sleep_brightness").state == "50"
+    await thermostat.cloud.async_refresh()
+    await hass.async_block_till_done()
     assert hass.states.get("number.living_room_sleep_brightness").state == "40"
     assert cloud.updates[-1] == {
         "source": 3,
@@ -213,6 +216,8 @@ async def test_stale_telemetry_keeps_connected_cloud_settings_available(
         },
         blocking=True,
     )
+    await thermostat.cloud.async_refresh()
+    await hass.async_block_till_done()
     assert hass.states.get("select.living_room_display_units").state == "fahrenheit"
     assert cloud.settings[-1] == {"Format": "fahrenheit"}
 

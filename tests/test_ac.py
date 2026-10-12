@@ -98,7 +98,8 @@ async def test_ac_fan_and_swing(hass: HomeAssistant, cloud: FakeCloud) -> None:
 async def test_ac_writes(hass: HomeAssistant, cloud: FakeCloud) -> None:
     """Fan (with the current mode, as Mysa's app does) and swing go to `modes`."""
     _make_ac(cloud)
-    await setup_entry(hass, hub_entry())
+    entry = hub_entry()
+    await setup_entry(hass, entry)
 
     await _call(hass, SERVICE_SET_FAN_MODE, {ATTR_FAN_MODE: "high"})
     assert cloud.updates[-1] == {"source": 3, "modes": {"fan_mode": 3, "mode": 4}}
@@ -109,6 +110,8 @@ async def test_ac_writes(hass: HomeAssistant, cloud: FakeCloud) -> None:
     )
     assert cloud.updates[-1] == {"source": 3, "modes": {"horizontalSwingState": 3}}
 
+    await entry.runtime_data.cloud.async_refresh()
+    await hass.async_block_till_done()
     attrs = hass.states.get(CLIMATE).attributes
     assert attrs[ATTR_FAN_MODE] == "high"
     assert attrs[ATTR_SWING_MODE] == "position_1"

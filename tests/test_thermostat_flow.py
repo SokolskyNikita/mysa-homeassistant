@@ -183,7 +183,7 @@ async def test_pairing_backup_is_pruned_after_startup_loads_entry(
 
     assert await async_setup(hass, {})
     hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
 
     assert set(await async_load_pending_pairings(hass)) == {other_hkid}
 
@@ -257,7 +257,7 @@ async def test_takeover_from_homekit_device(
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"next_step_id": "finish"}
         )
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert (await async_load_pending_pairings(hass))[HKID.lower()][
         "pairing"

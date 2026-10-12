@@ -39,6 +39,7 @@ from .const import (
     CONF_DEVICE_ID,
     CONF_LIVE_MODE,
     CONF_MIGRATE_FROM,
+    CONF_MODEL,
     CONF_PAIRING,
     CONF_REFRESH_TOKEN,
     CONF_USER_ID,
@@ -173,6 +174,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
             entry,
             client,
             device_ids=[s.data[CONF_DEVICE_ID] for s in subentries],
+            device_models={
+                s.data[CONF_DEVICE_ID]: s.data.get(CONF_MODEL) for s in subentries
+            },
             scan_interval=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
             usage_device_ids=[
                 s.data[CONF_DEVICE_ID]

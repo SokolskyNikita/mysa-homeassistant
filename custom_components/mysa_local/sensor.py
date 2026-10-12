@@ -26,7 +26,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.restore_state import ExtraStoredData
 
-from .account import ACCOUNT_OFF, ACCOUNT_ON
+from .account import ACCOUNT_OFF, ACCOUNT_ON, can_pair_locally
 from .const import CONNECTION_CLOUD, CONNECTION_LOCAL, CONNECTION_OFFLINE
 from .data import MysaConfigEntry
 from .entity import MysaCloudEntity, MysaEntity, async_add_when_ready
@@ -47,16 +47,20 @@ async def async_setup_entry(
         entities: list[MysaEntity] = [
             TemperatureSensor(thermostat),
             ConnectionPathSensor(thermostat),
-            HomeKitPairingSensor(thermostat),
-            HeatingRuntimeSensor(thermostat),
         ]
+        if can_pair_locally(thermostat.model) or thermostat.has_local:
+            entities.append(HomeKitPairingSensor(thermostat))
+        if not thermostat.basic_cloud_only:
+            entities.append(HeatingRuntimeSensor(thermostat))
         if thermostat.cloud is not None:
             entities.append(MysaAccountSensor(thermostat))
-        if thermostat.heater_watts > 0:
+        if thermostat.heater_watts > 0 and not thermostat.basic_cloud_only:
             entities.append(HeaterPowerSensor(thermostat))
             entities.append(EnergySensor(thermostat))
         state = thermostat.cloud_state
-        if state is not None and state.humidity is not None:
+        if (state is not None and state.humidity is not None) or (
+            thermostat.capabilities and thermostat.capabilities.humidity_sensor
+        ):
             entities.append(HumiditySensor(thermostat))
         if state is not None and state.rssi is not None:
             entities.append(WifiSignalSensor(thermostat))
@@ -104,7 +108,12 @@ class HumiditySensor(MysaCloudEntity, SensorEntity):
     @property
     def available(self) -> bool:
         """Only expose humidity while its telemetry reading is fresh."""
-        return self.thermostat.cloud_ok
+        cloud = self.thermostat.cloud
+        return bool(
+            self.thermostat.cloud_connected
+            and cloud
+            and cloud.measurement_fresh(self.thermostat.device_id, "humidity")
+        )
 
     @property
     def native_value(self) -> float | None:
@@ -139,7 +148,11 @@ class ConnectionPathSensor(MysaEntity, SensorEntity):
         """Why the local path is down, if it is."""
         local = self.thermostat.local
         if local is None:
-            return {"homekit": "not paired"}
+            return (
+                {"support": "experimental_cloud"}
+                if self.thermostat.basic_cloud_only
+                else {"homekit": "not paired"}
+            )
         attrs: dict[str, Any] = {"homekit_host": local.host}
         if not local.available and local.last_error:
             attrs["homekit_error"] = local.last_error
@@ -209,7 +222,12 @@ class WifiSignalSensor(MysaCloudEntity, SensorEntity):
     @property
     def available(self) -> bool:
         """Only expose RSSI while its telemetry reading is fresh."""
-        return self.thermostat.cloud_ok
+        cloud = self.thermostat.cloud
+        return bool(
+            self.thermostat.cloud_connected
+            and cloud
+            and cloud.measurement_fresh(self.thermostat.device_id, "rssi")
+        )
 
     @property
     def native_value(self) -> int | None:

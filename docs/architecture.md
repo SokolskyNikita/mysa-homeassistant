@@ -140,11 +140,12 @@ or removal operations unless the test specifically requires them.
 ## Cloud protocol findings versus implementation
 
 The [cloud tracker](implementation/cloud.md) owns the detailed implementation
-work list. In particular, proposed S + legacy acquisition, field-level provenance,
-and confirmation changes are not implemented merely because the protocol guide
-recommends them. Current accepted-state cache updates and incomplete schedule
-reads are tracked there. Keep HomeKit/cloud routing and persistence policy in
-this architecture, and cloud-only selection rules in the primary cloud reference.
+work list. Cloud acquisition now reads structured and legacy state independently, preserving
+per-field observations and source health. `cloud_state.py` selects values and
+tracks pending commands separately from confirmed reports. The client provides
+allowlisted host fallback and native schedule snapshots; the schedule journal
+retains origin during clearing and rollback. Hardware confirmation remains
+separate from code/fixture coverage.
 
 Run `python3 tools/check_docs.py` for offline documentation checks. It does not
 import the integration, obtain credentials, or contact any service or thermostat.

@@ -70,7 +70,8 @@ async def test_cloud_hold_mode_and_commands(
     cloud.state["modes"]["reported"]["mode"] = initial_mode
     cloud.state["targetCool"] = {"reported": {"setpoint": 24}}
     cloud.schedules = [{"id": "existing", "deviceIds": [DEVICE_ID]}]
-    await setup_entry(hass, hub_entry(subentries=[thermostat_subentry(pairing=None)]))
+    entry = hub_entry(subentries=[thermostat_subentry(pairing=None)])
+    await setup_entry(hass, entry)
     data: dict[str, Any] = {"entity_id": CLIMATE, "temperature": 19}
     if requested_mode is not None:
         data["hvac_mode"] = requested_mode
@@ -92,6 +93,9 @@ async def test_cloud_hold_mode_and_commands(
         if section in expected_state
     )
     assert cloud.updates == expected_commands
+    coordinator = entry.runtime_data.cloud
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
     assert (
         hass.states.get(CLIMATE).state
         == {0: "off", 3: "cool", 4: "heat"}[expected_state["modes"]["mode"]]
