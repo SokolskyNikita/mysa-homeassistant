@@ -4,6 +4,10 @@ Use the [installation and user guide](../README.md) to set up Mysa Local.
 The [architecture guide](architecture.md) explains polling, local-first routing,
 fallback, persistence, and ownership of integration behavior.
 
+See [consumer device API coverage](implementation/progress.md) for two tiled maps:
+raw API methods and integration/management, with separate inventories, known
+gaps, and hardware-validation limits.
+
 ## Protocol map
 
 | Path | Transport and identity | Reference |

@@ -10,6 +10,7 @@ app-derived behavior from confirmed device behavior.
 | --- | --- |
 | Cloud inventory, S/R/L comparisons, limitations and recommended selection policy | [Cloud README](../custom_components/mysa_local/protocols/cloud/README.md) |
 | Cloud implementation status, gaps, dependencies and exclusions | [Cloud tracker](implementation/cloud.md) |
+| Raw API method coverage and integration/management coverage maps | [Coverage overview](implementation/progress.md); regenerate with `python3 tools/update_api_progress.py` |
 | Cognito wire exchange/browser limits | [Authentication](cloud-auth.md) |
 | State/usage/capability shapes and model enums | [State reference](cloud-state.md) |
 | Schedule/account workflow mechanics | [Workflows](cloud-workflows.md) |
@@ -41,6 +42,13 @@ body/bodyFile exclusivity, payload paths, evidence metadata, IDs, reachability,
 local Markdown links/anchors, table/fence structure, and obvious secret/identifier
 patterns. It never imports or calls a device/client implementation. External URLs
 are not network-checked. Semantic accuracy and sanitization still require review.
+
+When coverage changes, update the appropriate API or management row in the
+[coverage inventories](implementation/progress.md) and run
+`python3 tools/update_api_progress.py`. Its `--check` mode verifies that the
+embedded summary and both SVG panels match the inventories without changing any
+files. Keep raw method availability separate from orchestration, regression
+criteria and hardware validation; neither score is a bug-free percentage.
 
 Update the authoritative reference first, then related examples. Update the
 affected cloud or HomeKit tracker with implementation changes and cite relevant tests. Keep hardware
