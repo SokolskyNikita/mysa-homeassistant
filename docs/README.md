@@ -1,58 +1,43 @@
 # Mysa Local documentation
 
-Use the [installation and user guide](../README.md) to set up Mysa Local.
-The [architecture guide](architecture.md) explains polling, local-first routing,
-fallback, persistence, and ownership of integration behavior.
+The [installation and user guide](../README.md) covers setup, supported models,
+entities, services, and integration options.
 
-See [consumer device API coverage](implementation/progress.md) for two tiled maps:
-raw API methods and integration/management, with separate inventories, known
-gaps, and hardware-validation limits.
+## Home Assistant behavior
 
-## Protocol map
+| Reference | Contents |
+| --- | --- |
+| [Architecture](architecture.md) | HA lifecycle, polling, local-first routing, fallback, persistence, and ownership |
+| [Account and schedule workflows](cloud-workflows.md) | HA enrollment, removal, schedule management, and recovery policy |
+| [Experimental newer-model support](new-cloud-models.md) | HA controls, setup, diagnostics, and the V3 hardware test procedure |
+| [Cloud feature scope](cloud-scope.md) | Which cloud features belong in HA and why |
+| [Cloud integration tracker](implementation/cloud.md) | HA orchestration, acceptance criteria, product exclusions, and hardware limits |
+| [HomeKit integration tracker](implementation/homekit.md) | HA discovery, pairing storage, entities, migration, and recovery |
+| [Integration and management coverage](implementation/progress.md) | State selection, command handling, lifecycle, workflows, and verification |
+| [Documentation maintenance](maintenance.md) | Ownership boundaries, evidence rules, and offline checks |
+| [Release history](../CHANGELOG.md) | Versioned changes and recorded validation |
 
-| Path | Transport and identity | Reference |
-| --- | --- | --- |
-| HA/controller → thermostat | Local HomeKit over IP; saved controller pairing keys | [Accessory behavior](homekit.md), [implementation parity](implementation/homekit.md), [adapter API/lifecycle](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md) |
-| Matter controller → newer thermostat (not implemented here) | Expected local Matter over Wi-Fi/IP; separate commissioning credentials | [Matter research stub and validation gaps](matter.md) |
-| Setup client → thermostat | Bonded BLE; separate app-derived SoftAP HTTP flow | [Bluetooth and provisioning](bluetooth.md) |
-| Current app/client → cloud | HTTPS with a Cognito ID token | [Primary cloud reference](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md) |
-| Legacy app/client → cloud | MQTT over secure WebSocket; temporary Cognito Identity Pool AWS credentials | [MQTT protocol and permissions](mqtt.md) |
-| Thermostat → cloud | Device's own MQTT/TLS and firmware HTTPS connections | [Firmware and connectivity](firmware-and-connectivity.md) |
+## Mysa API and protocol references
 
-Wi-Fi joining, cloud enrollment, HomeKit pairing, and newer-model credential
-provisioning are separate stages. App AWS credentials are not thermostat
-credentials. S/R/L in the cloud reference distinguish structured services and
-two entry points to legacy REST; hostname alone is not an API version.
+Protocol documentation is maintained in the standalone
+[`mysa-client` documentation](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md).
+That includes cloud authentication, endpoint and payload shapes, account/schedule
+wire mechanics, HomeKit characteristics, Bluetooth/SoftAP setup, MQTT, firmware,
+and Matter research. Sanitized exchanges and protocol diagnostic tools live
+there too. The
+[raw API inventory](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/api-coverage.md)
+tracks client methods independently of this integration's management coverage.
 
-## Cloud supporting references
+The integration consumes [`mysa_client.cloud`](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md)
+and [`mysa_client.homekit`](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md).
+The [Wi-Fi setup page](https://github.com/SokolskyNikita/mysa-wifi-setup) remains a
+separate product. Older protocol URLs in this repository forward readers to
+their maintained references.
 
-- [Authentication](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-auth.md): Cognito wire exchange and browser constraints.
-- [State, history, and model fields](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-state.md): discovery shapes, units,
-  enum namespaces, telemetry, AC controls, and hardware limits.
-- [Account and schedule workflows](cloud-workflows.md): claims/removal, schedules,
-  holds, shortcuts, and app-only route context.
-- [Implementation status and plan](implementation/cloud.md): the single cloud
-  backlog, stable item IDs, completion criteria, dependencies, and exclusions.
-- [JSON examples](examples/README.md): request/response and MQTT formats with
-  provenance; these are documentation data and are never replayed by checks.
+## Evidence limits
 
-## Evidence and maintenance
-
-Live evidence is strongest for two Baseboard Lites (`BB-V2-0-L`, firmware
-`3.17.5.13`) observed October 10–12, 2026. Other legacy models have code or
-app-derived mappings; AC, In-floor, and newer-model behavior must not be presented
-as equivalently hardware-tested. Additional model validation follows community
-volunteers testing their own hardware, with no fixed model priority. The BLE setup page is a [separate product](https://github.com/SokolskyNikita/mysa-wifi-setup).
-
-Distinguish **API accepted**, **record confirmed**, **device reported**,
-**locally confirmed**, and **end-to-end verified**. A false feature flag, hidden
-app UI, accepted request, stored record, and working physical feature mean
-different things. “Not observed” does not mean “unsupported.”
-
-The cloud README owns protocol conclusions and recommended client policy;
-code/tests and the tracker describe current implementation. The protocols were
-reverse-engineered from the original Mysa apps. See [documentation maintenance](maintenance.md),
-and [release history](../CHANGELOG.md). Validation limits remain beside the
-relevant protocol findings.
-
-- [Experimental newer-model cloud support and V3 test guide](new-cloud-models.md)
+Live validation is strongest for two Baseboard Lites (`BB-V2-0-L`, firmware
+`3.17.5.13`). Other models have app-derived or simulated mappings and need
+matching hardware checks. API acceptance, stored records, device reports,
+local confirmation, and physical behavior are different claims. Hardware
+limits stay beside the relevant integration or protocol findings.

@@ -89,7 +89,7 @@ Entities depend on the thermostat's capabilities and reported data. The [newer-m
 | Heater type | Cloud | Baseboard or fan forced on models that support those profiles |
 | Heating runtime today | Observed heating state, optionally supplemented by cloud history | Resets at midnight; see [Runtime and energy](#runtime-and-energy) |
 | Heater power and energy | Calculated | Created when you set a heater wattage |
-| Firmware update | Cloud | Checks for updates; installation is optional and has a [known request gap](docs/implementation/cloud.md#c-a01) |
+| Firmware update | Cloud | Checks for updates; installation is optional and has not been validated end to end |
 | Connection path | Integration status | `local`, `cloud` or `offline` |
 
 Other status entities show HomeKit pairing, Mysa account membership, cloud connectivity and schedule hold. The Wi-Fi signal sensor is disabled by default; enable it from the device's entity list when needed.
@@ -109,7 +109,7 @@ Open Mysa Local's options, then Cloud and polling.
 
 Turning cloud access off disables cloud-only entities while keeping their entity IDs, names, areas and history. Your sign-in is retained. Turning it back on restores entities disabled by the integration; entities you disabled yourself stay disabled. A thermostat configured only through the cloud is unavailable while cloud access is off.
 
-Firmware installation has not been verified with an available update. A separate API test accepted the trigger when the Lite was already up to date; no firmware was installed. The integration currently omits the required request body, so its update command still needs correction. See the [known implementation gap](docs/implementation/cloud.md#c-a01) and [firmware reference](docs/firmware-and-connectivity.md#firmware).
+Firmware installation has not been verified with an available update. The client sends the required empty JSON body; a separate API test accepted the trigger when the Lite was already up to date, but no firmware was installed. See the [validation limits](docs/implementation/cloud.md#c-a01) and [firmware reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/firmware-and-connectivity.md#firmware).
 
 The options menu also provides sign-in, sign-out and Thermostats on my Mysa account. The account table is read-only: it shows both names and whether each thermostat is paired locally, uses only the cloud or has not been added to Home Assistant.
 
@@ -260,7 +260,7 @@ scripts/lint     # Ruff formatting and fixes, then strict mypy
 scripts/develop  # development Home Assistant using config/
 ```
 
-CI also runs HACS validation and hassfest. The cloud and HomeKit protocols are provided by the standalone [`mysa-client` package](https://github.com/SokolskyNikita/mysa-client); this integration owns lifecycle, polling, persistence, and command ordering. See [Architecture](docs/architecture.md) for the public interfaces, ownership rules, and boundary tests. Cloud endpoints are documented in [the documentation index](docs/README.md); the [Bluetooth protocol reference](docs/bluetooth.md) covers Wi-Fi provisioning, network scanning, and newer-model credential transfer. Release history is in [CHANGELOG.md](CHANGELOG.md).
+CI also runs HACS validation and hassfest. The cloud and HomeKit protocols are provided by the standalone [`mysa-client` package](https://github.com/SokolskyNikita/mysa-client); this integration owns lifecycle, polling, persistence, and command ordering. See [Architecture](docs/architecture.md) for the public interfaces, ownership rules, and boundary tests. Cloud endpoints and device protocols are documented in [the client documentation index](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md); the [Bluetooth protocol reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/bluetooth.md) covers Wi-Fi provisioning, network scanning, and newer-model credential transfer. Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Credits and license
 

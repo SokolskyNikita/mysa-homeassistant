@@ -1,16 +1,10 @@
-# Protocol examples
+# Protocol examples have moved
 
-Cloud request/response examples and runnable Python clients now live in the
-standalone [`mysa-client examples`](https://github.com/SokolskyNikita/mysa-client/tree/main/examples).
-Its offline checker validates the sanitized exchanges without logging in,
-discovering accessories, or sending requests.
+All sanitized cloud and MQTT exchanges, along with runnable consumer examples,
+are maintained in [`mysa-client/examples`](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/README.md).
 
-This integration still maintains the legacy MQTT message examples below. They
-are inert documentation data and do not contain a live acknowledgement.
+- [Cloud request/response examples](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/README.md)
+- [MQTT message examples](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/mqtt/README.md)
 
-- [Lite command with array encoding](mqtt/thermostat-command.array.json)
-- [Lite command with string encoding](mqtt/thermostat-command.string.json)
-
-See the [MQTT protocol reference](../mqtt.md) for how those messages were
-recovered and the [documentation maintenance guide](../maintenance.md) for local
-offline checks.
+The client checks these inert evidence records without signing in or sending
+requests. HA regression fixtures remain under this repository's `tests/fixtures`.

@@ -21,6 +21,12 @@ The integration now imports `mysa_client` and retains all HA lifecycle and
 state-confirmation policy.
 
 Protocol tests and sanitized reference material have moved to the client.
+The follow-up documentation audit also moved HomeKit, BLE/SoftAP, MQTT, Matter,
+firmware/connectivity research, MQTT examples, and standalone diagnostic tools.
+The [client documentation index](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md)
+owns protocol details and raw API coverage; the [HA documentation index](docs/README.md)
+owns integration behavior and management coverage. Previously published protocol
+pages remain as forwarding links, without duplicated explanations.
 Both repositories have independent checks; the client also builds and inspects
 wheel/source archives and tests Python 3.11–3.14 in CI. The integration's setup
 script accepts the sibling wheel or editable checkout for local development.

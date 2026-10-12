@@ -33,5 +33,5 @@ jobs:
         run: mypy
       - name: Offline documentation checks
         run: python3 tools/check_docs.py
-      - name: API coverage summary and visual
+      - name: HA management coverage summary and visual
         run: python3 tools/update_api_progress.py --check

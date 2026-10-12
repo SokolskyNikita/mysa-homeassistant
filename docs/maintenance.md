@@ -1,60 +1,42 @@
 # Documentation maintenance
 
-These protocols were reverse-engineered from the original Mysa apps and checked
-against hardware observations where available. Each reference distinguishes
-app-derived behavior from confirmed device behavior.
+This repository owns Home Assistant setup and behavior. Mysa API and protocol
+references are maintained in [`mysa-client`](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md).
 
-## Authority and locations
+## Ownership
 
 | Material | Maintained home |
 | --- | --- |
-| Cloud inventory, S/R/L comparisons, limitations and recommended selection policy | [Cloud README](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md) |
-| Cloud implementation status, gaps, dependencies and exclusions | [Cloud tracker](implementation/cloud.md) |
-| Raw API method coverage and integration/management coverage maps | [Coverage overview](implementation/progress.md); regenerate with `python3 tools/update_api_progress.py` |
-| Cognito wire exchange/browser limits | [Authentication](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-auth.md) |
-| State/usage/capability shapes and model enums | [State reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-state.md) |
-| Schedule/account workflow mechanics | [Workflows](cloud-workflows.md) |
-| BLE and SoftAP provisioning | [Bluetooth](bluetooth.md); implementation owned by the separate setup repository |
-| HomeKit feature parity, implementation gaps and exclusions | [HomeKit tracker](implementation/homekit.md) |
-| Mysa HomeKit accessory findings | [HomeKit](homekit.md); adapter lifecycle stays in its package guide |
-| MQTT authorization and wire reference | [MQTT](mqtt.md) |
-| Device startup, resilience, firmware checks and OTA | [Firmware/connectivity](firmware-and-connectivity.md) |
-| Integration ownership/polling/fallback/persistence | [Architecture](architecture.md), [user guide](../README.md) |
-| Substantial exchanges | [JSON examples](examples/README.md); existing regression fixtures retained |
+| Installation, entities, services, and configuration | [User guide](../README.md) and [newer-model setup/test guide](new-cloud-models.md) |
+| HA lifecycle, polling, routing, freshness, persistence, and recovery | [Architecture](architecture.md) and [account/schedule workflows](cloud-workflows.md) |
+| HA cloud/HomeKit work, acceptance criteria, and product exclusions | [Cloud tracker](implementation/cloud.md) and [HomeKit tracker](implementation/homekit.md) |
+| Integration and management coverage | [Management inventory](implementation/progress.md) |
+| Public client APIs, wire protocols, endpoint/payload details, firmware and provisioning research | [Client protocol index](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md) |
+| Raw API method coverage | [Client API inventory](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/api-coverage.md) |
+| Sanitized cloud/MQTT exchanges and protocol tools | [Client examples](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/README.md) and [tools](https://github.com/SokolskyNikita/mysa-client/tree/main/tools) |
 
+Update protocol findings in the client repository, then link to them from HA
+workflow or acceptance criteria where needed. Do not copy the wire reference
+back here. Short forwarding pages preserve previously published URLs; current
+navigation should link directly to the maintained reference. Release notes
+remain historical.
 
-## Evidence and scope
+## Evidence and checks
 
-Hardware findings currently cover Baseboard Lite `BB-V2-0-L`, firmware
-`3.17.5.13`. Model mappings recovered from the apps do not establish equivalent
-hardware support. App versions remain beside version-dependent protocol details.
+Keep app-derived behavior, simulated tests, and hardware validation distinct.
+The strongest live evidence is Baseboard Lite `BB-V2-0-L`, firmware `3.17.5.13`.
+An accepted request or stored record does not establish fresh device state or
+physical application. Preserve observation limits and cite relevant tests.
+Never publish credentials, pairing keys, private identifiers, or raw captures.
 
-Distinguish API acceptance, stored records, device reports, independent local
-confirmation, and end-to-end behavior. Keep observation windows beside claims
-when they affect interpretation. Missing metadata stays unknown; examples must
-not imply observations that were never made.
+Run `python3 tools/check_docs.py` and `git diff --check`. Checks cover local
+Markdown links/anchors, tables and fences, tracker IDs, strict integration
+fixtures, and obvious secret patterns. They never import an integration or
+contact a device. External links and semantic accuracy need separate review.
+The client's own checker validates its protocol examples and references.
 
-## Ongoing checks and review
-
-Run `python3 tools/check_docs.py` and `git diff --check`. The documentation checker
-uses only local files and Python's standard library: strict JSON, exchange shape,
-body/bodyFile exclusivity, payload paths, evidence metadata, IDs, reachability,
-local Markdown links/anchors, table/fence structure, and obvious secret/identifier
-patterns. It never imports or calls a device/client implementation. External URLs
-are not network-checked. Semantic accuracy and sanitization still require review.
-
-When coverage changes, update the appropriate API or management row in the
-[coverage inventories](implementation/progress.md) and run
-`python3 tools/update_api_progress.py`. Its `--check` mode verifies that the
-embedded summary and both SVG panels match the inventories without changing any
-files. Keep raw method availability separate from orchestration, regression
-criteria and hardware validation; neither score is a bug-free percentage.
-
-Update the authoritative reference first, then related examples. Update the
-affected cloud or HomeKit tracker with implementation changes and cite relevant tests. Keep hardware
-limits separate from fixture coverage. Do not turn HTTP acceptance or a generic
-raw write into semantic support. Release notes stay historical.
-
-Use synthetic identifiers and placeholders for credentials in public examples.
-Link directly to the maintained references and update incoming links when pages
-move. Keep validation limits beside the relevant protocol findings.
+When HA behavior coverage changes, update the
+[management inventory](implementation/progress.md) and run
+`python3 tools/update_api_progress.py`. Its `--check` mode verifies the generated
+Markdown summary and SVG. The client's raw API map has an independent generator
+and denominator; neither score is a bug-free percentage or a hardware guarantee.

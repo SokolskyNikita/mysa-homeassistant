@@ -1,14 +1,13 @@
-"""Render the consumer-device API coverage map in the implementation tracker.
+"""Render the Home Assistant integration-management coverage map.
 
 Run ``python tools/update_api_progress.py`` after editing
 ``docs/implementation/progress.md``. The command updates the marked Markdown
-summary and writes ``docs/implementation/api-progress.svg``. Run with
-``--check`` in CI or before committing to verify that both generated artifacts
-match the current feature rows without changing files.
+summary and writes ``docs/implementation/management-progress.svg``. Run with
+``--check`` in CI or before committing to verify both generated artifacts
+without changing files.
 
-The map reports direct API method support and integration/management support as
-separate percentages. Each inventory row becomes one colored tile; partial and
-missing rows do not earn implementation coverage credit.
+The map reports integration and management acceptance criteria. Each row
+becomes one colored tile; partial and missing rows do not earn completion credit.
 """
 
 from __future__ import annotations
@@ -24,18 +23,11 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 TRACKER = ROOT / "docs/implementation/progress.md"
-SVG_PATH = ROOT / "docs/implementation/api-progress.svg"
+SVG_PATH = ROOT / "docs/implementation/management-progress.svg"
 START_MARKER = "<!-- api-progress:start -->"
 END_MARKER = "<!-- api-progress:end -->"
 
 GROUPS = (
-    ("API-AUTH", "Authentication"),
-    ("API-READ", "State & history"),
-    ("API-WRITE", "Device controls"),
-    ("API-SCHED", "Schedules & templates"),
-    ("API-DEVICE", "Device services"),
-    ("API-LOCAL", "HomeKit"),
-    ("API-SETUP", "Provisioning"),
     ("MGT-STATE", "State selection"),
     ("MGT-COMMAND", "Command handling"),
     ("MGT-LIFECYCLE", "Lifecycle & recovery"),
@@ -44,35 +36,24 @@ GROUPS = (
 )
 STATUSES = ("Implemented", "Partial", "Missing")
 PANELS = {
-    "API": {
-        "number": "01",
-        "title": "RAW API METHODS",
-        "label": "Raw API methods",
-        "subtitle": "Documented operations and subscriptions the package can invoke directly",
-        "description": "Direct methods, requests, and subscriptions exposed by the device APIs",
-    },
     "MGT": {
-        "number": "02",
+        "number": "01",
         "title": "INTEGRATION & MANAGEMENT",
         "label": "Integration & management",
-        "subtitle": "How those operations become stable, useful device behavior",
-        "description": "State selection, command handling, lifecycle, workflows, and verification",
+        "subtitle": "State selection, command handling, lifecycle, workflows, and verification",
+        "description": "How the integration turns API methods into dependable device behavior",
     },
 }
 GROUP_LABELS = dict(GROUPS)
 SHORT_GROUP_LABELS = {
-    "API-AUTH": "Auth",
-    "API-SETUP": "Setup",
     "MGT-QUALITY": "Verify",
 }
 GROUP_ORDER = {group: index for index, (group, _label) in enumerate(GROUPS)}
 GROUP_LABEL_AREA = 20_000.0
-ROW_ID = re.compile(
-    r"^(API-(?:AUTH|READ|WRITE|SCHED|DEVICE|LOCAL|SETUP)|MGT-(?:STATE|COMMAND|LIFECYCLE|WORKFLOW|QUALITY))-(\d{2})$"
-)
+ROW_ID = re.compile(r"^(MGT-(?:STATE|COMMAND|LIFECYCLE|WORKFLOW|QUALITY))-(\d{2})$")
 DATE_LINE = re.compile(r"^Last reviewed: \*\*(\d{4}-\d{2}-\d{2})\*\*$", re.M)
 POSSIBLE_ID = re.compile(r"^[A-Za-z][A-Za-z0-9]*[-_]\d+")
-GROUP_PREFIX = re.compile(r"^(?:API|MGT)(?:\b|[-_])", re.I)
+GROUP_PREFIX = re.compile(r"^MGT(?:\b|[-_])", re.I)
 
 PANEL_LAYOUT = {
     "width": 1440,
@@ -157,9 +138,8 @@ def parse_features(text: str) -> list[Feature]:
         cells = table_cells(line)
         if cells is None or not cells:
             continue
-        identifier = cells[0]
-        # Reject malformed IDs from either inventory family while ignoring
-        # headings, separators, and the other protocol references in prose.
+        identifier = re.sub(r"<a\s+id=[\"\'][^>]+></a>", "", cells[0]).strip()
+        # Ignore headings and separators; explicit MGT-like IDs must be valid.
         if not GROUP_PREFIX.match(identifier) and not POSSIBLE_ID.match(identifier):
             continue
         match = ROW_ID.fullmatch(identifier)
@@ -182,10 +162,8 @@ def parse_features(text: str) -> list[Feature]:
 
     if not features:
         raise fail("progress.md contains no API feature rows")
-    if not any(feature.identifier.startswith("API-") for feature in features):
-        raise fail("progress.md must contain at least one raw API method row")
     if not any(feature.identifier.startswith("MGT-") for feature in features):
-        raise fail("progress.md must contain at least one integration/management row")
+        raise fail("progress.md must contain at least one management row")
     return features
 
 
@@ -201,10 +179,10 @@ def tally(features: list[Feature]) -> dict[str, dict[str, int]]:
 
 
 def panel_tallies(counts: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
-    """Aggregate the API and management groups into independent panels."""
+    """Aggregate the HA management groups into one panel."""
     result = {panel: {**dict.fromkeys(STATUSES, 0), "Total": 0} for panel in PANELS}
-    for group, row in counts.items():
-        panel = group.split("-", maxsplit=1)[0]
+    for row in counts.values():
+        panel = "MGT"
         for status in STATUSES:
             result[panel][status] += row[status]
         result[panel]["Total"] += row["Total"]
@@ -230,7 +208,7 @@ def render_markdown(counts: dict[str, dict[str, int]]) -> str:
         )
     lines.extend(
         [
-            f"![{' ; '.join(image_alt)}](api-progress.svg)",
+            f"![{' ; '.join(image_alt)}](management-progress.svg)",
             "",
         ]
     )
@@ -250,7 +228,7 @@ def render_markdown(counts: dict[str, dict[str, int]]) -> str:
         ]
     )
     for group, label in GROUPS:
-        panel = group.split("-", maxsplit=1)[0]
+        panel = "MGT"
         row = counts[group]
         lines.append(
             f"| {PANELS[panel]['label']} | {label} | {row['Implemented']} | {row['Partial']} | {row['Missing']} | {row['Total']} |"
@@ -386,7 +364,14 @@ def _group_tile_side(
     panel_groups = [group for group, _label in GROUPS if group.startswith(f"{panel}-")]
     feature_count = sum(counts[group]["Total"] for group in panel_groups)
     group_count = sum(counts[group]["Total"] > 0 for group in panel_groups)
-    map_area = PANEL_LAYOUT["map_width"] * PANEL_LAYOUT["map_height"]
+    panel_count = len(PANELS)
+    panel_width = (
+        PANEL_LAYOUT["width"]
+        - 2 * PANEL_LAYOUT["margin_x"]
+        - (panel_count - 1) * PANEL_LAYOUT["gap"]
+    ) / panel_count
+    map_width = panel_width - 2 * PANEL_LAYOUT["map_inset_x"]
+    map_area = map_width * PANEL_LAYOUT["map_height"]
     label_area = GROUP_LABEL_AREA
     item_area = (map_area - group_count * label_area) / feature_count
     tile_side = min(58.0, math.sqrt(max(144.0, item_area * 0.63)))
@@ -456,10 +441,9 @@ def _render_group_tiles(
     if any(len(word) > max_characters for word in label.split()):
         display_label = SHORT_GROUP_LABELS.get(group, label)
     label_lines = _wrap_label(display_label, max_characters)
-    count_kind = "METHODS" if group.startswith("API-") else "CHECKS"
     implemented = sum(feature.status == "Implemented" for feature in features)
-    count_label = f"{implemented}/{len(features)} {count_kind}"
-    lower_kind = count_kind.lower()
+    count_label = f"{implemented}/{len(features)} CHECKS"
+    lower_kind = "checks"
     count_font = min(10.0, category_width / (len(count_label) * 0.62))
     count_font = max(8.0, count_font)
     label_text = (
@@ -504,10 +488,15 @@ def _render_panel(
     """Render one independent panel with its count-proportional group map."""
     info = PANELS[panel]
     panel_counts = panel_tallies(counts)[panel]
-    panel_x = PANEL_LAYOUT["margin_x"] + (
-        0 if panel == "API" else 693 + PANEL_LAYOUT["gap"]
+    panel_index = list(PANELS).index(panel)
+    panel_width = (
+        PANEL_LAYOUT["width"]
+        - 2 * PANEL_LAYOUT["margin_x"]
+        - (len(PANELS) - 1) * PANEL_LAYOUT["gap"]
+    ) / len(PANELS)
+    panel_x = PANEL_LAYOUT["margin_x"] + panel_index * (
+        panel_width + PANEL_LAYOUT["gap"]
     )
-    panel_width = 693.0
     panel_y = PANEL_LAYOUT["panel_y"]
     panel_height = PANEL_LAYOUT["panel_height"]
     map_x = panel_x + PANEL_LAYOUT["map_inset_x"]
@@ -565,15 +554,13 @@ def render_svg(
     """Build the standalone two-panel, accessible tiled coverage map."""
     panels = panel_tallies(counts)
     summary = (
-        f"Raw API methods: {panels['API']['Implemented']} of {panels['API']['Total']} implemented, "
-        f"{panels['API']['Partial']} partial, {panels['API']['Missing']} missing. "
         f"Integration and management: {panels['MGT']['Implemented']} of {panels['MGT']['Total']} implemented, "
         f"{panels['MGT']['Partial']} partial, {panels['MGT']['Missing']} missing. "
         f"Last reviewed {reviewed}. Each tile represents one inventory row."
     )
     panel_svgs = "".join(_render_panel(panel, features, counts) for panel in PANELS)
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{PANEL_LAYOUT["width"]}" height="{PANEL_LAYOUT["height"]}" viewBox="0 0 {PANEL_LAYOUT["width"]} {PANEL_LAYOUT["height"]}" role="img" aria-labelledby="coverage-title coverage-description">
-  <title id="coverage-title">Mysa consumer API coverage map</title>
+  <title id="coverage-title">Mysa Home Assistant management coverage map</title>
   <desc id="coverage-description">{escape(summary)}</desc>
   <style>
     text {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
@@ -613,8 +600,8 @@ def render_svg(
     </pattern>
   </defs>
   <rect class="canvas" width="100%" height="100%" />
-  <text class="page-title" x="28" y="38">Mysa consumer API coverage</text>
-  <text class="page-subtitle" x="28" y="60">Direct API support and the integration logic that turns it into dependable device behavior</text>
+  <text class="page-title" x="28" y="38">Mysa Home Assistant integration management</text>
+  <text class="page-subtitle" x="28" y="60">Acceptance criteria for state, commands, lifecycle, managed workflows, and verification</text>
   <text class="reviewed" x="1412" y="38" text-anchor="end">LAST REVIEWED  {escape(reviewed)}</text>
   {panel_svgs}
   <g role="group" aria-label="Coverage status legend">
@@ -662,21 +649,21 @@ def run(check: bool) -> int:
             try:
                 current_svg = SVG_PATH.read_text(encoding="utf-8")
             except OSError:
-                stale.append("docs/implementation/api-progress.svg is missing")
+                stale.append("docs/implementation/management-progress.svg is missing")
             else:
                 if current_svg != generated_svg:
-                    stale.append("docs/implementation/api-progress.svg is stale")
+                    stale.append("docs/implementation/management-progress.svg is stale")
             if stale:
                 for message in stale:
                     print(message, file=sys.stderr)
                 return 1
-            print("API progress Markdown and SVG are up to date.")
+            print("Management progress Markdown and SVG are up to date.")
             return 0
 
         SVG_PATH.write_text(generated_svg, encoding="utf-8")
         TRACKER.write_text(expected_tracker, encoding="utf-8")
         print(
-            "Updated docs/implementation/progress.md and docs/implementation/api-progress.svg."
+            "Updated docs/implementation/progress.md and docs/implementation/management-progress.svg."
         )
     except (OSError, ValueError) as error:
         print(f"update_api_progress.py: {error}", file=sys.stderr)
