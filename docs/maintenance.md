@@ -14,6 +14,7 @@ app-derived behavior from confirmed device behavior.
 | State/usage/capability shapes and model enums | [State reference](cloud-state.md) |
 | Schedule/account workflow mechanics | [Workflows](cloud-workflows.md) |
 | BLE and SoftAP provisioning | [Bluetooth](bluetooth.md); implementation owned by the separate setup repository |
+| HomeKit feature parity, implementation gaps and exclusions | [HomeKit tracker](implementation/homekit.md) |
 | Mysa HomeKit accessory findings | [HomeKit](homekit.md); adapter lifecycle stays in its package guide |
 | MQTT authorization and wire reference | [MQTT](mqtt.md) |
 | Device startup, resilience, firmware checks and OTA | [Firmware/connectivity](firmware-and-connectivity.md) |
@@ -42,7 +43,7 @@ patterns. It never imports or calls a device/client implementation. External URL
 are not network-checked. Semantic accuracy and sanitization still require review.
 
 Update the authoritative reference first, then related examples. Update the
-cloud tracker with implementation changes and cite relevant tests. Keep hardware
+affected cloud or HomeKit tracker with implementation changes and cite relevant tests. Keep hardware
 limits separate from fixture coverage. Do not turn HTTP acceptance or a generic
 raw write into semantic support. Release notes stay historical.
 

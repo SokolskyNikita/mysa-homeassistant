@@ -8,6 +8,8 @@ semantic API; it does not implement the underlying HAP transport or cryptography
 
 For Mysa-specific hardware observations, unsupported characteristics, and Wi-Fi
 migration limits, see the [accessory reference](../../../../docs/homekit.md).
+For feature parity, implementation gaps, and completion criteria, see the
+[HomeKit tracker](../../../../docs/implementation/homekit.md).
 
 ## How it is organized
 

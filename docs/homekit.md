@@ -5,7 +5,9 @@ display units, and Identify. These findings apply to Baseboard Lite
 `BB-V2-0-L`, firmware `3.17.5.13`, observed October 10–11, 2026. HomeKit's firmware
 string can be shortened to `3.17.5`; BLE/cloud expose the full build. Other models
 need their own accessory profile. The [package guide](../custom_components/mysa_local/protocols/homekit/README.md)
-owns the Python API, persistence guarantees, errors, and lifecycle.
+owns the Python API, persistence guarantees, errors, and lifecycle. The
+[implementation tracker](implementation/homekit.md) compares this surface with
+current code, gaps, and deliberately unexposed services.
 
 ## Discovery and pairing
 

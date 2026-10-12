@@ -222,16 +222,19 @@ def main() -> int:
             parse_json(path)
         except ValueError:
             fail(path, "invalid fixture JSON")
-    tracker = ROOT / "docs/implementation/cloud.md"
-    tracker_text = tracker.read_text()
-    item_ids = re.findall(r'<a id="(c-[iapo]\d+)"', tracker_text)
-    if len(item_ids) != len(set(item_ids)):
-        fail(tracker, "duplicate tracker item IDs")
-    for identifier in item_ids:
-        if identifier.startswith(("c-a", "c-p")) and (
-            identifier + "-criteria" not in anchors(tracker_text)
-        ):
-            fail(tracker, f"missing completion criteria: {identifier}")
+    tracker_id_count = 0
+    for name, prefix in (("cloud", "c"), ("homekit", "hk")):
+        tracker = ROOT / f"docs/implementation/{name}.md"
+        tracker_text = tracker.read_text()
+        item_ids = re.findall(rf'<a id="({prefix}-[iapod]\d+)"', tracker_text)
+        tracker_id_count += len(item_ids)
+        if len(item_ids) != len(set(item_ids)):
+            fail(tracker, "duplicate tracker item IDs")
+        for identifier in item_ids:
+            if identifier.startswith((f"{prefix}-a", f"{prefix}-p")) and (
+                identifier + "-criteria" not in anchors(tracker_text)
+            ):
+                fail(tracker, f"missing completion criteria: {identifier}")
     for error in ERRORS:
         print(error)
     if ERRORS:
@@ -239,7 +242,7 @@ def main() -> int:
         return 1
     print(
         f"OK: {len(markdown)} Markdown files, {len(examples)} examples, "
-        f"{len(item_ids)} tracker IDs; all checks offline"
+        f"{tracker_id_count} tracker IDs; all checks offline"
     )
     return 0
 

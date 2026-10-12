@@ -8,7 +8,7 @@ fallback, persistence, and ownership of integration behavior.
 
 | Path | Transport and identity | Reference |
 | --- | --- | --- |
-| HA/controller → thermostat | Local HomeKit over IP; saved controller pairing keys | [Accessory behavior](homekit.md), [adapter API/lifecycle](../custom_components/mysa_local/protocols/homekit/README.md) |
+| HA/controller → thermostat | Local HomeKit over IP; saved controller pairing keys | [Accessory behavior](homekit.md), [implementation parity](implementation/homekit.md), [adapter API/lifecycle](../custom_components/mysa_local/protocols/homekit/README.md) |
 | Setup client → thermostat | Bonded BLE; separate app-derived SoftAP HTTP flow | [Bluetooth and provisioning](bluetooth.md) |
 | Current app/client → cloud | HTTPS with a Cognito ID token | [Primary cloud reference](../custom_components/mysa_local/protocols/cloud/README.md) |
 | Legacy app/client → cloud | MQTT over secure WebSocket; temporary Cognito Identity Pool AWS credentials | [MQTT protocol and permissions](mqtt.md) |

@@ -260,4 +260,5 @@ when moving completed work into coverage, and leave hardware limits explicit.
 A probe script, accepted request, or generic update method does not close a
 semantic item. Release history belongs in the changelog. Keep protocol payloads
 in [examples](../examples/README.md) and selection algorithms in the primary
-reference. No other protocol tracker is warranted by the current scoped backlog.
+reference. HomeKit parity and its protocol/lifecycle gaps are tracked
+[separately](homekit.md).
