@@ -122,7 +122,7 @@ def check_body(path: Path, part: dict[str, object]) -> None:
         if target and target.is_file():
             try:
                 parse_json(target)
-            except (ValueError, OSError):
+            except ValueError, OSError:
                 fail(path, "referenced payload is not strict JSON")
 
 
@@ -130,7 +130,7 @@ def check_example(path: Path, ids: set[str]) -> None:
     """Validate the documented exchange format and required evidence fields."""
     try:
         data = parse_json(path)
-    except (ValueError, OSError):
+    except ValueError, OSError:
         fail(path, "invalid strict JSON")
         return
     if not isinstance(data, dict):

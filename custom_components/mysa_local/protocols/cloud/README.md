@@ -390,7 +390,9 @@ the integration. For example:
 from custom_components.mysa_local.protocols.cloud import MysaAuth, MysaClient, Mode
 
 
-async def request_heat_target(session, refresh_token: str, user_agent: str, device_id: str):
+async def request_heat_target(
+    session, refresh_token: str, user_agent: str, device_id: str
+):
     auth = MysaAuth(session, refresh_token=refresh_token, user_agent=user_agent)
     client = MysaClient(session, auth, user_agent=user_agent)
     await client.set_temperature(device_id, Mode.HEAT, 21.5)
