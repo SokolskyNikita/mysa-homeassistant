@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.components import system_health
 from homeassistant.const import CONF_PASSWORD
 from homeassistant.core import HomeAssistant, callback
+from mysa_client.cloud.const import API_BASE
 
 from .const import (
     CONF_REFRESH_TOKEN,
@@ -18,7 +19,6 @@ from .const import (
     VERSION,
 )
 from .data import MysaConfigEntry
-from .protocols.cloud.const import API_BASE
 
 
 @callback

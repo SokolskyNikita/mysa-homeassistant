@@ -10,9 +10,7 @@ from homeassistant.components import zeroconf
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.util.hass_dict import HassKey
-
-from .const import DOMAIN, LOGGER
-from .protocols.homekit import (
+from mysa_client.homekit import (
     AccessoryInfo,
     HomeKitAdvertisement,
     HomeKitError,
@@ -20,6 +18,8 @@ from .protocols.homekit import (
     parse_advertisement,
     update_pairing_endpoint,
 )
+
+from .const import DOMAIN, LOGGER
 
 _PROTOCOL_KEY: HassKey[HomeKitProtocol] = HassKey(f"{DOMAIN}_homekit_protocol")
 _PROTOCOL_LOCK: HassKey[asyncio.Lock] = HassKey(f"{DOMAIN}_homekit_protocol_lock")

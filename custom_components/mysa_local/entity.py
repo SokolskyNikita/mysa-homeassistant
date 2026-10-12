@@ -8,10 +8,10 @@ from homeassistant.core import callback
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
 from homeassistant.helpers.entity import Entity, EntityDescription
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from mysa_client.cloud import DeviceState
 
 from .const import DOMAIN, MANUFACTURER
 from .data import MysaConfigEntry
-from .protocols.cloud import DeviceState
 from .thermostat import Thermostat
 
 

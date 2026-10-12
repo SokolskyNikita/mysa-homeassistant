@@ -6,10 +6,10 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from mysa_client.cloud import HeaterType
 
 from .data import MysaConfigEntry
 from .entity import MysaCloudEntity, MysaEntity, async_add_when_ready
-from .protocols.cloud import HeaterType
 from .thermostat import Thermostat
 
 PARALLEL_UPDATES = 1

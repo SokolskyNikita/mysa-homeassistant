@@ -1,6 +1,6 @@
 # Firmware and device connectivity
 
-The [cloud protocol reference](../custom_components/mysa_local/protocols/cloud/README.md) owns endpoint availability, S/R/L terminology, observed limitations, and recommended client policy. This page supplies detailed wire mechanics; implementation status belongs to the [cloud tracker](implementation/cloud.md).
+The [cloud protocol reference](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md) owns endpoint availability, S/R/L terminology, observed limitations, and recommended client policy. This page supplies detailed wire mechanics; implementation status belongs to the [cloud tracker](implementation/cloud.md).
 
 The protocols were reverse-engineered from the original Mysa apps. Hardware observations cover Baseboard Lite `BB-V2-0-L`, firmware `3.17.5.13`. Other-model behavior remains app/code-derived unless explicitly stated.
 
@@ -34,7 +34,7 @@ out behavior on other firmware or after a longer outage.
 
 For V1/V2/Lite, In-floor and AC, `GET /devices/update_available/{dev}` returns:
 
-[Firmware availability exchange](examples/cloud/firmware-availability.no-update.json)
+[Firmware availability exchange](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/firmware-availability.no-update.json)
 
 Both control generations use the same availability endpoint and
 `GET /devices/firmware` for installed versions. Their update triggers differ:
@@ -49,8 +49,8 @@ clients poll every 10–20 seconds and may repeat the trigger while an update is
 available, with a six-minute limit in the current pairing flow. BLE credential
 transfer is documented [separately](bluetooth.md#credential-transfer-on-newer-models).
 
-Compare [JSON `{}`](examples/cloud/firmware-trigger.empty-object.json) with
-[no request body](examples/cloud/firmware-trigger.no-body-error.json).
+Compare [JSON `{}`](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/firmware-trigger.empty-object.json) with
+[no request body](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/firmware-trigger.no-body-error.json).
 With no update available, the trigger returned HTTP 200 with
 `{"triggered":true,...}`, followed by incoming traffic on the thermostat's
 existing MQTT/TLS connection and an HTTPS connection to

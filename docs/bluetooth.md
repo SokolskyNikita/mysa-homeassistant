@@ -250,7 +250,7 @@ An advertisement establishes that the accessory is discoverable; bit 0 of its
 `sf` field indicates that it is unpaired when set. A cleared bit reports an
 existing pairing but does not identify the controller or prove that its saved
 keys still work. A successful authenticated HomeKit read is the stronger check.
-See the [HomeKit protocol reference](../custom_components/mysa_local/protocols/homekit/README.md).
+See the [HomeKit protocol reference](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md).
 
 The standalone setup webpage cannot perform ordinary mDNS discovery itself. A
 Home Assistant backend or local helper could perform that check after BLE setup.
@@ -261,8 +261,8 @@ On the tested Lite, the known Bluetooth surface provides no identified setpoint,
 temperature, mode, reboot, firmware-upload, or MQTT-credential operation. No BLE
 command to enable a temporary Wi-Fi access point has been established either.
 These limits describe the observed setup interface, not every possible firmware
-mode. Runtime control remains through [HomeKit](../custom_components/mysa_local/protocols/homekit/README.md) or the
-[HTTPS cloud protocol](../custom_components/mysa_local/protocols/cloud/README.md); the separate
+mode. Runtime control remains through [HomeKit](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md) or the
+[HTTPS cloud protocol](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md); the separate
 [MQTT reference](mqtt.md) covers MQTT authentication and permissions.
 
 ## Temporary Wi-Fi access point setup

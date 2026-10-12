@@ -10,9 +10,7 @@ from typing import Any
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
-
-from .const import LOCAL_POLL_INTERVAL, LOCAL_READ_TIMEOUT, LOGGER
-from .protocols.homekit import (
+from mysa_client.homekit import (
     AccessoryInfo,
     CharacteristicInfo,
     Field,
@@ -26,8 +24,10 @@ from .protocols.homekit import (
     LocalMode,
 )
 
+from .const import LOCAL_POLL_INTERVAL, LOCAL_READ_TIMEOUT, LOGGER
+
 # Keep the public aliases semantic. HomeKit UUIDs, IIDs and integer enum values
-# belong exclusively to protocols.homekit.
+# belong exclusively to mysa_client.homekit.
 CURRENT_TEMPERATURE = Field.CURRENT_TEMPERATURE
 TARGET_TEMPERATURE = Field.TARGET_TEMPERATURE
 CURRENT_STATE = Field.CURRENT_ACTION

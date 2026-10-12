@@ -15,18 +15,18 @@ from typing import Any
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
-
-from .cloud_coordinator import MysaCloudCoordinator, translated_error
-from .const import LOCAL_WRITE_TIMEOUT, LOGGER
-from .event_history import EventHistory, error_category
-from .local_adapter import LOCAL_ERRORS, LocalThermostat, LocalWriteRejectedError
-from .protocols.cloud import (
+from mysa_client.cloud import (
     DeviceState,
     MysaConnectionError,
     MysaError,
     MysaRateLimitError,
 )
-from .protocols.homekit import Field
+from mysa_client.homekit import Field
+
+from .cloud_coordinator import MysaCloudCoordinator, translated_error
+from .const import LOCAL_WRITE_TIMEOUT, LOGGER
+from .event_history import EventHistory, error_category
+from .local_adapter import LOCAL_ERRORS, LocalThermostat, LocalWriteRejectedError
 
 
 class CommandRouter:

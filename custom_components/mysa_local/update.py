@@ -12,12 +12,12 @@ from homeassistant.components.update import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from mysa_client.cloud import MysaError
 
 from .cloud_coordinator import translated_error
 from .const import CONF_FIRMWARE_INSTALL, LOGGER
 from .data import MysaConfigEntry
 from .entity import MysaCloudEntity, async_add_when_ready
-from .protocols.cloud import MysaError
 from .thermostat import Thermostat
 
 PARALLEL_UPDATES = 1

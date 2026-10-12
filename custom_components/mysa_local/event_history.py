@@ -13,7 +13,7 @@ import math
 from typing import Any
 from uuid import uuid4
 
-from .protocols.cloud.observations import STATE_FIELDS, TELEMETRY_FIELDS, Observation
+from mysa_client.cloud.observations import STATE_FIELDS, TELEMETRY_FIELDS, Observation
 
 _LOGGER = logging.getLogger(__name__)
 MAX_EVENTS = 500
@@ -196,14 +196,14 @@ def utcnow() -> datetime:
 
 def error_category(error: BaseException | None) -> str:
     """Classify without ever formatting an exception or its arguments."""
-    from .protocols.cloud.exceptions import (
+    from mysa_client.cloud import (
         MysaApiError,
         MysaAuthError,
         MysaConnectionError,
         MysaNotFoundError,
         MysaRateLimitError,
     )
-    from .protocols.homekit.exceptions import (
+    from mysa_client.homekit.exceptions import (
         HomeKitAuthenticationError,
         HomeKitConnectionError,
         HomeKitWriteRejectedError,
@@ -345,7 +345,7 @@ class EventHistory:
                 result[key] = value if value in self._devices.values() else "unknown"
             elif key == "route":
                 # Only the protocol's finite route vocabulary can pass.
-                from .protocols.cloud.trace import route_template
+                from mysa_client.cloud.trace import route_template
 
                 result[key] = (
                     route_template(value) if isinstance(value, str) else "unknown"

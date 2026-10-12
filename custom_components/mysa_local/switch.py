@@ -8,10 +8,10 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from mysa_client.cloud import ButtonLock
 
 from .data import MysaConfigEntry
 from .entity import MysaCloudEntity, MysaEntity, async_add_when_ready
-from .protocols.cloud import ButtonLock
 from .thermostat import Thermostat
 
 PARALLEL_UPDATES = 1

@@ -7,6 +7,15 @@ from unittest.mock import AsyncMock, patch
 
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
+from mysa_client.cloud import (
+    Mode,
+    MysaApiError,
+    MysaConnectionError,
+    MysaRateLimitError,
+)
+from mysa_client.cloud.const import LEGACY_API_BASE
+from mysa_client.cloud.observations import Observation
+from mysa_client.cloud.trace import route_template
 import pytest
 from pytest_homeassistant_custom_component.components.diagnostics import (
     get_diagnostics_for_config_entry,
@@ -20,15 +29,6 @@ from custom_components.mysa_local.event_history import (
     EventHistory,
     error_category,
 )
-from custom_components.mysa_local.protocols.cloud import (
-    Mode,
-    MysaApiError,
-    MysaConnectionError,
-    MysaRateLimitError,
-)
-from custom_components.mysa_local.protocols.cloud.const import LEGACY_API_BASE
-from custom_components.mysa_local.protocols.cloud.observations import Observation
-from custom_components.mysa_local.protocols.cloud.trace import route_template
 
 from .common import DEVICE_ID, HOME_ID, PAIRING_DATA, REFRESH_TOKEN, hub_entry
 from .conftest import setup_entry

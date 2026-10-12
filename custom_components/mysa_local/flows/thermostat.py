@@ -13,6 +13,26 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
 )
+from mysa_client.cloud import (
+    MODEL_NAMES,
+    MysaApiError,
+    MysaClient,
+    MysaConnectionError,
+    MysaError,
+)
+from mysa_client.homekit import (
+    AccessoryInfo,
+    HomeKitAuthenticationError,
+    HomeKitBusyError,
+    HomeKitConnectionError,
+    HomeKitDiscovery,
+    HomeKitError,
+    HomeKitMalformedPinError,
+    HomeKitMaxPeersError,
+    HomeKitMaxTriesError,
+    HomeKitNotFoundError,
+    HomeKitUnavailableError,
+)
 import voluptuous as vol
 
 from custom_components.mysa_local.account import (
@@ -31,26 +51,6 @@ from custom_components.mysa_local.homekit_adapter import (
 )
 from custom_components.mysa_local.migration import HKC_DOMAIN
 from custom_components.mysa_local.pairing_store import pairing_store
-from custom_components.mysa_local.protocols.cloud import (
-    MODEL_NAMES,
-    MysaApiError,
-    MysaClient,
-    MysaConnectionError,
-    MysaError,
-)
-from custom_components.mysa_local.protocols.homekit import (
-    AccessoryInfo,
-    HomeKitAuthenticationError,
-    HomeKitBusyError,
-    HomeKitConnectionError,
-    HomeKitDiscovery,
-    HomeKitError,
-    HomeKitMalformedPinError,
-    HomeKitMaxPeersError,
-    HomeKitMaxTriesError,
-    HomeKitNotFoundError,
-    HomeKitUnavailableError,
-)
 
 from .shared import (
     CONF_ADD_TO_ACCOUNT,

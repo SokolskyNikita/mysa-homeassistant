@@ -14,10 +14,10 @@ from homeassistant.components.number import DOMAIN as NUMBER_DOMAIN, SERVICE_SET
 from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from mysa_client.cloud import DeviceRecord
 import pytest
 
 from custom_components.mysa_local.const import DOMAIN
-from custom_components.mysa_local.protocols.cloud import DeviceRecord
 
 from .common import DEVICE_ID, FakeCloud, hub_entry, thermostat_subentry
 from .conftest import setup_entry

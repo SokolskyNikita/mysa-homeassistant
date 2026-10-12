@@ -24,10 +24,10 @@ from homeassistant.const import ATTR_TEMPERATURE, PRECISION_TENTHS, UnitOfTemper
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util.unit_conversion import TemperatureDeltaConverter
+from mysa_client.cloud import SWING_HORIZONTAL, SWING_VERTICAL, AcFan, Mode, Swing
 
 from .data import MysaConfigEntry
 from .entity import MysaEntity, async_add_when_ready
-from .protocols.cloud import SWING_HORIZONTAL, SWING_VERTICAL, AcFan, Mode, Swing
 from .schedule import (
     async_clear_schedule,
     async_hold,

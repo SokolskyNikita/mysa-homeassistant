@@ -7,11 +7,10 @@ from unittest.mock import AsyncMock, patch
 
 from aiohomekit.testing import FakeController
 from homeassistant.core import HomeAssistant
+from mysa_client.homekit import HomeKitProtocol
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
-
-from custom_components.mysa_local.protocols.homekit import HomeKitProtocol
 
 from .common import FakeCloud, hub_entry, make_controller
 

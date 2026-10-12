@@ -258,7 +258,7 @@ scripts/lint     # Ruff formatting and fixes, then strict mypy
 scripts/develop  # development Home Assistant using config/
 ```
 
-CI also runs HACS validation and hassfest. The cloud and HomeKit implementations live separately under [protocols/](custom_components/mysa_local/protocols), with no Home Assistant imports or cross-protocol dependencies. HA adapters own lifecycle and polling; the command router owns fallback and ordering. See [Architecture](docs/architecture.md) for the public interfaces, ownership rules, and boundary tests. Cloud endpoints are documented in [the documentation index](docs/README.md); the [Bluetooth protocol reference](docs/bluetooth.md) covers Wi-Fi provisioning, network scanning, and newer-model credential transfer. Release history is in [CHANGELOG.md](CHANGELOG.md).
+CI also runs HACS validation and hassfest. The cloud and HomeKit protocols are provided by the standalone [`mysa-client` package](https://github.com/SokolskyNikita/mysa-client); this integration owns lifecycle, polling, persistence, and command ordering. See [Architecture](docs/architecture.md) for the public interfaces, ownership rules, and boundary tests. Cloud endpoints are documented in [the documentation index](docs/README.md); the [Bluetooth protocol reference](docs/bluetooth.md) covers Wi-Fi provisioning, network scanning, and newer-model credential transfer. Release history is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Credits and license
 

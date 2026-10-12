@@ -1,6 +1,6 @@
 # Cloud account and schedule workflows
 
-The [cloud protocol reference](../custom_components/mysa_local/protocols/cloud/README.md) owns endpoint availability, S/R/L terminology, observed limitations, and recommended client policy. This page supplies detailed wire mechanics; implementation status belongs to the [cloud tracker](implementation/cloud.md).
+The [cloud protocol reference](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md) owns endpoint availability, S/R/L terminology, observed limitations, and recommended client policy. This page supplies detailed wire mechanics; implementation status belongs to the [cloud tracker](implementation/cloud.md).
 
 The protocols were reverse-engineered from the original Mysa apps. Hardware observations cover Baseboard Lite `BB-V2-0-L`, firmware `3.17.5.13`. Other-model behavior remains app/code-derived unless explicitly stated.
 
@@ -14,7 +14,7 @@ The protocols were reverse-engineered from the original Mysa apps. Hardware obse
 
 `POST /schedule` creates and attaches a schedule. The response was 201 with `{"scheduleId":"..."}`.
 
-[Full schedule creation exchange](examples/cloud/schedule-create.full-body.json)
+[Full schedule creation exchange](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/schedule-create.full-body.json)
 
 Weekdays use Sunday = `"0"`; execution times use local `HH:MM:00`. Schedule times follow the device's `TimeZone`; the client does not convert from HA's time zone. `clientKey` identifies the submitting client.
 
@@ -27,7 +27,7 @@ the submitted and returned JSON to match exactly.
 
 `DELETE /schedule/{scheduleId}/attach/{dev}` detaches the device. For an unshared
 schedule, the response was "Schedule unattached from device and deleted".
-In-place editing is verified through `PUT /schedule/{id}`; see the [full-body update example](examples/cloud/schedule-update.full-body.json). Send all six fields:
+In-place editing is verified through `PUT /schedule/{id}`; see the [full-body update example](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/schedule-update.full-body.json). Send all six fields:
 `name`, `events`, `deviceType`, `homeId`, `deviceIds`, and `reusable`. A body
 containing only name/events fails. Acceptance and record readback did not
 establish complete scheduled execution. This update operation is [outside client scope](implementation/cloud.md#c-p07);
@@ -44,10 +44,10 @@ Read v2 with `GET /schedules/v2/{dev}` using the device ID. Creation/update uses
 `POST /schedules/v2/`: `Schedule` carries `Version`, `Owner`, `Events` (and `Id`
 for update), with sibling `Devices` and `Model`. Preserve the native metadata;
 do not derive `Model` or `Owner` from an event key. See the
-[v2 update body](examples/cloud/schedule-v2-update.full-body.json),
-[v2 delete body](examples/cloud/schedule-v2-delete.with-body.json), and
-v1 clear variants for [R](examples/cloud/schedule-v1-clear.modern-host.json)
-and [L](examples/cloud/schedule-v1-clear.legacy-host.json). Delete at
+[v2 update body](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/schedule-v2-update.full-body.json),
+[v2 delete body](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/schedule-v2-delete.with-body.json), and
+v1 clear variants for [R](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/schedule-v1-clear.modern-host.json)
+and [L](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/schedule-v1-clear.legacy-host.json). Delete at
 `/schedules/v2/{id}` using the schedule ID and a JSON body with `Devices` and
 `Model`. A device ID and schedule ID are not interchangeable.
 
@@ -72,7 +72,7 @@ and a second legacy schedule editor are [out of scope](implementation/cloud.md#o
 
 With a schedule active, a plain setpoint write held the new value until the next event. Explicit holds use `POST /schedule/hold`:
 
-[Permanent hold exchange](examples/cloud/hold.permanent.json)
+[Permanent hold exchange](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/hold.permanent.json)
 
 For a timed hold, use `"holdType":"temporary"` and add `"endTime":"<ISO UTC timestamp>"`. Both returned 201 with a `holdId`. Changing the hold kept the same ID.
 
@@ -88,7 +88,7 @@ Mysa Local requires an active schedule for a hold. Its handling of a creation-ti
 
 Edit a shortcut with `PATCH /scene/{shortcutId}`:
 
-[Shortcut action replacement exchange](examples/cloud/shortcut.replace-actions.json)
+[Shortcut action replacement exchange](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/shortcut.replace-actions.json)
 
 The PATCH returned 202. Treat `DeviceActions` as the replacement action map. Use `{"DeviceActions":{},"AllDevices":true}` to clear the action map.
 
@@ -204,7 +204,7 @@ Model and firmware flags include `LV_ACCESS`, `LV_AUTOMODE_FW`, `LV_ADAPTIVE_BRI
 Additional legacy routes include `/energy/device|zone|home/{id}`,
 `/batchReadings/v2/{dev}`, `/schedules`, `/schedules/device/update/{dev}` and
 `/devices/capabilities`; their tested availability and host differences are recorded in the
-[primary cloud reference](../custom_components/mysa_local/protocols/cloud/README.md#read-matrix).
+[primary cloud reference](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md#read-matrix).
 Property-manager requests use `GET /zones` on `dash-api-v1.mysa.cloud`.
 `/users/readingsForUser` is a defined but unverified route. Legacy NFC setup
 uses `GET /nfc/auth-key`; it has no identified role in current provisioning.

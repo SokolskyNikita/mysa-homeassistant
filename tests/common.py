@@ -20,6 +20,13 @@ from aiohomekit.model import Accessories
 from aiohomekit.model.status_flags import StatusFlags
 from aiohomekit.testing import FakeController, FakeDiscovery, FakePairing
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
+from mysa_client.cloud.const import (
+    API_BASE,
+    COGNITO_URL,
+    COGNITO_USER_POOL_ID,
+    LEGACY_API_BASE,
+)
+from mysa_client.cloud.srp import BIG_N, G, K, pad_hex
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import (
     AiohttpClientMocker,
@@ -39,13 +46,6 @@ from custom_components.mysa_local.const import (
     DOMAIN,
     SUBENTRY_THERMOSTAT,
 )
-from custom_components.mysa_local.protocols.cloud.const import (
-    API_BASE,
-    COGNITO_URL,
-    COGNITO_USER_POOL_ID,
-    LEGACY_API_BASE,
-)
-from custom_components.mysa_local.protocols.cloud.srp import BIG_N, G, K, pad_hex
 
 FIXTURES = Path(__file__).parent / "fixtures"
 DEVICE_ID = "a1b2c3d4e5f6"

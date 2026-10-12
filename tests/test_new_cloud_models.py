@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 from datetime import timedelta
 from typing import Any
 from unittest.mock import patch
@@ -10,13 +9,12 @@ from unittest.mock import patch
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
+from mysa_client.cloud import Capabilities, DeviceState, Mode
 import pytest
 
 from custom_components.mysa_local.account import can_claim, can_pair_locally
 from custom_components.mysa_local.const import CONF_MODEL
 from custom_components.mysa_local.diagnostics import async_get_config_entry_diagnostics
-from custom_components.mysa_local.protocols.cloud import Capabilities, DeviceState, Mode
-from custom_components.mysa_local.protocols.cloud.const import ModelFamily
 from custom_components.mysa_local.schedule import async_resume_schedule
 
 from .common import DEVICE_ID, FakeCloud, cloud_only_subentry, hub_entry, load_json
@@ -258,29 +256,6 @@ async def test_new_model_cloud_error_and_missing_record(
     assert not coord.last_update_success
 
 
-def test_parser_capabilities_and_desired_is_not_reported() -> None:
-    data = load_json("app_4201_new_models.json")["models"]["ST-V1-0"]
-    caps = Capabilities.from_api(data["capabilities"])
-    assert Mode.AUTO in caps.basic_modes(ModelFamily.CENTRAL_HVAC)
-    doc = deepcopy(data["capabilities"])
-    doc["features"]["climateControl"]["advancedConfig"]["misc"]["enableAutoMode"][
-        "value"
-    ] = False
-    assert Mode.AUTO not in Capabilities.from_api(doc).basic_modes(
-        ModelFamily.CENTRAL_HVAC
-    )
-    state = DeviceState.from_api(
-        DEVICE_ID,
-        {
-            "targetAuto": {"desired": {"heatSetpoint": 20, "coolSetpoint": 24}},
-            "latestTelemetry": {"reading": {"hvacState": True}},
-        },
-    )
-    assert state.auto_heat_setpoint is None
-    assert state.auto_cool_setpoint is None
-    assert state.hvac_state is None
-
-
 async def test_hvac_speed_uses_native_enum_and_pending_mode(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
@@ -346,7 +321,7 @@ async def test_mixed_account_preserves_lite_and_sensor_only(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
     """A Lite, V3, HVAC and sensor coexist without sharing capability assumptions."""
-    from custom_components.mysa_local.protocols.cloud import MysaClient
+    from mysa_client.cloud import MysaClient
 
     from .common import thermostat_subentry
 

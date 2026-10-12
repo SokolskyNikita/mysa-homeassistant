@@ -282,7 +282,7 @@ async def test_sign_in_survives_bootstrap_failure(
 )
 async def test_sign_in_errors(hass: HomeAssistant, error: str, key: str) -> None:
     """Sign-in problems show as form errors."""
-    from custom_components.mysa_local.protocols.cloud import (
+    from mysa_client.cloud import (
         MysaConnectionError,
         MysaUnsupportedChallengeError,
     )

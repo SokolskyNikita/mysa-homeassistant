@@ -22,6 +22,18 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
 )
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
+from mysa_client.cloud import (
+    MODEL_NAMES,
+    TESTED_MODELS,
+    Bootstrap,
+    MysaAuth,
+    MysaClient,
+    MysaError,
+)
+from mysa_client.homekit import (
+    AccessoryInfo,
+    HomeKitError,
+)
 import voluptuous as vol
 
 from .account import (
@@ -68,18 +80,6 @@ from .homekit_adapter import (
     update_pairing_endpoints,
 )
 from .pairing_store import pairing_store
-from .protocols.cloud import (
-    MODEL_NAMES,
-    TESTED_MODELS,
-    Bootstrap,
-    MysaAuth,
-    MysaClient,
-    MysaError,
-)
-from .protocols.homekit import (
-    AccessoryInfo,
-    HomeKitError,
-)
 
 
 class MysaConfigFlow(ThermostatSteps, MysaReauthFlow, domain=DOMAIN):

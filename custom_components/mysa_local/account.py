@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING, Final
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
+from mysa_client.cloud import WIFI_ONLY_FAMILIES, MysaClient, MysaError, model_family
 
 from .const import DOMAIN, LOGGER
-from .protocols.cloud import WIFI_ONLY_FAMILIES, MysaClient, MysaError, model_family
 
 if TYPE_CHECKING:
     from .cloud_coordinator import MysaCloudCoordinator

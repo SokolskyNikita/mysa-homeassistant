@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from custom_components.mysa_local.protocols.homekit import (
+from mysa_client.homekit import (
     HomeKitDiscovery,
     PairingSession,
 )

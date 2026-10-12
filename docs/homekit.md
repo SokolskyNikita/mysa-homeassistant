@@ -4,7 +4,7 @@ HomeKit provides the integration's local readings, temperature/mode control,
 display units, and Identify. These findings apply to Baseboard Lite
 `BB-V2-0-L`, firmware `3.17.5.13`, observed October 10–11, 2026. HomeKit's firmware
 string can be shortened to `3.17.5`; BLE/cloud expose the full build. Other models
-need their own accessory profile. The [package guide](../custom_components/mysa_local/protocols/homekit/README.md)
+need their own accessory profile. The [package guide](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md)
 owns the Python API, persistence guarantees, errors, and lifecycle. The
 [implementation tracker](implementation/homekit.md) compares this surface with
 current code, gaps, and deliberately unexposed services.
@@ -37,7 +37,7 @@ failure. An unauthenticated HTTP request returned 470, not a local REST API.
 | Accessory Runtime Information (`0x239`) | Runtime/ping/heartbeat surface | Exposed; not an additional thermostat control API |
 
 Use advertised characteristics and ranges; instance IDs are accessory-specific.
-The [sanitized accessory fixture](../tests/fixtures/homekit_bb_v2_0_l.json)
+The [sanitized accessory fixture](https://github.com/SokolskyNikita/mysa-client/blob/main/tests/fixtures/homekit_bb_v2_0_l.json)
 records the profile used by tests. Its payload is a regression fixture, not proof
 of validation on another model. Button lock, brightness, schedules, and humidity
 were absent from the tested Lite's HomeKit surface; the cloud supplies those

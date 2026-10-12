@@ -9,6 +9,13 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from mysa_client.homekit import (
+    AccessoryInfo,
+    HomeKitConnectionError,
+    HomeKitMalformedPinError,
+)
+from mysa_client.homekit.device import HomeKitDevice
+from mysa_client.homekit.models import HomeKitDiscovery
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -32,13 +39,6 @@ from custom_components.mysa_local.pairing_store import (
     pairing_session_id,
     pairing_store,
 )
-from custom_components.mysa_local.protocols.homekit import (
-    AccessoryInfo,
-    HomeKitConnectionError,
-    HomeKitMalformedPinError,
-)
-from custom_components.mysa_local.protocols.homekit.device import HomeKitDevice
-from custom_components.mysa_local.protocols.homekit.models import HomeKitDiscovery
 from custom_components.mysa_local.repairs import LocalPairRepairFlow
 
 from .common import (

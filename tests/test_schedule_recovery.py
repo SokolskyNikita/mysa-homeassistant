@@ -6,9 +6,9 @@ from datetime import time
 from typing import Any
 
 from homeassistant.exceptions import HomeAssistantError
+from mysa_client.cloud import MysaConnectionError
 import pytest
 
-from custom_components.mysa_local.protocols.cloud import MysaConnectionError
 from custom_components.mysa_local.schedule import (
     _schedule_content_matches,
     async_clear_schedule,

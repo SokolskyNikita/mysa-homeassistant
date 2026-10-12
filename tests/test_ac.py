@@ -29,13 +29,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 import pytest
 
-from custom_components.mysa_local.protocols.cloud import (
-    AcFan,
-    DeviceRecord,
-    Mode,
-    Swing,
-)
-
 from .common import DEVICE_ID, FakeCloud, hub_entry, thermostat_subentry
 from .conftest import setup_entry
 
@@ -193,29 +186,6 @@ async def test_heaters_have_no_fan_or_swing(
     attrs = hass.states.get(CLIMATE).attributes
     assert attrs[ATTR_SUPPORTED_FEATURES] & FAN_AND_SWING == 0
     assert ATTR_FAN_MODE not in attrs
-
-
-def test_record_parsing() -> None:
-    """Lenient parsing: numeric strings count, unknown values are dropped."""
-    record = DeviceRecord.from_api(
-        DEVICE_ID,
-        {
-            "Model": "AC-V1-0",
-            "SupportedModes": {
-                "4": {
-                    "fanSpeeds": ["6", 1, 99, None, True],
-                    "verticalSwing": [12, 3, "1"],
-                },
-                "5": "not a dict",
-            },
-            "modifiedKeys": [],
-        },
-    )
-    assert record.modified_keys is None  # an empty list means not customized
-    assert record.ac_fan_speeds(Mode.COOL) == (AcFan.AUTO, AcFan.HIGH)
-    assert record.ac_swing(Mode.COOL, "verticalSwing") == (Swing.OFF, Swing.AUTO)
-    assert record.ac_fan_speeds(Mode.FAN_ONLY) == ()
-    assert record.ac_fan_speeds(Mode.SLEEP) == ()  # no SupportedModes key
 
 
 async def test_ac_starts_off_despite_desired_cooling(

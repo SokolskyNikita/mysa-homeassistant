@@ -14,11 +14,11 @@ from homeassistant.components.number import (
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from mysa_client.cloud import Capabilities, DeviceState
 
 from .cloud_coordinator import translated_error
 from .data import MysaConfigEntry
 from .entity import MysaCloudEntity, MysaEntity, async_add_when_ready
-from .protocols.cloud import Capabilities, DeviceState
 from .thermostat import Thermostat
 
 PARALLEL_UPDATES = 1

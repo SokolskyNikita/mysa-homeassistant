@@ -30,6 +30,8 @@ from homeassistant.helpers import (
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
+from mysa_client.cloud import MysaAuth, MysaClient, MysaError
+from mysa_client.homekit import pairing_identity
 
 from .account import async_delete_account_issues, async_update_account_issues
 from .cloud_coordinator import MysaCloudCoordinator
@@ -57,8 +59,6 @@ from .event_history import EventHistory
 from .homekit_adapter import async_get_controller, async_unpair
 from .local_adapter import LOCAL_ERRORS, LocalThermostat
 from .migration import async_migrate_homekit_controller
-from .protocols.cloud import MysaAuth, MysaClient, MysaError
-from .protocols.homekit import pairing_identity
 from .schedule import async_recover_schedule
 from .services import async_setup_services
 from .thermostat import Thermostat

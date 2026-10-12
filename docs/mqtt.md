@@ -13,8 +13,8 @@ was not reproduced, so its exact cause remains unresolved.
 
 This is a finding about one Mysa-issued identity, not a claim that MQTT is
 disabled for every Mysa user or every Lite thermostat. Mysa Local uses
-[HomeKit](../custom_components/mysa_local/protocols/homekit/README.md) for local communication and the
-[HTTPS cloud protocol](../custom_components/mysa_local/protocols/cloud/README.md) for cloud operations.
+[HomeKit](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md) for local communication and the
+[HTTPS cloud protocol](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md) for cloud operations.
 
 ## Connection and authorization model
 
@@ -31,7 +31,7 @@ then exchanges it through the **Identity Pool** using `GetId` and
 `GetCredentialsForIdentity`. The resulting temporary access key, secret key,
 and session token sign the AWS IoT WebSocket request. Public pool identifiers
 and the authentication exchange are recorded in the
-[cloud authentication reference](cloud-auth.md#cognito-sign-in).
+[cloud authentication reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-auth.md#cognito-sign-in).
 
 The resulting AWS identity belongs to **Mysa's AWS infrastructure**. It
 represents the user's Mysa login; it is not an AWS account owned or administered
@@ -82,7 +82,7 @@ owner's personal AWS account.
 The tested identity had exactly one attached policy, `default`.
 `GetPolicy(default)` returned:
 
-[Policy document projection](examples/cloud/iot-policy.limited.json).
+[Policy document projection](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/cloud/iot-policy.limited.json).
 
 The wildcard covers resources for the two listed actions; it does not grant
 other actions. The absence of `iot:Publish` and `iot:Receive` is therefore
@@ -98,7 +98,7 @@ material even though connection and subscription requests succeed.
 | Passive subscriptions during 20 seconds of HTTPS live reporting | HTTPS readings advanced; no MQTT messages in a 25-second window | Consistent with the missing Receive permission. |
 
 AWS IoT HTTPS `Publish` and Mysa's HTTPS state API are separate paths; the
-latter remains usable. See [live-mode and liveness](cloud-state.md#live-mode-and-liveness).
+latter remains usable. See [live-mode and liveness](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-state.md#live-mode-and-liveness).
 An earlier connection failed before CONNACK; its cause remains unresolved and
 does not change the later authorization findings.
 
@@ -173,15 +173,16 @@ legacy source enum defines 0 as device manual and 1 as device schedule.
 ## Reproducing the diagnostic
 
 [`tools/mqtt_probe.py`](../tools/mqtt_probe.py) is a standalone,
-passive diagnostic. It reuses `protocols.cloud.MysaAuth` and `MysaClient`,
+passive diagnostic. It reuses `mysa_client.cloud.MysaAuth` and `MysaClient`,
 obtains Identity Pool credentials, inspects attached policies, and checks
 MQTT CONNECT and per-device SUBACK through Paho. It discovers device IDs from
 the authenticated account rather than accepting arbitrary topic targets.
 
-From the repository root, use a separate environment with `aiohttp`, `boto3`,
-and `paho-mqtt>=2`, then run:
+From the repository root, use a separate environment and install the standalone
+client with the diagnostic-only dependencies:
 
 ```sh
+python -m pip install mysa-client boto3 'paho-mqtt>=2'
 python tools/mqtt_probe.py --credentials /path/to/credentials.json --duration 20
 ```
 

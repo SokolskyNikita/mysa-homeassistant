@@ -16,6 +16,41 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
+from mysa_client.cloud import (
+    AcFan,
+    ButtonLock,
+    Capabilities,
+    DeviceRecord,
+    DeviceState,
+    FirmwareInfo,
+    HeaterType,
+    Mode,
+    MysaAuthError,
+    MysaClient,
+    MysaConnectionError,
+    MysaError,
+    MysaNotFoundError,
+    MysaRateLimitError,
+    Swing,
+)
+from mysa_client.cloud.commands import (
+    button_lock_changes,
+    display_brightness_changes,
+    display_unit_settings,
+    fan_speed_changes,
+    heater_type_settings,
+    mode_changes,
+    setpoint_limit_changes,
+    swing_changes,
+    temperature_changes,
+    temperature_offset_changes,
+)
+from mysa_client.cloud.const import (
+    EXPERIMENTAL_CLOUD_FAMILIES,
+    ModelFamily,
+    model_family,
+)
+from mysa_client.cloud.observations import MEASUREMENT_MAX_AGE, STATE_FIELDS, number
 
 from .cloud_state import PendingCommand, pending_command, reconcile
 from .const import (
@@ -34,41 +69,6 @@ from .const import (
     LOGGER,
 )
 from .event_history import EventHistory, error_category
-from .protocols.cloud import (
-    AcFan,
-    ButtonLock,
-    Capabilities,
-    DeviceRecord,
-    DeviceState,
-    FirmwareInfo,
-    HeaterType,
-    Mode,
-    MysaAuthError,
-    MysaClient,
-    MysaConnectionError,
-    MysaError,
-    MysaNotFoundError,
-    MysaRateLimitError,
-    Swing,
-)
-from .protocols.cloud.commands import (
-    button_lock_changes,
-    display_brightness_changes,
-    display_unit_settings,
-    fan_speed_changes,
-    heater_type_settings,
-    mode_changes,
-    setpoint_limit_changes,
-    swing_changes,
-    temperature_changes,
-    temperature_offset_changes,
-)
-from .protocols.cloud.const import (
-    EXPERIMENTAL_CLOUD_FAMILIES,
-    ModelFamily,
-    model_family,
-)
-from .protocols.cloud.observations import MEASUREMENT_MAX_AGE, STATE_FIELDS, number
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -739,7 +739,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         family = self.device_family(device_id)
         caps = self.capabilities(device_id)
         if family in EXPERIMENTAL_CLOUD_FAMILIES:
-            from .protocols.cloud.validation import validate_basic_command
+            from mysa_client.cloud.validation import validate_basic_command
 
             try:
                 validate_basic_command(

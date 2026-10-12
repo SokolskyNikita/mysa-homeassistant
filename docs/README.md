@@ -12,10 +12,10 @@ gaps, and hardware-validation limits.
 
 | Path | Transport and identity | Reference |
 | --- | --- | --- |
-| HA/controller → thermostat | Local HomeKit over IP; saved controller pairing keys | [Accessory behavior](homekit.md), [implementation parity](implementation/homekit.md), [adapter API/lifecycle](../custom_components/mysa_local/protocols/homekit/README.md) |
+| HA/controller → thermostat | Local HomeKit over IP; saved controller pairing keys | [Accessory behavior](homekit.md), [implementation parity](implementation/homekit.md), [adapter API/lifecycle](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md) |
 | Matter controller → newer thermostat (not implemented here) | Expected local Matter over Wi-Fi/IP; separate commissioning credentials | [Matter research stub and validation gaps](matter.md) |
 | Setup client → thermostat | Bonded BLE; separate app-derived SoftAP HTTP flow | [Bluetooth and provisioning](bluetooth.md) |
-| Current app/client → cloud | HTTPS with a Cognito ID token | [Primary cloud reference](../custom_components/mysa_local/protocols/cloud/README.md) |
+| Current app/client → cloud | HTTPS with a Cognito ID token | [Primary cloud reference](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md) |
 | Legacy app/client → cloud | MQTT over secure WebSocket; temporary Cognito Identity Pool AWS credentials | [MQTT protocol and permissions](mqtt.md) |
 | Thermostat → cloud | Device's own MQTT/TLS and firmware HTTPS connections | [Firmware and connectivity](firmware-and-connectivity.md) |
 
@@ -26,8 +26,8 @@ two entry points to legacy REST; hostname alone is not an API version.
 
 ## Cloud supporting references
 
-- [Authentication](cloud-auth.md): Cognito wire exchange and browser constraints.
-- [State, history, and model fields](cloud-state.md): discovery shapes, units,
+- [Authentication](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-auth.md): Cognito wire exchange and browser constraints.
+- [State, history, and model fields](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-state.md): discovery shapes, units,
   enum namespaces, telemetry, AC controls, and hardware limits.
 - [Account and schedule workflows](cloud-workflows.md): claims/removal, schedules,
   holds, shortcuts, and app-only route context.

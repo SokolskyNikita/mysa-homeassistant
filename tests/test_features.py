@@ -151,7 +151,7 @@ def test_build_events_off_mode() -> None:
     """An off event carries no setpoint."""
     from datetime import time
 
-    from custom_components.mysa_local.protocols.cloud import Mode
+    from mysa_client.cloud import Mode
 
     events = build_events(
         [{"days": ["sat"], "time": time(8, 0), "hvac_mode": "off"}], Mode.HEAT

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.2 (2026-10-12)
+
+- Move cloud and HomeKit protocol implementations into the independent
+  `mysa-client` package and consume its versioned API. Keep HA lifecycle,
+  routing, persistence, and state-confirmation policy in the integration.
+- Move protocol tests, API references, and sanitized cloud examples into the
+  client repository; retain integration regression coverage and enforce the
+  package boundary. Existing configuration and pairing data remain compatible.
+- Add the client logger to HA debug captures and support local wheel or editable
+  client installs in the development setup script.
+
+Validated with 260 integration tests against `mysa-client[homekit]==0.1.0`
+installed from PyPI, plus 89 standalone client tests on Python 3.11–3.14.
+Formatting, Ruff, strict mypy, documentation, and package checks pass.
+
+Built and installed on Home Assistant 2026.10.1 on 2026-10-12. Both Baseboard
+Lites reconnected locally after restart and cloud polling succeeded. Display
+units were changed through HomeKit and restored; cloud sleep-brightness changes
+from 50% to 55% and back received device-report confirmation on both thermostats.
+Heating modes and setpoints were unchanged. Saved configuration and entity IDs
+were preserved, with no new unavailable entities, Mysa startup errors, or
+diagnostics capture failures. All 41 deployed files matched the release build.
+Newer-model hardware and induced failure paths remain untested live.
+
 ## 0.5.1 (2026-10-12)
 
 - Add bounded, memory-only command and event history to diagnostics, with anonymous thermostat labels, command correlation IDs, requested/baseline values, HTTP route/status/duration, lifecycle transitions and source/fallback/backoff evidence. Retain superseded commands and distinguish acceptance, stored configuration and device reports from physical application.

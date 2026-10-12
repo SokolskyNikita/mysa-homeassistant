@@ -1,6 +1,6 @@
 [project]
 name = "mysa-homeassistant"
-version = "0.5.1"
+version = "0.5.2"
 description = "Local-first Home Assistant integration for Mysa smart thermostats"
 readme = "README.md"
 license = "MIT"
@@ -9,8 +9,8 @@ requires-python = ">=3.14.2"
 [dependency-groups]
 test = [
     "pytest-homeassistant-custom-component==0.13.367",  # Home Assistant 2026.9.4
-    "aiohomekit==4.0.1",
-    "pycognito==2024.5.1",  # only to cross-check our SRP implementation
+    "mysa-client[homekit]==0.1.0",
+    "aiohomekit==4.0.1",  # Integration tests use aiohomekit's fake accessories.
 ]
 lint = [
     { include-group = "test" },
@@ -42,8 +42,6 @@ warn_unreachable = true
 disallow_any_generics = true
 ignore_missing_imports = false
 files = ["custom_components/mysa_local"]
-
-untyped_calls_exclude = ["aiohomekit"]
 
 [[tool.mypy.overrides]]
 module = [
@@ -85,7 +83,7 @@ ignore = [
 force-sort-within-sections = true
 combine-as-imports = true
 known-first-party = ["custom_components"]
-known-third-party = ["homeassistant"]
+known-third-party = ["homeassistant", "mysa_client"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "SLF001", "D103", "S105", "S106", "INP001"]

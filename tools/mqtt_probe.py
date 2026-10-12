@@ -26,13 +26,8 @@ from botocore.awsrequest import AWSRequest
 from botocore.config import Config
 from botocore.credentials import Credentials
 from botocore.exceptions import ClientError
+from mysa_client.cloud import MysaAuth, MysaClient
 import paho.mqtt.client as mqtt
-
-# The standalone cloud protocol package does not import Home Assistant.
-sys.path.insert(
-    0, str(Path(__file__).resolve().parents[1] / "custom_components/mysa_local")
-)
-from protocols.cloud import MysaAuth, MysaClient
 
 REGION = "us-east-1"
 POOL = "us-east-1:e27f246e-ad23-41ce-ac80-eda86f8be424"

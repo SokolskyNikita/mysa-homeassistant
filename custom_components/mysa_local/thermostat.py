@@ -16,6 +16,32 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
+from mysa_client.cloud import (
+    MODEL_NAMES,
+    AcFan,
+    ButtonLock,
+    Capabilities,
+    DeviceRecord,
+    DeviceState,
+    FirmwareInfo,
+    HeaterType,
+    Mode,
+    ModelFamily,
+    MysaError,
+    Swing,
+    model_family,
+)
+from mysa_client.cloud.commands import (
+    auto_temperature_changes,
+    hvac_fan_changes,
+    mode_changes,
+    temperature_changes,
+)
+from mysa_client.cloud.const import (
+    EXPERIMENTAL_CLOUD_FAMILIES,
+    SWING_VERTICAL,
+)
+from mysa_client.homekit import Field, LocalMode
 
 from .account import cloud_account_status
 from .cloud_coordinator import MysaCloudCoordinator, translated_error
@@ -40,32 +66,6 @@ from .local_adapter import (
     TARGET_TEMPERATURE,
     LocalThermostat,
 )
-from .protocols.cloud import (
-    MODEL_NAMES,
-    AcFan,
-    ButtonLock,
-    Capabilities,
-    DeviceRecord,
-    DeviceState,
-    FirmwareInfo,
-    HeaterType,
-    Mode,
-    ModelFamily,
-    MysaError,
-    Swing,
-    model_family,
-)
-from .protocols.cloud.commands import (
-    auto_temperature_changes,
-    hvac_fan_changes,
-    mode_changes,
-    temperature_changes,
-)
-from .protocols.cloud.const import (
-    EXPERIMENTAL_CLOUD_FAMILIES,
-    SWING_VERTICAL,
-)
-from .protocols.homekit import Field, LocalMode
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry

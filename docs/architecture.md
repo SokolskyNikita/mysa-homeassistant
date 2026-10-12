@@ -28,32 +28,22 @@ them through semantic device operations and state.
 
 ## Protocol implementations
 
-`custom_components/mysa_local/protocols/cloud/` implements the Mysa cloud API.
-It owns authentication, HTTP requests, cloud response models, endpoint and
-payload details, cloud-specific enums, and cloud errors. Its public client
-accepts operations such as setting a temperature or button lock; its command
-helpers translate those operations into Mysa's wire format. The package has no
-Home Assistant or HomeKit dependency.
+The [`mysa-client` package](https://github.com/SokolskyNikita/mysa-client)
+implements the cloud API and HomeKit over IP. It owns Cognito authentication,
+HTTP requests, cloud response parsing and command encoding, HomeKit
+characteristic parsing, value encoding, and protocol errors. Its public API
+uses semantic operations such as setting a temperature or reading a target
+mode; it has no Home Assistant dependency. See the package's [cloud guide](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md)
+and [HomeKit guide](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md)
+for the API, lifecycle, timeouts, and failure handling.
 
-`custom_components/mysa_local/protocols/homekit/` implements Mysa's HomeKit
-thermostat behavior on top of `aiohomekit`. It owns HomeKit characteristic
-identifiers, accessory parsing, value encoding, and protocol errors. Callers
-use semantic fields such as `target_temperature` and `display_unit`; the
-package interprets AIDs, IIDs, characteristic UUIDs, and HAP status codes.
-Diagnostic error text may include a status code. The package has no Home
-Assistant dependency.
-
-The focused [cloud protocol guide](../custom_components/mysa_local/protocols/cloud/README.md)
-and [HomeKit protocol guide](../custom_components/mysa_local/protocols/homekit/README.md)
-explain each transport's request flow, module responsibilities, public API, and
-failure handling.
-
-These packages are bundled with the integration and installed together by
-HACS; they are not separate PyPI distributions. The protocol modules do not
-depend on Home Assistant. The normal `custom_components.mysa_local.protocols`
-import path does initialize the parent package, which imports Home Assistant.
-The protocol boundary test also loads the modules in isolation so it can verify
-that the protocol code itself stays independent.
+Home Assistant installs the library as an external dependency. The integration
+adapters own the caller-provided HTTP session and discovery/controller
+lifecycle, durable token and pairing storage, polling, retries, state freshness,
+and command confirmation. Protocol imports use `mysa_client.cloud` and
+`mysa_client.homekit`, not a module nested under the Home Assistant integration.
+The protocol boundary tests verify that the library and integration adapters
+remain separated.
 
 ## Home Assistant integration layer
 
@@ -85,8 +75,8 @@ cloud request dictionaries or refer to HomeKit characteristic identifiers.
 Protocol-specific request formatting belongs in the matching protocol
 package; command ordering and source selection belong in the integration.
 
-Cloud response models and enums are currently public types from
-`protocols.cloud`, and the integration reads them for state and capability
+Cloud response models and enums are public types from
+`mysa_client.cloud`, and the integration reads them for state and capability
 display. They describe the cloud's data shape. A future domain-model layer
 could make the integration independent of those response models, but that is a
 separate refactor from separating the two transports.

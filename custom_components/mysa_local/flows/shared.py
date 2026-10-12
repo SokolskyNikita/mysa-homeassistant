@@ -12,6 +12,10 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from mysa_client.homekit import (
+    AccessoryInfo,
+    HomeKitMalformedPinError,
+)
 
 from custom_components.mysa_local.account import (
     ACCOUNT_OFF,
@@ -31,10 +35,6 @@ from custom_components.mysa_local.const import (
     is_mysa_model,
 )
 from custom_components.mysa_local.migration import HKC_DOMAIN
-from custom_components.mysa_local.protocols.homekit import (
-    AccessoryInfo,
-    HomeKitMalformedPinError,
-)
 
 INSECURE_CODES = {
     "00000000",

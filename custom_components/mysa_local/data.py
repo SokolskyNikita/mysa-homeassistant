@@ -10,8 +10,9 @@ from homeassistant.config_entries import ConfigEntry
 from .event_history import EventHistory
 
 if TYPE_CHECKING:
+    from mysa_client.cloud import MysaClient
+
     from .cloud_coordinator import MysaCloudCoordinator
-    from .protocols.cloud import MysaClient
     from .thermostat import Thermostat
 
 

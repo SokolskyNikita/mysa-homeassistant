@@ -6,11 +6,7 @@ from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
-from custom_components.mysa_local.cloud_state import pending_command, reconcile
-from custom_components.mysa_local.protocols.cloud import (
-    ButtonLock,
+from mysa_client.cloud import (
     DeviceRecord,
     DeviceState,
     Mode,
@@ -19,15 +15,15 @@ from custom_components.mysa_local.protocols.cloud import (
     MysaNotFoundError,
     MysaRateLimitError,
 )
-from custom_components.mysa_local.protocols.cloud.const import LEGACY_API_BASE
-from custom_components.mysa_local.protocols.cloud.observations import timestamp
-from custom_components.mysa_local.protocols.cloud.schedules import WEEKDAYS
+from mysa_client.cloud.schedules import WEEKDAYS
+import pytest
+
+from custom_components.mysa_local.cloud_state import pending_command, reconcile
 from custom_components.mysa_local.schedule import (
     async_clear_schedule,
     async_set_schedule,
 )
-from tests.api.test_client import _client
-from tests.common import DEVICE_ID, HOME_ID, hub_entry
+from tests.common import DEVICE_ID, hub_entry
 from tests.conftest import setup_entry
 
 NOW = datetime(2026, 10, 12, 12, tzinfo=UTC)
@@ -59,49 +55,6 @@ def legacy(now=NOW, **fields):
             **fields,
         },
     )
-
-
-@pytest.mark.parametrize(
-    "value", [float("nan"), float("inf"), 10**400, -1, "bad", True]
-)
-def test_bad_timestamp_does_not_raise(value):
-    assert timestamp(value) is None
-
-
-def test_mixed_clocks_and_enum_namespaces(freezer):
-    freezer.move_to(NOW)
-    state = legacy(
-        Humidity={"v": 0, "t": NOW.timestamp() * 1000},
-        TstatMode={"v": 3, "t": NOW.isoformat()},
-        Mode={"v": 1, "t": NOW.timestamp()},
-        Lock={"v": 0, "t": NOW.timestamp()},
-        Connected={"v": False, "t": NOW.timestamp()},
-    )
-    assert state.mode == Mode.HEAT
-    assert state.button_lock == 0
-    assert state.connected is False
-    assert state.humidity == 0
-    assert state.observations["humidity"].observed_at == NOW
-    assert state.observations["mode"].observed_at == NOW
-
-
-def test_partial_invalid_state_and_future_clock(freezer):
-    freezer.move_to(NOW)
-    state = structured(
-        targetHeat={"reported": {"timestamp": 10**400, "setpoint": 24}},
-        modes={"desired": {"mode": 0}},
-        physicalInterface={
-            "reported": {
-                "timestamp": (NOW + timedelta(days=1)).timestamp(),
-                "lockout": 3,
-            }
-        },
-    )
-    assert state.room_temperature == 21
-    assert state.heat_setpoint is None
-    assert state.mode is None
-    assert state.button_lock is None
-    assert not state.observations["heat_setpoint"].clock_valid
 
 
 def test_per_field_selection_retains_age_and_rejects_future(freezer):
@@ -179,71 +132,6 @@ def test_pending_confirmation_needs_changed_report_and_expires(freezer):
     assert pending_command({"heat_setpoint": 23}, current, NOW).status == "unchanged"
 
 
-async def test_read_fallback_backoff_and_recovery(hass, cloud):
-    client = _client(hass)
-    request = AsyncMock(
-        side_effect=[
-            MysaConnectionError("down"),
-            {"DeviceStatesObj": {}},
-            {"DeviceStatesObj": {}},
-            {"DeviceStatesObj": {}},
-        ]
-    )
-    with (
-        patch.object(client, "_request", request),
-        patch(
-            "custom_components.mysa_local.protocols.cloud.client.time.monotonic",
-            return_value=100,
-        ),
-    ):
-        await client.get_legacy_states([DEVICE_ID])
-        await client.get_legacy_states([DEVICE_ID])
-    assert request.call_args_list[1].kwargs["base_url"] == LEGACY_API_BASE
-    assert request.call_args_list[2].kwargs["base_url"] == LEGACY_API_BASE
-    with (
-        patch.object(client, "_request", request),
-        patch(
-            "custom_components.mysa_local.protocols.cloud.client.time.monotonic",
-            return_value=500,
-        ),
-    ):
-        await client.get_legacy_states([DEVICE_ID])
-    assert request.call_args_list[3].kwargs["base_url"] is None
-    assert client.legacy_source == "R"
-
-
-@pytest.mark.parametrize(
-    "error", [MysaConnectionError("timeout"), MysaRateLimitError("limit", 600)]
-)
-async def test_ambiguous_write_never_uses_another_host(hass, cloud, error):
-    client = _client(hass)
-    with (
-        patch.object(client, "_request", AsyncMock(side_effect=error)) as request,
-        pytest.raises(type(error)),
-    ):
-        await client.set_display_unit(DEVICE_ID, "F")
-    assert request.await_count == 1
-
-
-async def test_semantic_alternatives_send_one_write(hass, cloud):
-    client = _client(hass)
-    with patch.object(client, "_request", AsyncMock()) as request:
-        await client.set_button_lock(DEVICE_ID, ButtonLock.LOCKED, route="L")
-        assert request.call_args.kwargs["body"] == {"ButtonState": "Locked"}
-        assert request.call_args.kwargs["base_url"] == LEGACY_API_BASE
-        await client.set_display_unit(DEVICE_ID, "F", route="S")
-        assert request.call_args.kwargs["body"] == {
-            "source": 3,
-            "physicalInterface": {"format": "F"},
-        }
-        await client.set_display_brightness(DEVICE_ID, active=90, idle=20, route="R")
-        assert request.call_args.kwargs["body"] == {
-            "MaxBrightness": 90,
-            "MinBrightness": 20,
-        }
-    assert request.await_count == 3
-
-
 @pytest.mark.usefixtures("controller")
 async def test_independent_sources_and_pending_state(hass, cloud):
     entry = hub_entry()
@@ -276,82 +164,6 @@ async def test_independent_sources_and_pending_state(hass, cloud):
     assert coordinator.source_health["legacy"]["success"] is True
     assert command.status == "pending"
     assert coordinator.state(DEVICE_ID).heat_setpoint == old.heat_setpoint
-
-
-@pytest.mark.parametrize(
-    "payload", [{}, [None], [{"id": "x", "deviceIds": [DEVICE_ID]}]]
-)
-async def test_malformed_schedule_is_an_error(hass, cloud, payload):
-    client = _client(hass)
-    with (
-        patch.object(client, "_request", AsyncMock(return_value=payload)),
-        pytest.raises(MysaApiError),
-    ):
-        await client.get_schedules(HOME_ID)
-
-
-async def test_native_schedule_ids_and_shared_attachments(hass, cloud):
-    client = _client(hass)
-    records = {
-        dev: DeviceRecord.from_api(dev, {"Model": "BB-V2-0-L", "Home": HOME_ID})
-        for dev in (DEVICE_ID, "other")
-    }
-    raw = {
-        "Id": "schedule-id",
-        "Owner": "owner",
-        "Version": 2,
-        "Events": {"0": {"10": {"BB2L": "3|22|%|%|%|%|%"}}},
-    }
-
-    async def read(operation, method, path, **kwargs):
-        return {"Schedules": []} if operation == "schedules_v1" else deepcopy(raw)
-
-    with (
-        patch.object(client, "get_schedules", AsyncMock(return_value=[])),
-        patch.object(client, "get_devices", AsyncMock(return_value=records)),
-        patch.object(client, "_legacy_request", read),
-    ):
-        schedules = await client.get_all_schedules(HOME_ID)
-    assert schedules[0]["deviceIds"] == [DEVICE_ID, "other"]
-    with patch.object(client, "_legacy_request", AsyncMock()) as request:
-        await client.remove_schedule(schedules[0], DEVICE_ID)
-    assert request.call_args.args == (
-        "schedules_v2",
-        "DELETE",
-        "/schedules/v2/schedule-id",
-    )
-    assert request.call_args.kwargs["body"] == {
-        "Devices": [DEVICE_ID],
-        "Model": "BB-V2-0-L",
-    }
-
-
-@pytest.mark.parametrize("include_legacy", [False, True])
-async def test_native_schedule_discovery_skips_new_models(hass, cloud, include_legacy):
-    client = _client(hass)
-    records = {
-        model: DeviceRecord.from_api(model, {"Model": model, "Home": HOME_ID})
-        for model in ("BB-V3-0", "ST-V1-0", "CS-V1-0")
-    }
-    if include_legacy:
-        records[DEVICE_ID] = DeviceRecord.from_api(
-            DEVICE_ID, {"Model": "BB-V2-0-L", "Home": HOME_ID}
-        )
-    modern = [{"id": "new-model-schedule", "deviceIds": ["BB-V3-0"], "events": []}]
-
-    async def read(operation, method, path, **kwargs):
-        if operation == "schedules_v1":
-            return {"Schedules": []}
-        assert path == f"/schedules/v2/{DEVICE_ID}"
-        raise MysaNotFoundError("No schedule")
-
-    with (
-        patch.object(client, "get_schedules", AsyncMock(return_value=modern)),
-        patch.object(client, "get_devices", AsyncMock(return_value=records)),
-        patch.object(client, "_legacy_request", AsyncMock(side_effect=read)) as request,
-    ):
-        assert await client.get_all_schedules(HOME_ID) == modern
-    assert request.await_count == (2 if include_legacy else 0)
 
 
 @pytest.mark.usefixtures("controller")

@@ -8,11 +8,11 @@ app-derived behavior from confirmed device behavior.
 
 | Material | Maintained home |
 | --- | --- |
-| Cloud inventory, S/R/L comparisons, limitations and recommended selection policy | [Cloud README](../custom_components/mysa_local/protocols/cloud/README.md) |
+| Cloud inventory, S/R/L comparisons, limitations and recommended selection policy | [Cloud README](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md) |
 | Cloud implementation status, gaps, dependencies and exclusions | [Cloud tracker](implementation/cloud.md) |
 | Raw API method coverage and integration/management coverage maps | [Coverage overview](implementation/progress.md); regenerate with `python3 tools/update_api_progress.py` |
-| Cognito wire exchange/browser limits | [Authentication](cloud-auth.md) |
-| State/usage/capability shapes and model enums | [State reference](cloud-state.md) |
+| Cognito wire exchange/browser limits | [Authentication](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-auth.md) |
+| State/usage/capability shapes and model enums | [State reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/cloud-state.md) |
 | Schedule/account workflow mechanics | [Workflows](cloud-workflows.md) |
 | BLE and SoftAP provisioning | [Bluetooth](bluetooth.md); implementation owned by the separate setup repository |
 | HomeKit feature parity, implementation gaps and exclusions | [HomeKit tracker](implementation/homekit.md) |

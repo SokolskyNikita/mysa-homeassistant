@@ -11,7 +11,42 @@ Keep the first extraction behavior-preserving. A unified client that chooses
 between local and cloud connections is a possible follow-up, not part of this
 initial migration.
 
-## Current state
+## Implementation status (2026-10-12)
+
+The extraction is complete in the sibling `mysa-client` repository:
+`src/mysa_client/cloud` and `src/mysa_client/homekit` are the single maintained
+protocol implementation. The client targets Python 3.11+, preserves the MIT
+license and existing API, and offers HomeKit through the `homekit` extra.
+The integration now imports `mysa_client` and retains all HA lifecycle and
+state-confirmation policy.
+
+Protocol tests and sanitized reference material have moved to the client.
+Both repositories have independent checks; the client also builds and inspects
+wheel/source archives and tests Python 3.11–3.14 in CI. The integration's setup
+script accepts the sibling wheel or editable checkout for local development.
+
+The integration pins the published `mysa-client[homekit]==0.1.0` release:
+[PyPI package](https://pypi.org/project/mysa-client/0.1.0/) and
+[source repository and release](https://github.com/SokolskyNikita/mysa-client/releases/tag/v0.1.0).
+PyPI Trusted Publishing is configured for the client's release workflow.
+
+Validation completed:
+
+- All 89 standalone tests pass on Python 3.11–3.14, including installed-wheel,
+  import-boundary, and example lifecycle tests.
+- All 260 HA regression tests pass against version 0.1.0 installed from PyPI.
+- Formatting, lint, strict type checks, documentation checks, archive inspection,
+  and clean cloud-only imports pass.
+
+The HA migration ships in version 0.5.2 and was built and validated on the local
+Home Assistant 2026.10.1 installation. Both Baseboard Lites reconnected locally,
+cloud commands received device-report confirmation, and saved configuration and
+entity IDs were preserved. See the [integration release notes](CHANGELOG.md#052-2026-10-12) and the
+[client release instructions](https://github.com/SokolskyNikita/mysa-client#development-and-release).
+
+The sections below retain the original migration plan and ownership decisions.
+
+## Pre-extraction state
 
 - `custom_components/mysa_local/protocols/cloud/` contains cloud authentication,
   HTTP requests, command encoding, response models, and errors. Its external

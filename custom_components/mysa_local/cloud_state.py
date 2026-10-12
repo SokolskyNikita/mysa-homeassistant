@@ -6,9 +6,9 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
-from .protocols.cloud.const import EXPERIMENTAL_CLOUD_FAMILIES, model_family
-from .protocols.cloud.models import DeviceRecord, DeviceState
-from .protocols.cloud.observations import (
+from mysa_client.cloud import DeviceRecord, DeviceState, model_family
+from mysa_client.cloud.const import EXPERIMENTAL_CLOUD_FAMILIES
+from mysa_client.cloud.observations import (
     MEASUREMENTS,
     STATE_FIELDS,
     TELEMETRY_FIELDS,

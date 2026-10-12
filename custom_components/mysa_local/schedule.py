@@ -16,16 +16,16 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from homeassistant.util.hass_dict import HassKey
-
-from .cloud_coordinator import translated_error
-from .const import DOMAIN, LOGGER, VERSION
-from .protocols.cloud import (
+from mysa_client.cloud import (
     Mode,
     MysaNotFoundError,
     ScheduleEventSpec,
     encode_schedule_events,
     make_state,
 )
+
+from .cloud_coordinator import translated_error
+from .const import DOMAIN, LOGGER, VERSION
 
 if TYPE_CHECKING:
     from .thermostat import Thermostat

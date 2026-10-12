@@ -11,6 +11,7 @@ from homeassistant.helpers.selector import (
     NumberSelectorConfig,
     NumberSelectorMode,
 )
+from mysa_client.cloud import MODEL_NAMES, MysaError
 import voluptuous as vol
 
 from custom_components.mysa_local.account import can_import_cloud
@@ -30,7 +31,6 @@ from custom_components.mysa_local.const import (
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
 )
-from custom_components.mysa_local.protocols.cloud import MODEL_NAMES, MysaError
 
 from .account import SIGN_IN_SCHEMA, async_sign_in, sign_in_data, sign_in_error
 from .shared import md

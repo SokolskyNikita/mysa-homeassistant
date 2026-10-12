@@ -13,16 +13,7 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
     TextSelectorType,
 )
-import voluptuous as vol
-
-from custom_components.mysa_local.const import (
-    CONF_REFRESH_TOKEN,
-    CONF_SAVE_PASSWORD,
-    CONF_USER_ID,
-    LOGGER,
-    USER_AGENT,
-)
-from custom_components.mysa_local.protocols.cloud import (
+from mysa_client.cloud import (
     Bootstrap,
     MysaAuth,
     MysaAuthError,
@@ -31,6 +22,15 @@ from custom_components.mysa_local.protocols.cloud import (
     MysaError,
     MysaInvalidCredentialsError,
     MysaUnsupportedChallengeError,
+)
+import voluptuous as vol
+
+from custom_components.mysa_local.const import (
+    CONF_REFRESH_TOKEN,
+    CONF_SAVE_PASSWORD,
+    CONF_USER_ID,
+    LOGGER,
+    USER_AGENT,
 )
 
 

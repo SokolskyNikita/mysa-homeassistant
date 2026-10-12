@@ -5,14 +5,14 @@ from typing import Any
 from unittest.mock import AsyncMock, PropertyMock, patch
 
 from homeassistant.exceptions import HomeAssistantError
-import pytest
-
-from custom_components.mysa_local.local_adapter import TARGET_TEMPERATURE
-from custom_components.mysa_local.protocols.cloud import (
+from mysa_client.cloud import (
     AcFan,
     Mode,
     MysaConnectionError,
 )
+import pytest
+
+from custom_components.mysa_local.local_adapter import TARGET_TEMPERATURE
 
 from .common import HKID, hub_entry
 from .conftest import setup_entry

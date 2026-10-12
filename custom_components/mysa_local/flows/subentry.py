@@ -19,6 +19,16 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
 )
+from mysa_client.cloud import (
+    MODEL_NAMES,
+    TESTED_MODELS,
+    MysaError,
+)
+from mysa_client.cloud.const import (
+    EXPERIMENTAL_CLOUD_FAMILIES,
+    model_family,
+)
+from mysa_client.homekit import AccessoryInfo
 import voluptuous as vol
 
 from custom_components.mysa_local.account import (
@@ -39,16 +49,6 @@ from custom_components.mysa_local.const import (
     CONF_MODEL,
     CONF_PAIRING,
 )
-from custom_components.mysa_local.protocols.cloud import (
-    MODEL_NAMES,
-    TESTED_MODELS,
-    MysaError,
-)
-from custom_components.mysa_local.protocols.cloud.const import (
-    EXPERIMENTAL_CLOUD_FAMILIES,
-    model_family,
-)
-from custom_components.mysa_local.protocols.homekit import AccessoryInfo
 
 from .shared import (
     CONF_DEVICE,

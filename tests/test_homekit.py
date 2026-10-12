@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, patch
 
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant
+from mysa_client.homekit import AccessoryInfo, HomeKitError
 
 from custom_components.mysa_local import homekit_adapter
-from custom_components.mysa_local.protocols.homekit import AccessoryInfo, HomeKitError
 
 from .common import PAIRING_DATA
 
