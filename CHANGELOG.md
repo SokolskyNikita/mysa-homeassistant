@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.3 (2026-10-12)
+
+- Correct the integration version reported in diagnostics after the 0.8.2 update.
+
 ## 0.8.2 (2026-10-12)
 
 - Fingerprint HomeKit setup codes with a persistent private HMAC key and retain
