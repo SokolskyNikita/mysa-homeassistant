@@ -57,7 +57,7 @@ Home Assistant must be able to reach the thermostat and discover it through mDNS
 
 To add another thermostat, use its discovery card or Add thermostat on the Mysa Local integration page.
 
-Pairing credentials are saved as soon as the thermostat accepts them. If setup is interrupted, start it again and choose the saved pairing to continue without another HomeKit code.
+Pairing credentials are saved as soon as the thermostat accepts them. If setup is interrupted, start it again and choose the saved pairing to continue without another HomeKit code. A private keyed fingerprint of the code is saved with recovery credentials, independently of the remember-code checkbox. After a successful connection using the same code under a different HomeKit ID, older matching recovery records are retired locally and the presumed identity change is logged. This never sends an unpair command; older records without fingerprints cannot be matched.
 
 ### Move from HomeKit Device
 

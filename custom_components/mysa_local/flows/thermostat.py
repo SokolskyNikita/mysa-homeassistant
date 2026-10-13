@@ -303,7 +303,7 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             if isinstance(record.get("migrate_from"), str)
             else None,
         )
-        return await self._async_thermostat_ready(
+        return await self._async_pairing_connected(
             info, pairing_data, record.get("migrate_from")
         )
 
@@ -315,6 +315,7 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         name: str | None,
         model: str | None,
         migrate_from: str | None = None,
+        code_fingerprint: str | None = None,
     ) -> None:
         """Save a newly accepted HomeKit pairing before later setup steps."""
         self._thermostat.hkid = hkid.lower()
@@ -325,8 +326,29 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
                 name=name,
                 model=model,
                 migrate_from=migrate_from,
+                code_fingerprint=code_fingerprint,
             )
         )
+
+    async def _async_pairing_connected(
+        self,
+        info: AccessoryInfo,
+        pairing: Mapping[str, Any],
+        migrate_from: str | None = None,
+    ) -> Any:
+        """Retire matching old identities only after authenticated device reads."""
+        if (wrong := await self._async_wrong_thermostat(info, pairing)) is not None:
+            return wrong
+        try:
+            await pairing_store(self.hass).async_retire_matching(
+                str(pairing["AccessoryPairingID"])
+            )
+        except OSError:
+            # Cleanup must not turn a successful pairing into an unpair rollback.
+            LOGGER.warning(
+                "Couldn't retire old HomeKit recovery records; retained them"
+            )
+        return await self._async_thermostat_ready(info, pairing, migrate_from)
 
     async def _async_start_pairing(self) -> tuple[str | None, str]:
         """Open a pair-setup session; return (error key, detail)."""
@@ -390,6 +412,9 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
         if code is None or self._thermostat.finish_pairing is None:
             return self._show_pair_form()
 
+        # Compute before completing pairing; save alongside accepted credentials,
+        # independently of the opt-in plaintext code storage.
+        fingerprint = await pairing_store(self.hass).async_code_fingerprint(code)
         self._thermostat.pairing_in_progress = True
 
         async def _persist_pairing(pairing_data: Mapping[str, Any]) -> None:
@@ -400,6 +425,7 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
                     pairing_data,
                     name=self._thermostat.name,
                     model=self._thermostat.model,
+                    code_fingerprint=fingerprint,
                 )
                 await homekit_codes(self.hass).async_save(
                     str(pairing_data["AccessoryPairingID"]),
@@ -434,7 +460,7 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             return self._show_pair_form({"base": "pairing_failed"}, str(err))
         finally:
             self._thermostat.pairing_in_progress = False
-        return await self._async_thermostat_ready(info, data)
+        return await self._async_pairing_connected(info, data)
 
     async def async_step_takeover(
         self, user_input: dict[str, Any] | None = None

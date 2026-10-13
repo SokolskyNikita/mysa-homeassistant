@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.2 (2026-10-12)
+
+- Fingerprint HomeKit setup codes with a persistent private HMAC key and retain
+  fingerprints alongside interrupted-pairing credentials, even when remembering
+  the code is disabled. After a successful authenticated connection under a new
+  HomeKit ID, retire matching older recovery records and log the presumed identity
+  change without logging codes or fingerprints. Cleanup never unpairs a device;
+  failed connections and legacy records without fingerprints remain recoverable.
+
 ## 0.8.1 (2026-10-12)
 
 - Hide saved pairing attempts from older HomeKit identities when their endpoint

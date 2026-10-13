@@ -13,5 +13,5 @@
   "issue_tracker": "https://github.com/SokolskyNikita/mysa-homeassistant/issues",
   "loggers": ["custom_components.mysa_local", "mysa_client"],
   "requirements": ["mysa-client[homekit,mqtt]==0.2.1"],
-  "version": "0.8.1"
+  "version": "0.8.2"
 }

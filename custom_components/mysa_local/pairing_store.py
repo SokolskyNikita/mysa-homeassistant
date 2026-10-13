@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
+import hmac
+import secrets
 from typing import Any
 import uuid
 
@@ -11,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.util.hass_dict import HassKey
 
-from .const import DOMAIN
+from .const import DOMAIN, LOGGER
 
 PENDING_PAIRINGS_STORAGE_KEY = f"{DOMAIN}_pending_pairings"
 _PENDING_PAIRINGS_STORE: HassKey[Store[dict[str, dict[str, Any]]]] = HassKey(
@@ -34,6 +36,9 @@ class PairingStore:
     def __init__(self, hass: HomeAssistant) -> None:
         """Bind the store facade to one HA instance."""
         self._hass = hass
+        self._fingerprint_key = Store[str](
+            hass, 1, f"{DOMAIN}_pairing_fingerprint_key", private=True
+        )
 
     @property
     def session_id(self) -> str:
@@ -70,6 +75,52 @@ class PairingStore:
                 if isinstance(hkid, str) and isinstance(record, dict)
             }
 
+    async def async_code_fingerprint(self, code: str) -> str:
+        """Fingerprint a formatted setup code using a persistent local secret."""
+        async with self._lock():
+            key = await self._fingerprint_key.async_load()
+            if key is None:
+                key = secrets.token_hex(32)
+                await self._fingerprint_key.async_save(key)
+            return hmac.new(
+                bytes.fromhex(key), code.replace("-", "").encode(), "sha256"
+            ).hexdigest()
+
+    async def async_retire_matching(self, hkid: str) -> None:
+        """Retire other identities after a successful connection with this code.
+
+        This only deletes local recovery records; it never unpairs accessories.
+        Legacy records without a fingerprint cannot be matched.
+        """
+        async with self._lock():
+            store = self._store()
+            loaded = await store.async_load()
+            data = dict(loaded) if isinstance(loaded, dict) else {}
+            current = data.get(hkid.lower())
+            fingerprint = (
+                current.get("code_fingerprint") if isinstance(current, dict) else None
+            )
+            if not isinstance(fingerprint, str) or not fingerprint:
+                return
+            retired = [
+                key
+                for key, record in data.items()
+                if key.lower() != hkid.lower()
+                and isinstance(record, dict)
+                and record.get("code_fingerprint") == fingerprint
+            ]
+            if not retired:
+                return
+            for key in retired:
+                del data[key]
+            await store.async_save(data)
+            LOGGER.info(
+                "Retired %s pending HomeKit recovery record(s) after a successful "
+                "connection with the same setup-code fingerprint under a different "
+                "HomeKit ID; presumed identity change. No accessory was unpaired",
+                len(retired),
+            )
+
     async def async_save(
         self,
         hkid: str,
@@ -78,18 +129,23 @@ class PairingStore:
         name: str | None,
         model: str | None,
         migrate_from: str | None = None,
+        code_fingerprint: str | None = None,
     ) -> None:
         """Persist pairing credentials and the context needed to resume setup."""
         async with self._lock():
             store = self._store()
             loaded = await store.async_load()
             data = dict(loaded) if isinstance(loaded, dict) else {}
+            previous = data.get(hkid.lower(), {})
+            if code_fingerprint is None and isinstance(previous, dict):
+                code_fingerprint = previous.get("code_fingerprint")
             data[hkid.lower()] = {
                 "pairing": dict(pairing),
                 "name": name,
                 "model": model,
                 "migrate_from": migrate_from,
                 "session": self.session_id,
+                "code_fingerprint": code_fingerprint,
             }
             await store.async_save(data)
 
