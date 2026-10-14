@@ -1,3 +1,5 @@
+<!-- compatibility-forwarder -->
+
 # Protocol examples have moved
 
 All sanitized cloud and MQTT exchanges, along with runnable consumer examples,

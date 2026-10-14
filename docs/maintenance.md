@@ -7,12 +7,20 @@ references are maintained in [`mysa-client`](https://github.com/SokolskyNikita/m
 
 | Material | Maintained home |
 | --- | --- |
-| Installation, entities, services, and configuration | [User guide](../README.md) and [newer-model setup/test guide](new-cloud-models.md) |
+| Overview, installation, and supported models | [README](../README.md) |
+| Pairing, migration, saved codes, and recovery | [Setup guide](guides/setup.md) |
+| Entities, options, account controls, runtime, energy, and privacy | [Usage guide](guides/usage.md) |
+| Schedule/hold actions and YAML examples | [Schedule guide](guides/schedules.md) |
+| Local/cloud source policy and HTTPS freshness | [Behavior guide](guides/behavior.md) |
+| Troubleshooting and diagnostic capture | [Troubleshooting guide](guides/troubleshooting.md) |
+| Experimental model controls and hardware test procedure | [Newer-model guide](new-cloud-models.md) |
 | HA lifecycle, poll cadence, user choices, durable-storage adapters, presentation, and translated errors | [Architecture](architecture.md) and [account/schedule workflows](cloud-workflows.md) |
-| Mysa-specific validation, commands, state reconciliation, confirmation, reusable routing, telemetry freshness, and workflow correctness | [Client runtime guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/runtime.md) and [client cloud guide](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md) |
+| Mysa-specific validation, commands, state reconciliation, confirmation, reusable routing, telemetry freshness, and workflow correctness | [Client runtime guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/python/runtime.md) and [client cloud guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/python/cloud.md) |
 | MQTT controls, session lifecycle, HA source preferences, fallback, and hardware evidence | [MQTT guide](mqtt.md) |
-| HA cloud/HomeKit work, acceptance criteria, and product exclusions | [Cloud tracker](implementation/cloud.md) and [HomeKit tracker](implementation/homekit.md) |
-| Integration and management coverage | [Management inventory](implementation/progress.md) |
+| Current recorded HA status, acceptance criteria, and validation gaps | [Management inventory](implementation/progress.md) |
+| Product exclusions, scope decisions, and transport boundaries | [Feature scope](cloud-scope.md) |
+| Legacy C-* and HK-* bookmarks | [Cloud ID lookup](implementation/cloud.md) and [HomeKit ID lookup](implementation/homekit.md); link new references directly to their destinations |
+| Historical extraction design | [Client extraction record](history/client-extraction.md) |
 | Public client APIs, MQTT authorization and wire protocol, endpoint/payload details, firmware and provisioning research | [Client protocol index](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md) |
 | Raw API method coverage | [Client API inventory](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/api-coverage.md) |
 | Sanitized cloud/MQTT exchanges and protocol tools | [Client examples](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/README.md) and [tools](https://github.com/SokolskyNikita/mysa-client/tree/main/tools) |
@@ -43,11 +51,47 @@ An accepted request or stored record does not establish fresh device state or
 physical application. Preserve observation limits and cite relevant tests.
 Never publish credentials, pairing keys, private identifiers, or raw captures.
 
-Run `python3 tools/check_docs.py` and `git diff --check`. Checks cover local
-Markdown links/anchors, tables and fences, tracker IDs, strict integration
-fixtures, and obvious secret patterns. They never import an integration or
-contact a device. External links and semantic accuracy need separate review.
-The client's own checker validates its protocol examples and references.
+Run from the repository root:
+
+```bash
+python3 tools/check_docs.py
+python3 -m unittest discover -s tools -p 'test_*.py'
+python3 tools/update_api_progress.py --check
+git diff --check
+```
+
+The checks cover all root reader Markdown (including forwarding pages), `docs/`,
+and Markdown under `custom_components/`. Dotfiles such as `.impeccable.md` are
+editor context and excluded. Relative links and same-repository GitHub `main`
+URLs are checked for targets and anchors; directory links resolve their README.
+Maintained pages must be reachable from both the root README and docs index.
+Only pages marked `<!-- compatibility-forwarder -->` may be unreachable; keep
+those pages limited to directing old bookmarks to current content.
+
+`tools/docs_anchors.json` records pre-reorganization page/section contracts.
+Do not remove entries to make a failed move pass. Keep an old anchor with a
+link to its maintained destination. Add new public bookmarks when reorganizing
+newly published pages. The inventory's integration version must match the
+manifest; review it on releases without relabeling old hardware evidence as new.
+Its status-assessment date remains separate from documentation maintenance.
+
+Checks also cover Markdown tables/fences, legacy tracker IDs, strict JSON
+fixtures, and obvious secret patterns. Regression tests run offline with only
+the Python standard library; they do not import HA or contact any device.
+Semantic claims and the relevance of evidence still need human review.
+
+For coordinated client/HA work, optionally validate client `main` URLs against
+an explicit local checkout:
+
+```bash
+python3 tools/check_docs.py --client-root ../mysa-client
+```
+
+This checks local targets, not remote publication or compatibility with every
+released client version. Default CI remains independent of a sibling checkout.
+Current links target the published client layout directly. For future coordinated
+moves, publish the client destinations before updating HA links, then run this
+paired check. Preserve old URLs in historical records. The client checker independently validates its examples.
 
 When HA behavior coverage changes, update the
 [management inventory](implementation/progress.md) and run

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from collections import Counter
 import json
 from pathlib import Path
@@ -10,6 +11,9 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
 ERRORS: list[str] = []
+REPO_URL = "https://github.com/SokolskyNikita/mysa-homeassistant/"
+CLIENT_URL = "https://github.com/SokolskyNikita/mysa-client/"
+CLIENT_ROOT: Path | None = None
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 SECRET = re.compile(
     r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"
@@ -68,13 +72,24 @@ def anchors(text: str) -> set[str]:
 def check_link(source: Path, url: str) -> Path | None:
     """Resolve a local target, prohibit checkout escapes, and check its anchor."""
     url = url.strip("<>")
+    base = source.parent
+    boundary = ROOT
+    for prefix, checkout in ((REPO_URL, ROOT), (CLIENT_URL, CLIENT_ROOT)):
+        if checkout is None:
+            continue
+        for kind in ("blob/main/", "tree/main/"):
+            if url.startswith(prefix + kind):
+                url = url.removeprefix(prefix + kind)
+                base = boundary = checkout
     if re.match(r"(?:[a-z][a-z0-9+.-]*:|//)", url, re.I):
         return None
     path, _, fragment = unquote(url).partition("#")
-    target = (source.parent / path).resolve() if path else source
-    if not target.is_relative_to(ROOT):
+    target = (base / path).resolve() if path else source
+    if not target.is_relative_to(boundary):
         fail(source, "local link escapes the repository")
         return None
+    if target.is_dir() and (target / "README.md").exists():
+        target /= "README.md"
     if not target.exists():
         fail(source, f"missing target: {url}")
     elif fragment and target.suffix == ".md":
@@ -85,6 +100,45 @@ def check_link(source: Path, url: str) -> Path | None:
         if last > len(target.read_text().splitlines()):
             fail(source, "source line anchor exceeds file length")
     return target
+
+
+def check_navigation(graph: dict[Path, set[Path]]) -> None:
+    """Require maintained pages to be reachable from both public entry points."""
+    for entry in (ROOT / "README.md", ROOT / "docs/README.md"):
+        visited: set[Path] = set()
+        pending = [entry]
+        while pending:
+            path = pending.pop()
+            if path not in visited:
+                visited.add(path)
+                pending.extend(graph.get(path, set()) - visited)
+        for path in graph.keys() - visited:
+            if "<!-- compatibility-forwarder -->" not in path.read_text():
+                fail(path, f"unreachable from {entry.relative_to(ROOT)}")
+
+
+def check_preserved_anchors() -> None:
+    """Prevent moved pages and legacy section bookmarks from disappearing."""
+    manifest = ROOT / "tools/docs_anchors.json"
+    for name, expected in json.loads(manifest.read_text()).items():
+        path = ROOT / name
+        if not path.is_file():
+            fail(manifest, f"published page was removed: {name}")
+            continue
+        missing = set(expected) - anchors(path.read_text())
+        for anchor in sorted(missing):
+            fail(path, f"published anchor was removed: {anchor}")
+
+
+def check_inventory_version() -> None:
+    """Require release updates to revisit the inventory's version context."""
+    manifest = json.loads(
+        (ROOT / "custom_components/mysa_local/manifest.json").read_text()
+    )
+    path = ROOT / "docs/implementation/progress.md"
+    expected = f"Integration version: **Mysa Local {manifest['version']}**"
+    if expected not in path.read_text():
+        fail(path, "integration version must match manifest; review status context")
 
 
 def check_markdown(path: Path) -> set[Path]:
@@ -112,13 +166,33 @@ def check_markdown(path: Path) -> set[Path]:
 
 def main() -> int:
     """Run all offline documentation checks."""
-    markdown = [ROOT / "README.md", ROOT / "CHANGELOG.md"]
+    global CLIENT_ROOT  # noqa: PLW0603
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--client-root",
+        type=Path,
+        help="optionally validate client main links against this checkout (not publication)",
+    )
+    args = parser.parse_args()
+    if args.client_root is not None:
+        CLIENT_ROOT = args.client_root.resolve()
+        if not (CLIENT_ROOT / "src/mysa_client").is_dir():
+            parser.error("--client-root must be a mysa-client checkout")
+    ERRORS.clear()
+    # Dotfiles such as .impeccable.md are tool context, not reader documentation.
+    markdown = sorted(
+        path for path in ROOT.glob("*.md") if not path.name.startswith(".")
+    )
     markdown += sorted((ROOT / "docs").rglob("*.md"))
     markdown += sorted((ROOT / "custom_components").rglob("*.md"))
+    graph = {}
     for path in markdown:
-        check_markdown(path)
+        graph[path] = check_markdown(path)
         if SECRET.search(path.read_text()):
             fail(path, "possible credential material (value suppressed)")
+    check_navigation(graph)
+    check_preserved_anchors()
+    check_inventory_version()
     for path in (ROOT / "tests/fixtures").glob("*.json"):
         try:
             parse_json(path)

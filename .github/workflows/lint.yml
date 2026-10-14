@@ -32,6 +32,8 @@ jobs:
       - name: Mypy
         run: mypy
       - name: Offline documentation checks
-        run: python3 tools/check_docs.py
+        run: |
+          python3 tools/check_docs.py
+          python3 -m unittest discover -s tools -p 'test_*.py'
       - name: HA management coverage summary and visual
         run: python3 tools/update_api_progress.py --check

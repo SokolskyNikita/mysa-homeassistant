@@ -1,54 +1,46 @@
 # Mysa Local documentation
 
-The [installation and user guide](../README.md) covers setup, supported models,
-entities, services, and integration options.
+## Find a task
+
+| I want to… | Start here |
+| --- | --- |
+| Check model support or install the integration | [README](../README.md#supported-models) |
+| Pair locally, migrate HomeKit Device, or import an account thermostat | [Setup and recovery](guides/setup.md) |
+| Remember or delete HomeKit setup codes | [Remembering setup codes](guides/setup.md#remembering-setup-codes) |
+| Configure entities, polling, credentials, names, or account membership | [Usage and options](guides/usage.md) |
+| Create a schedule, hold a temperature, or resume scheduling | [Schedules and holds](guides/schedules.md) |
+| Understand unavailable readings or cloud fallback | [Reading freshness](guides/behavior.md) and [troubleshooting](guides/troubleshooting.md) |
+| Enable live humidity and heating duty readings | [MQTT telemetry](mqtt.md) |
+| Test V3, Central HVAC, or Climate Sensor support | [Experimental models](new-cloud-models.md) |
+| Report a command that did not apply | [Capture a command problem](guides/troubleshooting.md#capture-a-command-problem) |
 
 ## Home Assistant behavior
 
-| Reference | Contents |
+| Maintainer reference | Owns |
 | --- | --- |
-| [Architecture](architecture.md) | Client domain/runtime ownership, HA adapters, lifecycle, polling, storage, and presentation |
-| [MQTT telemetry](mqtt.md) | HA switches, per-device selection, reading freshness, fallback, and hardware evidence |
-| [Account and schedule workflows](cloud-workflows.md) | HA enrollment, removal, schedule management, and recovery policy |
-| [Experimental newer-model support](new-cloud-models.md) | HA controls, setup, diagnostics, and the V3 hardware test procedure |
-| [Cloud feature scope](cloud-scope.md) | Which cloud features belong in HA and why |
-| [Cloud integration tracker](implementation/cloud.md) | HA orchestration, acceptance criteria, product exclusions, and hardware limits |
-| [HomeKit integration tracker](implementation/homekit.md) | HA discovery, pairing storage, entities, migration, and recovery |
-| [Integration and management coverage](implementation/progress.md) | State selection, command handling, lifecycle, workflows, and verification |
-| [Documentation maintenance](maintenance.md) | Ownership boundaries, evidence rules, and offline checks |
-| [Release history](../CHANGELOG.md) | Versioned changes and recorded validation |
+| [Development](development.md) | Environment, scripts, and CI |
+| [Architecture](architecture.md) | Client/HA ownership, adapters, lifecycle, and storage |
+| [Account and schedule adapters](cloud-workflows.md) | HA workflow orchestration and recovery |
+| [Feature scope](cloud-scope.md) | Product decisions, exclusions, and transport boundaries |
+| [Management inventory](implementation/progress.md) | Current recorded status, acceptance criteria, evidence, and validation gaps |
+| [Documentation maintenance](maintenance.md) | Ownership and checks |
+| [Release history](../CHANGELOG.md) | Versioned changes |
+| [Historical client extraction](history/client-extraction.md) | Original migration plan and dated results |
+
+Legacy [cloud IDs](implementation/cloud.md) and [HomeKit IDs](implementation/homekit.md)
+are lookup tables for old issue links, not separate status inventories.
 
 ## Mysa API and protocol references
 
-Protocol documentation is maintained in the standalone
-[`mysa-client` documentation](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md).
-That includes cloud authentication, endpoint and payload shapes, account/schedule
-wire mechanics, Mysa-specific command and state semantics, reusable domain
-workflows and optional runtime, HomeKit characteristics, Bluetooth/SoftAP setup,
-MQTT protocol, firmware, and Matter research. Sanitized exchanges and protocol
-diagnostic tools live there too. Home Assistant lifecycle, polling choices,
-durable-storage adapters, MQTT switches, entity value presentation, and hardware
-evidence remain here. See the [client runtime guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/runtime.md)
-for the client/application boundary and the [HA MQTT guide](mqtt.md) for
-integration policy. The
-[raw API inventory](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/api-coverage.md)
-tracks client methods independently of this integration's management coverage.
-
-The integration consumes the independent cloud, HomeKit, and MQTT clients plus
-the documented semantic helpers and opt-in runtime in `mysa-client`.
-[`mysa_client.cloud`](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md),
-[`mysa_client.homekit`](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md),
-and the [optional runtime](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/runtime.md)
-have no Home Assistant dependency. HA creates and closes all sessions and
-supplies persistence and runtime policy.
-The [Wi-Fi setup page](https://github.com/SokolskyNikita/mysa-wifi-setup) remains a
-separate product. Older protocol URLs in this repository forward readers to
-their maintained references.
+The [client documentation index](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md)
+owns callable Python APIs, protocol formats, reusable Mysa behavior, and protocol
+evidence. Start there for standalone use. HA configuration and user workflows
+remain in the guides above; [architecture](architecture.md) explains the boundary.
+Older protocol URLs here remain forwarding pages for existing bookmarks.
 
 ## Evidence limits
 
-Live validation is strongest for two Baseboard Lites (`BB-V2-0-L`, firmware
-`3.17.5.13`). Other models have app-derived or simulated mappings and need
-matching hardware checks. API acceptance, stored records, device reports,
-local confirmation, and physical behavior are different claims. Hardware
-limits stay beside the relevant integration or protocol findings.
+See the management inventory's [research and hardware limits](implementation/progress.md#research-and-hardware-limits).
+App-derived mappings, automated tests, accepted API requests, and physical
+hardware confirmation are different claims. Keep the relevant limits next to
+any model or feature claim.

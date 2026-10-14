@@ -1,5 +1,7 @@
 # Experimental cloud support for newer models
 
+[Documentation index](README.md)
+
 Baseboard V3 (`BB-V3-0`), Central HVAC (`ST-V1-0`, `ST-V1`, `LV`) and Climate
 Sensor (`CS-V1-0`, `CS-V1`) can be imported from an existing Mysa account.
 Complete Wi-Fi setup, account enrollment and equipment configuration in Mysa's
@@ -9,7 +11,7 @@ credential copy, HomeKit pairing or Matter setup is needed for cloud control.
 These models have **experimental, app-derived support**. They have not been
 validated on hardware here. The client-side source fields, enum encodings,
 stage decoding, fan-program data, and evidence are in the
-[`mysa-client newer-model API reference`](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/new-cloud-models.md).
+[`mysa-client newer-model API reference`](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/new-cloud-models.md).
 This page focuses on Home Assistant behavior and testing.
 
 ## Implemented controls
@@ -33,18 +35,18 @@ individual targets. Mode and targets supplied together are validated before
 one state update. Limits are checked separately for each target, including
 reported lockouts and the minimum heat/cool gap. A single target is rejected
 in AUTO; supply both range values. The API field names and mode encodings are
-listed in the [client's Central HVAC state reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/new-cloud-models.md#model-and-capability-data).
+listed in the [client's Central HVAC state reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/new-cloud-models.md#model-and-capability-data).
 
 HVAC activity uses fresh reported stage data or fresh telemetry. It does not
 infer heating from the selected mode or from baseboard duty cycle. Missing
 activity data gives unknown action; the underlying state paths and app-derived
-stage bits are in the [client reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/new-cloud-models.md#central-hvac-activity-and-fan-fields).
+stage bits are in the [client reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/new-cloud-models.md#central-hvac-activity-and-fan-fields).
 
 The fan operation control is separate from the optional fan-speed selector. A
 circulation program configured in Mysa's app may be displayed as `runtime`.
 Editing that runtime program is not implemented; selecting on/auto/off replaces
 it using the app's basic fan-operation settings. The API fields are documented
-in the [client fan reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/new-cloud-models.md#central-hvac-activity-and-fan-fields).
+in the [client fan reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/new-cloud-models.md#central-hvac-activity-and-fan-fields).
 
 ## Deferred features
 
@@ -61,7 +63,7 @@ adds no Bluetooth credential-transfer or Matter implementation.
 ## Evidence and automated tests
 
 API field provenance and the inspected Android app bundle are documented in the
-client's [evidence notes](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/new-cloud-models.md#evidence-and-limits).
+client's [evidence notes](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/new-cloud-models.md#evidence-and-limits).
 The HA repository's [fixtures](../tests/fixtures/app_4201_new_models.json)
 contain **synthetic test scenarios**, not captured device responses. Tests in
 [`test_new_cloud_models.py`](../tests/test_new_cloud_models.py) exercise
@@ -95,7 +97,7 @@ by a particular firmware.
    fallback are not prerequisites. Do not test unavailable legacy
    schedules/holds/settings.
 
-See the [complete capture instructions](../README.md#capture-a-command-problem)
+See the [complete capture instructions](guides/troubleshooting.md#capture-a-command-problem)
 for retention limits and the distinction between stored, reported and applied.
 
 Real V3 feedback is the next validation step. Central HVAC and Climate Sensor

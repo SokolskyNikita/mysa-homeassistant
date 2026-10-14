@@ -1,10 +1,12 @@
 # MQTT telemetry in Mysa Local
 
+[Documentation index](README.md)
+
 Mysa Local can use Mysa's MQTT service for live humidity and numeric heating
 duty-cycle telemetry. This is an optional, read-only data path: HomeKit and
 HTTPS continue to handle controls, and MQTT outages do not block setup or local
 control. This page documents Home Assistant behavior and the hardware evidence;
-the standalone [`mysa-client` MQTT guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md)
+the standalone [`mysa-client` MQTT guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/mqtt.md)
 owns protocol, authorization, and wire-format details.
 
 ## Enable MQTT
@@ -94,17 +96,17 @@ other models remains unverified.
 ## Protocol reference and older links
 
 For authentication, permissions, message formats, standalone examples, and
-client-level tests, see the [`mysa-client` MQTT guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md).
+client-level tests, see the [`mysa-client` MQTT guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/mqtt.md).
 Previously published section bookmarks are preserved as links to that guide:
-<a id="connection-and-authorization-model"></a>[connection and authorization](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md#connection-and-authorization-model),
-<a id="aws-permission-controls"></a>[AWS permissions](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md#aws-permission-controls),
-<a id="live-evidence"></a>[protocol live evidence](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md#live-evidence),
-<a id="policy-inspection"></a>[policy inspection](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md#policy-inspection),
-<a id="test-results"></a>[protocol test results](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md#test-results),
-<a id="legacy-wire-protocol"></a>[wire protocol](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md#legacy-wire-protocol),
-<a id="session-and-topics"></a>[sessions and topics](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md#session-and-topics),
-<a id="lite-commands-and-responses"></a>[Lite commands and responses](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md#lite-commands-and-responses),
-<a id="liveness-and-notifications"></a>[liveness and notifications](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md#liveness-and-notifications),
-<a id="reproducing-the-diagnostic"></a>[diagnostic reproduction](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md#reproduction),
-<a id="validation-criteria-for-a-future-fix"></a>[validation criteria](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md#validation-criteria-for-a-future-fix),
-and <a id="sources-and-unresolved-questions"></a>[sources and open questions](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md#sources-and-unresolved-questions).
+<a id="connection-and-authorization-model"></a>[connection and authorization](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/mqtt.md#connection-and-authorization-model),
+<a id="aws-permission-controls"></a>[AWS permissions](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/mqtt.md#aws-permission-controls),
+<a id="live-evidence"></a>[protocol live evidence](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/evidence/mqtt.md#live-evidence),
+<a id="policy-inspection"></a>[policy inspection](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/evidence/mqtt.md#policy-inspection),
+<a id="test-results"></a>[protocol test results](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/evidence/mqtt.md#test-results),
+<a id="legacy-wire-protocol"></a>[wire protocol](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/mqtt.md#legacy-wire-protocol),
+<a id="session-and-topics"></a>[sessions and topics](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/mqtt.md#session-and-topics),
+<a id="lite-commands-and-responses"></a>[Lite commands and responses](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/mqtt.md#lite-commands-and-responses),
+<a id="liveness-and-notifications"></a>[liveness and notifications](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/mqtt.md#liveness-and-notifications),
+<a id="reproducing-the-diagnostic"></a>[diagnostic reproduction](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/guides/mqtt-diagnostics.md#reproduction),
+<a id="validation-criteria-for-a-future-fix"></a>[validation criteria](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/mqtt.md#validation-criteria-for-a-future-fix),
+and <a id="sources-and-unresolved-questions"></a>[sources and open questions](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/mqtt.md#sources-and-unresolved-questions).

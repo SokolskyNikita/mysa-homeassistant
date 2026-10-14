@@ -49,10 +49,10 @@ MQTT stays opt-in for standalone consumers; Mysa Local explicitly opts in when
 Mysa account access and cloud use are enabled, its global **Live MQTT readings**
 option is on, and each selected thermostat's MQTT setting is on. The integration
 passes the client only the enabled account-device allowlist. See the package's
-[cloud guide](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/cloud/README.md),
-[HomeKit guide](https://github.com/SokolskyNikita/mysa-client/blob/main/src/mysa_client/homekit/README.md),
-[runtime guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/runtime.md),
-and [MQTT guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/mqtt.md)
+[cloud guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/python/cloud.md),
+[HomeKit guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/python/homekit.md),
+[runtime guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/python/runtime.md),
+and [MQTT guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/mqtt.md)
 for public APIs, lifecycle, timeouts, and failure handling. The [HA MQTT guide](mqtt.md)
 covers integration options, entity value selection, and hardware evidence.
 
@@ -137,6 +137,12 @@ thermostat management in `test_subentry_flow.py`, options and authentication in
 `test_options_flow.py`, and shared thermostat steps in `test_thermostat_flow.py`.
 Account issues and their repair flows are covered by `test_repairs.py`.
 
+## Pairing recovery storage
+
+Pairing credentials are saved as soon as the thermostat accepts them. If setup is interrupted, start it again and choose the saved pairing to continue without another HomeKit code. A private keyed fingerprint of the code is saved with recovery credentials, independently of the remember-code checkbox. After a successful connection using the same code under a different HomeKit ID, older matching recovery records are retired locally and the presumed identity change is logged. This never sends an unpair command; older records without fingerprints cannot be matched.
+
+User instructions are in [setup and recovery](guides/setup.md). Remembered setup codes are stored separately from pairing keys and recovery fingerprints.
+
 ## Testing the boundaries
 
 Client tests exercise cloud authentication, parsing, semantic validation,
@@ -159,8 +165,8 @@ or removal operations unless the test specifically requires them.
 
 ## Cloud protocol findings versus implementation
 
-The [cloud tracker](implementation/cloud.md) owns integration feature scope
-and acceptance criteria. Cloud acquisition reads structured and legacy state
+The [scope decisions](cloud-scope.md) own product boundaries; the
+[management inventory](implementation/progress.md) owns acceptance criteria. Cloud acquisition reads structured and legacy state
 independently; the client reconciles per-field observations and tracks pending
 commands separately from confirmed reports. The client schedule workflow
 preserves native schedule origins and uses a version-1 journal; HA adapts that
@@ -169,3 +175,5 @@ hardware confirmation remain separate.
 
 Run `python3 tools/check_docs.py` for offline documentation checks. It does not
 import the integration, obtain credentials, or contact any service or thermostat.
+
+Host aliases are not independent measurements. HA applies bounded host fallback only where verified and does not replay ambiguous commands. The [behavior guide](guides/behavior.md) owns user-visible freshness and fallback policy; the [scope register](cloud-scope.md#cloud-transports) records transport exclusions.
