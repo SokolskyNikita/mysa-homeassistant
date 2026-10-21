@@ -1,6 +1,6 @@
 [project]
 name = "mysa-homeassistant"
-version = "0.8.3"
+version = "0.8.4"
 description = "Unofficial Home Assistant integration for Mysa thermostats; unaffiliated with Mysa. Use at your own risk."
 readme = "README.md"
 license = "MIT"

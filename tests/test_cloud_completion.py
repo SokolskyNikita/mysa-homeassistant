@@ -19,6 +19,7 @@ from mysa_client.cloud.reconciliation import reconcile
 from mysa_client.cloud.schedules import WEEKDAYS
 import pytest
 
+from custom_components.mysa_local.cloud_coordinator import _async_local_midnight
 from custom_components.mysa_local.schedule import (
     async_clear_schedule,
     async_set_schedule,
@@ -362,3 +363,18 @@ async def test_delayed_write_readbacks_are_bounded(hass, cloud, freezer, confirm
         assert read.await_count == (2 if confirm else 3)
         assert coordinator._refresh_after_write is None
         write.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("time_zone", "expected"),
+    [
+        ("America/Vancouver", datetime(2026, 10, 12, 7, tzinfo=UTC)),
+        ("Not/A_Zone", datetime(2026, 10, 12, tzinfo=UTC)),
+        (None, datetime(2026, 10, 12, tzinfo=UTC)),
+    ],
+)
+async def test_local_midnight_resolves_zone_without_blocking(hass, time_zone, expected):
+    """Unknown or missing thermostat zones fall back to Home Assistant's zone."""
+    await hass.config.async_set_time_zone("UTC")
+    midnight = await _async_local_midnight(NOW, time_zone)
+    assert midnight == expected

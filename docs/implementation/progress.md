@@ -4,7 +4,7 @@ Last reviewed: **2026-10-12**
 
 Documentation reconciled: **2026-10-14**
 
-Integration version: **Mysa Local 0.8.3**
+Integration version: **Mysa Local 0.8.4**
 
 The inventory status assessment dates to **2026-10-12 / 0.6.0**. This documentation cleanup preserves the existing statuses and evidence; it is not a new hardware validation or a claim that every later feature has been scored. Historical observations retain their own release dates.
 

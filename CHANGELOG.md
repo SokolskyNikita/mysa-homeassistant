@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.4 (2026-10-21)
+
+- Resolve thermostat time zones with Home Assistant's async time zone helper so
+  the daily heating runtime no longer reads tzdata on the event loop.
+- Lead the README installation steps with searching HACS.
+
 ## 0.8.3 (2026-10-12)
 
 - Correct the integration version reported in diagnostics after the 0.8.2 update.

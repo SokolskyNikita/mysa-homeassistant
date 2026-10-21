@@ -38,9 +38,10 @@ Requires Home Assistant 2026.9 or newer.
 
 With HACS:
 
-1. Open HACS → menu → Custom repositories.
-2. Add `https://github.com/SokolskyNikita/mysa-homeassistant` with type Integration.
-3. Download Mysa Local and restart Home Assistant.
+1. Open HACS and search for **Mysa Local**.
+2. Download it and restart Home Assistant.
+
+If Mysa Local isn't listed yet, first add `https://github.com/SokolskyNikita/mysa-homeassistant` under HACS → menu → Custom repositories, with type Integration.
 
 For a manual installation, copy [custom_components/mysa_local](custom_components/mysa_local) into your Home Assistant `config/custom_components/` directory, then restart.
 

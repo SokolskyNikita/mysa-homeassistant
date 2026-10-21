@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable, Mapping
-import contextlib
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 import time
 from typing import TYPE_CHECKING, Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
@@ -96,12 +94,9 @@ class CloudData:
     holds: dict[str, dict[str, Any] | None] = field(default_factory=dict)
 
 
-def _local_midnight(now: datetime, time_zone: str | None) -> datetime:
-    tz = dt_util.get_default_time_zone()
-    if time_zone:
-        with contextlib.suppress(ZoneInfoNotFoundError):
-            tz = ZoneInfo(time_zone)
-    local = now.astimezone(tz)
+async def _async_local_midnight(now: datetime, time_zone: str | None) -> datetime:
+    tz = await dt_util.async_get_time_zone(time_zone) if time_zone else None
+    local = now.astimezone(tz or dt_util.get_default_time_zone())
     return local.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
@@ -485,7 +480,9 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
     async def _fetch_usage(self, data: CloudData, dev: str) -> None:
         record = data.records.get(dev)
         now = dt_util.utcnow()
-        midnight = _local_midnight(now, record.time_zone if record else None)
+        midnight = await _async_local_midnight(
+            now, record.time_zone if record else None
+        )
         tz_name = str(midnight.tzinfo) if midnight.tzinfo else "UTC"
         if record and record.time_zone:
             tz_name = record.time_zone
