@@ -275,7 +275,21 @@ class MysaClimate(MysaEntity, ClimateEntity):
         if (hvac_mode := kwargs.get(ATTR_HVAC_MODE)) is not None:
             await self.async_set_hvac_mode(hvac_mode)
         if (temperature := kwargs.get(ATTR_TEMPERATURE)) is not None:
-            await self.thermostat.async_set_temperature(float(temperature))
+            await self.thermostat.async_set_temperature(
+                self._snap_to_step(float(temperature))
+            )
+
+    def _snap_to_step(self, value: float) -> float:
+        """Round a Celsius setpoint to the thermostat's setpoint step.
+
+        Home Assistant converts a Fahrenheit target to Celsius before calling the
+        entity, so whole Fahrenheit degrees fall between Mysa's half-Celsius steps
+        (73 °F is 22.78 °C) and the thermostat rejects them.
+        """
+        step = self.thermostat.setpoint_range[2]
+        if not step:
+            return value
+        return round(round(value / step) * step, 4)
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Change the mode."""

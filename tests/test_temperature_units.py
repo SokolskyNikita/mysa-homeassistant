@@ -87,7 +87,8 @@ async def test_fahrenheit_services_keep_celsius_commands(
             {"entity_id": CLIMATE, "temperature": 72},
             blocking=True,
         )
-        expected_celsius = (72 - 32) / 1.8
+        # 72 °F is 22.22 °C; the thermostat only accepts its 0.5 °C steps.
+        expected_celsius = 22.0
         if local:
             aid, iid = fake_characteristic_address(
                 pairing, CharacteristicsTypes.TEMPERATURE_TARGET
@@ -104,7 +105,7 @@ async def test_fahrenheit_services_keep_celsius_commands(
             ]
             await entry.runtime_data.cloud.async_refresh()
         await hass.async_block_till_done()
-        assert hass.states.get(CLIMATE).attributes["temperature"] == 72
+        assert hass.states.get(CLIMATE).attributes["temperature"] == 71.6
         write_count = put.await_count, len(cloud.updates)
         for outside_limit in (40, 87):
             with pytest.raises(ServiceValidationError):
@@ -115,3 +116,41 @@ async def test_fahrenheit_services_keep_celsius_commands(
                     blocking=True,
                 )
         assert (put.await_count, len(cloud.updates)) == write_count
+
+
+@pytest.mark.parametrize(
+    ("fahrenheit", "requested", "expected_celsius"),
+    [
+        (True, 73, 23.0),
+        (True, 72, 22.0),
+        (True, 70.7, 21.5),
+        (False, 21.3, 21.5),
+        (False, 21.2, 21.0),
+    ],
+)
+async def test_setpoint_snaps_to_thermostat_step(
+    hass: HomeAssistant,
+    controller: FakeController,
+    cloud: FakeCloud,
+    *,
+    fahrenheit: bool,
+    requested: float,
+    expected_celsius: float,
+) -> None:
+    """Off-step targets are rounded to the step the thermostat accepts."""
+    hass.config.units = US_CUSTOMARY_SYSTEM if fahrenheit else METRIC_SYSTEM
+    pairing = controller.aliases[HKID]
+    await setup_entry(hass, hub_entry())
+    with patch.object(
+        pairing, "put_characteristics", AsyncMock(wraps=pairing.put_characteristics)
+    ) as put:
+        await hass.services.async_call(
+            "climate",
+            "set_temperature",
+            {"entity_id": CLIMATE, "temperature": requested},
+            blocking=True,
+        )
+    aid, iid = fake_characteristic_address(
+        pairing, CharacteristicsTypes.TEMPERATURE_TARGET
+    )
+    put.assert_awaited_once_with([(aid, iid, pytest.approx(expected_celsius))])
