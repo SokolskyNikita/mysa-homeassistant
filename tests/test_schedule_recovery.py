@@ -4,6 +4,7 @@ import asyncio
 from copy import deepcopy
 from datetime import time
 from typing import Any
+from unittest.mock import patch
 
 from homeassistant.exceptions import HomeAssistantError
 from mysa_client.cloud import MysaConnectionError
@@ -306,6 +307,23 @@ async def test_reload_recovers_schedule_backup_when_cloud_returns(hass, cloud) -
     assert cloud.schedules[0]["name"] == "Original schedule"
     assert cloud.schedules[0]["events"] == _existing_schedule()["events"]
     assert cloud.schedules[0]["deviceIds"] == [DEVICE_ID]
+
+
+@pytest.mark.usefixtures("controller")
+async def test_startup_recovery_stops_after_success(hass, cloud) -> None:
+    """A thermostat with nothing left to recover is not retried on later polls."""
+    with patch(
+        "custom_components.mysa_local.async_recover_schedule",
+        wraps=async_recover_schedule,
+    ) as recover:
+        entry = hub_entry()
+        await setup_entry(hass, entry)
+        await hass.async_block_till_done(wait_background_tasks=True)
+        assert recover.call_count == 1
+        for _ in range(2):
+            await entry.runtime_data.cloud.async_refresh()
+            await hass.async_block_till_done(wait_background_tasks=True)
+        assert recover.call_count == 1
 
 
 @pytest.mark.usefixtures("controller")
