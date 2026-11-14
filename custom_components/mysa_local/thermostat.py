@@ -720,6 +720,12 @@ class Thermostat:
         await self.commands.async_stop()
 
     async def async_set_temperature(self, value: float) -> None:
+        """HA can send a converted value with too much precision. Some thermostats may reject the request if setting 20.5555 instead of 20.5."""
+        low, high, step = self.setpoint_range
+        if step > 0:
+            value = low + round((value - low) / step) * step
+        value = round(min(max(value, low), high), 4)
+
         """Change the setpoint using the latest serialized operating mode."""
         if self.basic_cloud_only:
             await self.async_set_basic_temperature(temperature=value)
