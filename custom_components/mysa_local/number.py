@@ -20,7 +20,6 @@ from mysa_client.cloud import (
     DeviceState,
     SetpointRange,
     fahrenheit_bounds,
-    fahrenheit_offset,
 )
 from mysa_client.cloud.device import BRIGHTNESS_STEP, MIN_WAKE_BRIGHTNESS
 
@@ -118,8 +117,10 @@ NUMBERS: tuple[MysaNumberDescription, ...] = (
         key="temperature_offset",
         translation_key="temperature_offset",
         entity_category=EntityCategory.CONFIG,
-        # A difference, not a temperature: no device class, so HA doesn't
-        # convert it as an absolute value. °F owners get a whole °F delta.
+        # Always °C, as before 0.9.0, so automations keep their meaning. The
+        # difference class lets an owner choose °F for the entity, and HA then
+        # converts it as a difference (±5 °C shows as ±9 °F).
+        device_class=NumberDeviceClass.TEMPERATURE_DELTA,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         mode=NumberMode.BOX,
         value=lambda s: s.temperature_offset,
@@ -182,10 +183,8 @@ class MysaNumber(MysaCloudEntity, NumberEntity):
             limits = description.rules_range(self.thermostat)
             r_low: float | None
             r_high: float | None
-            if self.owner_unit == "F":
-                r_low, r_high = fahrenheit_bounds(
-                    limits, delta=description.temperature == "offset"
-                )
+            if self._unit == "F":
+                r_low, r_high = fahrenheit_bounds(limits)
                 step = 1.0
             else:
                 r_low, r_high, step = limits.minimum, limits.maximum, limits.step
@@ -194,9 +193,16 @@ class MysaNumber(MysaCloudEntity, NumberEntity):
         return low, high, step
 
     @property
+    def _unit(self) -> Unit:
+        """The owner's unit for the setpoint limits; °C for everything else."""
+        if self.entity_description.temperature == "setpoint":
+            return self.owner_unit
+        return "C"
+
+    @property
     def native_unit_of_measurement(self) -> str | None:
-        """The owner's unit for temperatures; a plain property, never cached."""
-        if self.entity_description.temperature is not None:
+        """The owner's unit for the limits; a plain property, never cached."""
+        if self.entity_description.temperature == "setpoint":
             return ha_unit(self.owner_unit)
         return self.entity_description.native_unit_of_measurement
 
@@ -217,7 +223,7 @@ class MysaNumber(MysaCloudEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Current value, in the owner's unit for temperatures."""
+        """Current value; the setpoint limits are in the owner's unit."""
         state = self.cloud_state
         if state is None:
             return None
@@ -226,23 +232,14 @@ class MysaNumber(MysaCloudEntity, NumberEntity):
             return display_setpoint(self.thermostat.setpoint_min, self.owner_unit)
         if key == "setpoint_max":
             return display_setpoint(self.thermostat.setpoint_max, self.owner_unit)
-        value = self.entity_description.value(state)
-        if (
-            self.entity_description.temperature == "offset"
-            and value is not None
-            and self.owner_unit == "F"
-        ):
-            return fahrenheit_offset(value)
-        return value
+        return self.entity_description.value(state)
 
     async def async_set_native_value(self, value: float) -> None:
-        """Write the new value (in the owner's unit for temperatures)."""
+        """Write the new value (the setpoint limits in the owner's unit)."""
         state = self.cloud_state
         if state is None:
             raise translated_error("cloud_required", name=self.thermostat.name)
         # Limits are strict: one outside the hardware range, or not strictly
         # inside the other limit, is refused by the rules in the owner's unit.
         async with self._service_call():
-            await self.entity_description.set_value(
-                self.thermostat, value, self.owner_unit
-            )
+            await self.entity_description.set_value(self.thermostat, value, self._unit)

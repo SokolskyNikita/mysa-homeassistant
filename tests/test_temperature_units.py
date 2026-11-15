@@ -166,6 +166,31 @@ async def test_targets_show_like_the_mysa_app(
     assert state["current_temperature"] == expected_room
 
 
+async def test_card_top_matches_the_label_of_an_in_between_limit(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """A 22.5 °C highest setpoint shows as 73 °F, so the card goes up to 73."""
+    use_units(hass, True)
+    report(cloud, "targetHeat", setpoint=21, lockoutMax=22.5)
+    entry = cloud_only()
+    await setup_entry(hass, entry)
+    # 73 °F alone is 22.8 °C, which rounds past the limit; 72 was the old top.
+    assert attrs(hass)["max_temp"] == 73
+    assert hass.states.get(HIGHEST).state == "73"
+
+    logbook = async_capture_events(hass, EVENT_LOGBOOK_ENTRY)
+    await set_temperature(hass, temperature=73)
+    # Held at the limit, which is what 73 °F shows: nothing to tell the owner.
+    assert cloud.updates == [{"source": 3, "targetHeat": {"setpoint": 22.5}}]
+    assert logbook == []
+    await entry.runtime_data.cloud.async_refresh()
+    await hass.async_block_till_done()
+    assert attrs(hass)["temperature"] == 73
+
+    with pytest.raises(ServiceValidationError):
+        await set_temperature(hass, temperature=74)
+
+
 @pytest.mark.parametrize("local", [False, True])
 async def test_fahrenheit_limits_give_whole_card_bounds(
     hass: HomeAssistant, controller: FakeController, cloud: FakeCloud, local: bool
@@ -486,9 +511,10 @@ async def test_newer_cloud_heater_rounds_its_target(
 
 @pytest.mark.parametrize(
     ("fahrenheit", "requested", "expected_celsius"),
-    [(True, 73, 23.0), (True, 72, 22.0), (False, 22.78, 23.0), (False, 19, 19)],
+    # Always °C (#48): a Fahrenheit owner's 21 is 21 °C, as before 0.9.0.
+    [(True, 22.78, 23.0), (True, 21, 21.0), (False, 22.78, 23.0), (False, 19, 19)],
 )
-async def test_hold_takes_the_owners_unit(
+async def test_hold_takes_celsius_whatever_the_unit_system(
     hass: HomeAssistant,
     cloud: FakeCloud,
     *,
@@ -524,12 +550,13 @@ async def test_hold_resends_an_off_step_current_target_rounded(
 @pytest.mark.parametrize(
     ("fahrenheit", "requested", "text"),
     [
+        # A Fahrenheit owner's 70 is read as 70 °C, and the error says so.
         (
             True,
-            100,
-            "100 °F is above the highest setpoint the thermostat allows, 86 °F.",
+            70,
+            "70 °C is above the highest setpoint the thermostat allows, 30 °C.",
         ),
-        (True, 40, "40 °F is below the lowest setpoint the thermostat allows, 41 °F."),
+        (True, 4.7, "4.7 °C is below the lowest setpoint the thermostat allows, 5 °C."),
         (
             False,
             31,
@@ -542,7 +569,7 @@ async def test_hold_resends_an_off_step_current_target_rounded(
         ),
     ],
 )
-async def test_hold_out_of_range_is_refused_in_the_owners_unit(
+async def test_hold_out_of_range_is_refused_in_celsius(
     hass: HomeAssistant,
     cloud: FakeCloud,
     *,
@@ -563,9 +590,9 @@ async def test_hold_out_of_range_is_refused_in_the_owners_unit(
 
 @pytest.mark.parametrize(
     ("fahrenheit", "temperatures", "expected"),
-    [(True, (70.3, 64), (21.5, 18.0)), (False, (21.2, 17.75), (21.0, 18.0))],
+    [(True, (21.2, 17.75), (21.0, 18.0)), (False, (21.2, 17.75), (21.0, 18.0))],
 )
-async def test_schedule_takes_the_owners_unit_and_rounds(
+async def test_schedule_takes_celsius_and_rounds(
     hass: HomeAssistant,
     cloud: FakeCloud,
     *,
@@ -573,7 +600,7 @@ async def test_schedule_takes_the_owners_unit_and_rounds(
     temperatures: tuple[float, float],
     expected: tuple[float, float],
 ) -> None:
-    """Schedule events are in the owner's unit and rounded to the step."""
+    """Schedule events are °C on any unit system (#48), rounded to the step."""
     use_units(hass, fahrenheit)
     await setup_entry(hass, cloud_only())
     events = [
@@ -591,7 +618,7 @@ async def test_schedule_takes_the_owners_unit_and_rounds(
 @pytest.mark.parametrize(
     ("fahrenheit", "requested", "text"),
     [
-        (True, 90, "90 °F is above the highest setpoint the thermostat allows, 86 °F."),
+        (True, 70, "70 °C is above the highest setpoint the thermostat allows, 30 °C."),
         (
             False,
             35,
@@ -661,12 +688,12 @@ async def test_setpoint_limits_take_the_owners_unit(
 @pytest.mark.parametrize(
     ("fahrenheit", "value", "written", "shown", "bounds"),
     [
-        (True, 2, 1.0, "2", (-9, 9)),
-        (True, -3, -1.5, "-3", (-9, 9)),
+        (True, 1, 1.0, "1.0", (-5, 5)),
+        (True, -1.5, -1.5, "-1.5", (-5, 5)),
         (False, 1.5, 1.5, "1.5", (-5, 5)),
     ],
 )
-async def test_temperature_offset_takes_the_owners_unit(
+async def test_temperature_offset_is_celsius_whatever_the_unit_system(
     hass: HomeAssistant,
     cloud: FakeCloud,
     *,
@@ -676,13 +703,14 @@ async def test_temperature_offset_takes_the_owners_unit(
     shown: str,
     bounds: tuple[int, int],
 ) -> None:
-    """The offset is a whole °F delta for Fahrenheit owners."""
+    """The offset stays °C with a 0.5 step: an automation's 1 means 1 °C."""
     use_units(hass, fahrenheit)
     entry = cloud_only()
     await setup_entry(hass, entry)
     state = hass.states.get(OFFSET)
-    unit = UnitOfTemperature.FAHRENHEIT if fahrenheit else UnitOfTemperature.CELSIUS
-    assert state.attributes["unit_of_measurement"] == unit
+    assert state.attributes["unit_of_measurement"] == UnitOfTemperature.CELSIUS
+    assert state.attributes["device_class"] == "temperature_delta"
+    assert state.attributes["step"] == 0.5
     assert (state.attributes["min"], state.attributes["max"]) == bounds
     await call(hass, "number", "set_value", entity_id=OFFSET, value=value)
     assert cloud.updates[-1] == {"source": 3, "tracking": {"ambientOffset": written}}

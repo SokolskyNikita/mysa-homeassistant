@@ -728,7 +728,7 @@
       "fields": {
         "temperature": {
           "name": "Temperature",
-          "description": "Setpoint to hold, in Home Assistant's temperature unit (°C or °F, from your unit system). Rounded to the thermostat's step. Defaults to the current setpoint."
+          "description": "Setpoint to hold, in °C whatever Home Assistant's unit system is. Rounded to the thermostat's step. Defaults to the current setpoint."
         },
         "hvac_mode": {
           "name": "Mode",
@@ -750,7 +750,7 @@
       "fields": {
         "events": {
           "name": "Events",
-          "description": "List of events, each with days (mon to sun), time (HH:MM), temperature and optionally hvac_mode (heat, cool or off, if the thermostat offers it; heat by default). Temperatures are in Home Assistant's temperature unit (°C or °F, from your unit system) and are rounded to the thermostat's step."
+          "description": "List of events, each with days (mon to sun), time (HH:MM), temperature and optionally hvac_mode (heat, cool or off, if the thermostat offers it; heat by default). Temperatures are in °C whatever Home Assistant's unit system is, and are rounded to the thermostat's step."
         }
       }
     },
