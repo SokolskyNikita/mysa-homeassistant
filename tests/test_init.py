@@ -77,6 +77,29 @@ async def test_local_write(hass: HomeAssistant, controller: FakeController) -> N
 
 
 @pytest.mark.usefixtures("controller")
+async def test_heater_type_follows_reported_control_type(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """The thermostat's report wins over a settings record that disagrees."""
+    assert cloud.devices["DevicesObj"][DEVICE_ID]["DutyCycleOpt"] == 9
+    cloud.state["bbConfig"]["desired"]["controlType"] = 8
+    cloud.state["bbConfig"]["reported"]["controlType"] = 8
+    await setup_entry(hass, hub_entry())
+    assert hass.states.get("select.living_room_heater_type").state == "fan_forced"
+
+
+@pytest.mark.usefixtures("controller")
+async def test_heater_type_falls_back_to_record(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """Without a reported controlType the settings record is shown."""
+    del cloud.state["bbConfig"]
+    cloud.devices["DevicesObj"][DEVICE_ID]["DutyCycleOpt"] = 8
+    await setup_entry(hass, hub_entry())
+    assert hass.states.get("select.living_room_heater_type").state == "fan_forced"
+
+
+@pytest.mark.usefixtures("controller")
 async def test_cloud_setup(hass: HomeAssistant, cloud: FakeCloud) -> None:
     """Signed in: the cloud adds the settings HomeKit doesn't have."""
     entry = hub_entry()
