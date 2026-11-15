@@ -36,12 +36,12 @@ If you test another model, [submit a model report](https://github.com/SokolskyNi
 
 Requires Home Assistant 2026.9 or newer.
 
-With HACS:
+With Marketplace (built into Home Assistant from 2026.11) or HACS (earlier versions):
 
-1. Open HACS and search for **Mysa Local**.
+1. Open Marketplace (or HACS) and search for **Mysa Local**.
 2. Download it and restart Home Assistant.
 
-If Mysa Local isn't listed yet, first add `https://github.com/SokolskyNikita/mysa-homeassistant` under HACS → menu → Custom repositories, with type Integration.
+If Mysa Local isn't listed yet, first add `https://github.com/SokolskyNikita/mysa-homeassistant` as a custom repository, with type Integration.
 
 For a manual installation, copy [custom_components/mysa_local](custom_components/mysa_local) into your Home Assistant `config/custom_components/` directory, then restart.
 
