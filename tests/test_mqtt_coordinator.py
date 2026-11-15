@@ -19,13 +19,13 @@ from mysa_client.mqtt import (
 )
 from mysa_client.mqtt.protocol import parse_message
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.mysa_local import mqtt_coordinator as mqtt_module
 from custom_components.mysa_local.event_history import EventHistory
 from custom_components.mysa_local.mqtt_coordinator import MysaMqttCoordinator
 
 from .common import DEVICE_ID, hub_entry
+from .harness import MockConfigEntry
 
 OTHER_DEVICE_ID = "f0e1d2c3b4a5"
 MODEL = "BB-V2-0-L"

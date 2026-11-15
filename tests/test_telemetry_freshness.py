@@ -17,7 +17,6 @@ from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 import pytest
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.mysa_local.const import (
     CLOUD_TELEMETRY_MAX_AGE,
@@ -33,6 +32,7 @@ from .common import (
     update_fake_characteristic,
 )
 from .conftest import setup_entry
+from .harness import async_fire_time_changed
 
 # Just past the freshness limit.
 STALE = CLOUD_TELEMETRY_MAX_AGE + timedelta(minutes=1)

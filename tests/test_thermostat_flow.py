@@ -17,7 +17,6 @@ from mysa_client.homekit import (
 from mysa_client.homekit.device import HomeKitDevice
 from mysa_client.homekit.models import HomeKitDiscovery
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.mysa_local import async_setup
 from custom_components.mysa_local.config_flow import MysaConfigFlow
@@ -50,6 +49,7 @@ from .common import (
     hub_entry,
     thermostat_subentry,
 )
+from .harness import MockConfigEntry
 
 
 def test_thermostat_flow_state_is_isolated_between_flow_instances() -> None:

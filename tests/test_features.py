@@ -17,11 +17,6 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, issue_registry as ir
 from homeassistant.util import dt as dt_util
 import pytest
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
-from pytest_homeassistant_custom_component.components.diagnostics import (
-    get_diagnostics_for_config_entry,
-)
-from pytest_homeassistant_custom_component.typing import ClientSessionGenerator
 
 from custom_components.mysa_local.const import CONF_FIRMWARE_INSTALL, DOMAIN
 from custom_components.mysa_local.schedule import build_events
@@ -38,6 +33,11 @@ from .common import (
     update_fake_characteristic,
 )
 from .conftest import setup_entry
+from .harness import (
+    ClientSessionGenerator,
+    async_fire_time_changed,
+    get_diagnostics_for_config_entry,
+)
 
 CLIMATE = "climate.living_room"
 
@@ -498,7 +498,8 @@ async def test_system_health(
 ) -> None:
     """System health shows the paths, the sign-in and whether Mysa is reachable."""
     from homeassistant.setup import async_setup_component
-    from pytest_homeassistant_custom_component.common import get_system_health_info
+
+    from .harness import get_system_health_info
 
     aioclient_mock.get("https://mysa-backend.mysa.cloud", text="")
     await setup_entry(hass, hub_entry(password="saved"))
@@ -522,7 +523,8 @@ async def test_system_health_cloud_off_makes_no_calls(
 ) -> None:
     """With the cloud off, system health doesn't contact Mysa either."""
     from homeassistant.setup import async_setup_component
-    from pytest_homeassistant_custom_component.common import get_system_health_info
+
+    from .harness import get_system_health_info
 
     await setup_entry(hass, hub_entry(signed_in=False))
     assert await async_setup_component(hass, "system_health", {})

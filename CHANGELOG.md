@@ -11,6 +11,9 @@
   offer (cool on a heat-only heater, say) with an error naming its modes, before
   anything is sent. Such a request used to reach Mysa's cloud, and `auto` failed
   with an internal error.
+- Tests run on Home Assistant 2026.11 with its own `pytest-homeassistant`
+  harness; CI now tests both the minimum supported version (2026.9) and the
+  latest (2026.11).
 
 ## 0.9.0 (2026-11-15)
 

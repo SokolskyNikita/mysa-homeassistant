@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# Format, lint and type-check.
+# Format, lint and type-check. mypy checks against the oldest supported Home
+# Assistant, so the tools run from .venv-min when scripts/setup made it.
 set -e
 cd "$(dirname "$0")/.."
-ruff format .
-ruff check . --fix
-mypy
+bin=""
+if [[ -x .venv-min/bin/mypy ]]; then
+    bin=.venv-min/bin/
+fi
+"${bin}ruff" format .
+"${bin}ruff" check . --fix
+"${bin}mypy"
 python3 tools/check_docs.py
 python3 -m unittest discover -s tools -p 'test_*.py'

@@ -11,10 +11,9 @@ from homeassistant.core import HomeAssistant
 from mysa_client.homekit import HomeKitProtocol
 from mysa_client.mqtt import MqttConnectionError
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from .common import FakeCloud, hub_entry, make_controller
+from .harness import AiohttpClientMocker, MockConfigEntry
 
 
 @pytest.fixture(autouse=True)
