@@ -32,6 +32,9 @@ TARGET_TEMPERATURE = Field.TARGET_TEMPERATURE
 CURRENT_STATE = Field.CURRENT_ACTION
 TARGET_STATE = Field.TARGET_MODE
 DISPLAY_UNITS = Field.DISPLAY_UNIT
+# Lux from the optional HomeKit Light Sensor service (mysa-client#29). None
+# with a mysa-client release that predates the field.
+AMBIENT_LIGHT: Field | None = Field.__members__.get("AMBIENT_LIGHT")
 
 _ESSENTIAL_FIELDS = frozenset(
     {
@@ -76,6 +79,7 @@ class LocalThermostat:
         self.__poll_unsub: CALLBACK_TYPE | None = None
         self.__started = False
         self.__poll_lock = asyncio.Lock()
+        self.__optional_failures: frozenset[Field] = frozenset()
         self.available = False
         self.down_since: datetime | None = dt_util.utcnow()
         self.last_error: str | None = None
@@ -104,6 +108,11 @@ class LocalThermostat:
     def chars(self) -> Mapping[Field, CharacteristicInfo]:
         """Immutable metadata for the semantic fields this device supports."""
         return self.__device.capabilities
+
+    @property
+    def failed_fields(self) -> Mapping[Field, str]:
+        """Fields whose latest read failed; their cached values are stale."""
+        return self.__device.failed_fields
 
     @property
     def ready(self) -> bool:
@@ -187,7 +196,16 @@ class LocalThermostat:
             )
         ):
             self.__set_available(True)
-        if (event.changed_fields and self.available) or event.capabilities_changed:
+        # An optional field (the light sensor) can fail or recover with an
+        # unchanged value; its entity still needs to update.
+        optional_failures = frozenset(
+            self.__device.failed_fields.keys() - _ESSENTIAL_FIELDS
+        )
+        failures_changed = optional_failures != self.__optional_failures
+        self.__optional_failures = optional_failures
+        if (
+            (event.changed_fields or failures_changed) and self.available
+        ) or event.capabilities_changed:
             self.__notify()
 
     async def __async_refresh(self) -> None:

@@ -66,6 +66,7 @@ from .const import (
 )
 from .event_history import EventHistory, error_category
 from .local_adapter import (
+    AMBIENT_LIGHT,
     DISPLAY_UNITS,
     LOCAL_ERRORS,
     TARGET_STATE,
@@ -518,6 +519,29 @@ class Thermostat:
     def current_temperature(self) -> float | None:
         """Room temperature in °C."""
         return self._view().temperature
+
+    @property
+    def has_light_sensor(self) -> bool:
+        """True if the paired HomeKit accessory advertises a light sensor."""
+        return (
+            AMBIENT_LIGHT is not None
+            and self.local is not None
+            and self.local.supports(AMBIENT_LIGHT)
+        )
+
+    @property
+    def illuminance(self) -> float | None:
+        """Ambient light in lux. Only HomeKit reports it; no cloud fallback."""
+        local = self.local
+        if (
+            AMBIENT_LIGHT is None
+            or local is None
+            or not local.available
+            or AMBIENT_LIGHT in local.failed_fields
+        ):
+            return None
+        value = local.values.get(AMBIENT_LIGHT)
+        return value if isinstance(value, float) else None
 
     @property
     def humidity(self) -> float | None:
