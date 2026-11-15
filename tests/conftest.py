@@ -23,6 +23,17 @@ def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
 
 
 @pytest.fixture(autouse=True)
+def no_cloud_write_spacing() -> Generator[None]:
+    """Don't really wait between cloud writes.
+
+    The coordinator spaces writes 0.5 s apart; slept for real, that was most
+    of the suite's run time. No test depends on the wait itself.
+    """
+    with patch("custom_components.mysa_local.cloud_coordinator.CLOUD_WRITE_SPACING", 0):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def mock_zc(mock_async_zeroconf: object) -> None:
     """Never touch the real network for mDNS."""
 

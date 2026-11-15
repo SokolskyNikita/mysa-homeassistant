@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# Install everything needed to develop, test and lint.
+# Install everything needed to develop, test and lint, into the active
+# virtual environment. Uses uv when it's installed (seconds), else pip.
+# mysa-client comes from PyPI at the version pyproject.toml pins, as in CI.
+# To develop against a local client checkout instead:
+#   MYSA_CLIENT_PATH=../mysa-client scripts/setup
 set -e
 cd "$(dirname "$0")/.."
-python3 -m pip install --upgrade pip
-client_wheel="${PWD}/../mysa-client/dist/mysa_client-0.1.2-py3-none-any.whl"
-if [[ -f "${client_wheel}" ]]; then
-    python3 -m pip install "mysa-client[homekit,mqtt] @ file://${client_wheel}"
-elif [[ -f "${PWD}/../mysa-client/pyproject.toml" ]]; then
-    python3 -m pip install --editable "${PWD}/../mysa-client[homekit,mqtt]"
+if command -v uv >/dev/null 2>&1; then
+    install=(uv pip install)
 else
-    python3 -m pip install "mysa-client[homekit,mqtt]==0.1.2"
+    python3 -m pip install --upgrade pip
+    install=(python3 -m pip install)
 fi
-python3 -m pip install --group dev --group lint
+"${install[@]}" --group dev --group lint
+if [[ -n "${MYSA_CLIENT_PATH}" ]]; then
+    "${install[@]}" --editable "${MYSA_CLIENT_PATH}[homekit,mqtt]"
+fi

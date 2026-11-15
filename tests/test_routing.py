@@ -96,10 +96,14 @@ async def test_timed_out_write_checked_in_cloud(
     async def hang(*args: Any) -> Any:
         await asyncio.sleep(3600)
 
+    async def time_out(*args: Any) -> Any:
+        # Raise at once: a hung read would wait out the client's own timeout.
+        raise TimeoutError
+
     # Simulate the device having applied it (the cloud already reports 21.5).
     with (
         patch.object(pairing, "put_characteristics", hang),
-        patch.object(pairing, "get_characteristics", hang),
+        patch.object(pairing, "get_characteristics", time_out),
         patch("custom_components.mysa_local.local_adapter.LOCAL_READ_TIMEOUT", 0.05),
     ):
         await _set_temp(hass, 21.5)
