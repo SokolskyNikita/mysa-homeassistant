@@ -72,6 +72,8 @@ Check each project's model and feature list before switching. Mysa Local's hardw
 
 Mysa Local uses [aiohomekit](https://github.com/Jc2k/aiohomekit) for HomeKit. [Mysa_HA](https://github.com/kgelinas/Mysa_HA) and [mysotherm](https://github.com/dlenski/mysotherm) supplied earlier work on Mysa's cloud protocols.
 
+Thanks to everyone who has contributed fixes, reports and testing: @mcrutherford, @lionello, @noahtallen, @giesler, @mscholtz, @barakthecat, @rkoak, @neotrantor and @dlenski.
+
 Released under the [MIT License](LICENSE).
 
 <details>
