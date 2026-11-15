@@ -1,4 +1,4 @@
-"""Sensors: climate readings, connection diagnostics, runtime, power and energy."""
+"""Sensors: climate and light readings, connection diagnostics, runtime, power and energy."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    LIGHT_LUX,
     PERCENTAGE,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
@@ -71,6 +72,8 @@ async def async_setup_entry(
             entities.append(HeatingDutyCycleSensor(thermostat))
         if state is not None and state.rssi is not None:
             entities.append(WifiSignalSensor(thermostat))
+        if thermostat.has_light_sensor:
+            entities.append(IlluminanceSensor(thermostat))
         return entities
 
     async_add_when_ready(entry, async_add_entities, _entities)
@@ -129,6 +132,34 @@ class HumiditySensor(MysaEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Identify which live source supplied the reading."""
         return {"source": self.thermostat.humidity_source}
+
+
+class IlluminanceSensor(MysaEntity, SensorEntity):
+    """Ambient light from the HomeKit Light Sensor service.
+
+    Created only when the local pairing advertises that service, reported on
+    the in-floor INF-V1-0 (mysa-client#29). Neither cloud API reports light
+    level, so the entity is unavailable while HomeKit is down.
+    """
+
+    _attr_device_class = SensorDeviceClass.ILLUMINANCE
+    _attr_native_unit_of_measurement = LIGHT_LUX
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, thermostat: Thermostat) -> None:
+        """Create the entity."""
+        super().__init__(thermostat, "illuminance")
+
+    @property
+    def available(self) -> bool:
+        """Available while HomeKit has a current reading."""
+        return self.thermostat.illuminance is not None
+
+    @property
+    def native_value(self) -> float | None:
+        """Light level in lx."""
+        return self.thermostat.illuminance
 
 
 class HeatingDutyCycleSensor(MysaEntity, SensorEntity):

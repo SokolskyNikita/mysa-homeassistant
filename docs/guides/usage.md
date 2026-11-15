@@ -11,6 +11,7 @@ Entities depend on the thermostat's capabilities and reported data. The [newer-m
 | Climate and room temperature | Local, with cloud fallback | Setpoint, supported modes, room temperature and reported heating state; also creates a separate temperature sensor |
 | AC fan speed and swing | Cloud | Fan speed plus vertical and horizontal swing, where the remote supports them |
 | Humidity | MQTT, with cloud fallback | Also shown on the climate entity; see the [MQTT guide](../mqtt.md) |
+| Illuminance | Local only | Lux from the thermostat's HomeKit light sensor. Created only when the paired accessory advertises one (reported on In-Floor `INF-V1-0`, not verified on hardware); unavailable while HomeKit is down |
 | Display units | Local, with cloud fallback | Celsius or Fahrenheit on the thermostat's screen; does not change Home Assistant's units |
 | Identify | Local | Signals the thermostat so you can identify it |
 | Button lock | Cloud | Locks or unlocks the thermostat's buttons |
