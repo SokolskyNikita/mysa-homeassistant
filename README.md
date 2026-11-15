@@ -6,11 +6,13 @@
 
 > Unofficial and unaffiliated with Mysa. Use at your own risk.
 
-Control Mysa thermostats over your local network through HomeKit. Setpoint, mode, room temperature and heating state work without a Mysa account or internet connection. Setup uses Home Assistant's UI.
+Control Mysa thermostats over your local network through HomeKit. Setpoint, mode, room temperature and heating state work without a Mysa account or internet connection.
 
-An optional Mysa sign-in adds settings, schedules, firmware checks and cloud control when the local connection fails. When cloud access is enabled, MQTT can supply live humidity and numeric heating duty-cycle readings. The integration and per-thermostat MQTT options are on by default; see the [MQTT guide](docs/mqtt.md) for device selection, fallback behavior and validation limits.
+An optional Mysa sign-in adds settings, schedules, firmware checks, cloud control when the local connection fails, and live humidity and heating duty-cycle readings over [MQTT](docs/mqtt.md).
 
-Powered by [`mysa-client`](https://github.com/SokolskyNikita/mysa-client). See [architecture](docs/architecture.md) for library and integration ownership.
+If Home Assistant is set to Fahrenheit, the thermostat card works in whole °F like the Mysa app; see [Fahrenheit](docs/guides/usage.md#fahrenheit).
+
+Powered by [`mysa-client`](https://github.com/SokolskyNikita/mysa-client).
 
 ## Supported models
 
@@ -71,7 +73,7 @@ Check each project's model and feature list before switching. Mysa Local's hardw
 
 Mysa Local uses [aiohomekit](https://github.com/Jc2k/aiohomekit) for HomeKit. [Mysa_HA](https://github.com/kgelinas/Mysa_HA) and [mysotherm](https://github.com/dlenski/mysotherm) supplied earlier work on Mysa's cloud protocols.
 
-Thanks to everyone who has contributed fixes, reports and testing: @mcrutherford, @lionello, @noahtallen, @giesler, @mscholtz, @barakthecat, @rkoak, @neotrantor and @dlenski.
+Thanks to everyone who has contributed fixes, reports and testing: [@mcrutherford](https://github.com/mcrutherford), [@lionello](https://github.com/lionello), [@noahtallen](https://github.com/noahtallen), [@giesler](https://github.com/giesler), [@mscholtz](https://github.com/mscholtz), [@barakthecat](https://github.com/barakthecat), [@rkoak](https://github.com/rkoak), [@neotrantor](https://github.com/neotrantor) and [@dlenski](https://github.com/dlenski).
 
 Released under the [MIT License](LICENSE).
 
