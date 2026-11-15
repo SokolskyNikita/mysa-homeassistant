@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.components.climate.const import HVACMode
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
@@ -667,6 +668,18 @@ class Thermostat:
             return [LOCAL_MODE_TO_MODE[m] for m in self.local.supported_modes]
         return [Mode.OFF, Mode.HEAT]
 
+    @property
+    def hvac_modes(self) -> list[HVACMode]:
+        """Modes the owner can pick, as Home Assistant names them.
+
+        The one list the climate entity shows and the hold and set_schedule
+        actions accept.
+        """
+        modes = [MODE_TO_HVAC[m] for m in self.supported_modes if m in MODE_TO_HVAC]
+        return (
+            modes if self.basic_cloud_only else modes or [HVACMode.OFF, HVACMode.HEAT]
+        )
+
     def _rules_inputs(self) -> tuple[Any, ...]:
         return (
             self.capabilities,
@@ -1244,6 +1257,16 @@ class Thermostat:
         """Map a client error to a user-facing one."""
         return translated_error("cloud_write_failed", error=str(err))
 
+
+MODE_TO_HVAC: dict[Mode, HVACMode] = {
+    Mode.OFF: HVACMode.OFF,
+    Mode.AUTO: HVACMode.HEAT_COOL,
+    Mode.HEAT: HVACMode.HEAT,
+    Mode.COOL: HVACMode.COOL,
+    Mode.FAN_ONLY: HVACMode.FAN_ONLY,
+    Mode.DRY: HVACMode.DRY,
+}
+HVAC_TO_MODE = {v: k for k, v in MODE_TO_HVAC.items()}
 
 # Modes Home Assistant can represent and we know how to drive.
 SUPPORTED_MODES: frozenset[Mode] = frozenset(

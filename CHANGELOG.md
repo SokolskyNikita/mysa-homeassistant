@@ -7,6 +7,10 @@
   setting 74 °F alternated between 23 and 24 °C. Only a person's + or − now
   always moves the setpoint; an automation's value goes to its nearest setpoint.
   Thermostats with a 0.5 °C step were not affected.
+- The `hold` and `set_schedule` actions refuse a mode the thermostat doesn't
+  offer (cool on a heat-only heater, say) with an error naming its modes, before
+  anything is sent. Such a request used to reach Mysa's cloud, and `auto` failed
+  with an internal error.
 
 ## 0.9.0 (2026-11-15)
 

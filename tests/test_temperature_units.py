@@ -990,10 +990,10 @@ async def test_messages_round_halfway_up(hass: HomeAssistant, cloud: FakeCloud) 
     )
 
 
-async def test_hold_in_heat_cool_mode_cannot_carry_a_temperature(
+async def test_hold_in_heat_cool_mode_is_refused_on_a_heater(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
-    """A heat/cool hold with a temperature is refused with a translated error."""
+    """A heat/cool hold on a heater is refused for its mode, before its target."""
     cloud.schedules = [{"id": "existing", "deviceIds": [DEVICE_ID]}]
     await setup_entry(hass, cloud_only())
     with pytest.raises(ServiceValidationError) as err:
@@ -1005,8 +1005,11 @@ async def test_hold_in_heat_cool_mode_cannot_carry_a_temperature(
             temperature=21,
             hvac_mode="heat_cool",
         )
-    assert err.value.translation_key == "setpoint_mode_unsupported"
-    assert message(err.value).startswith("A hold or schedule event in heat/cool")
+    assert err.value.translation_key == "mode_not_supported"
+    assert message(err.value) == (
+        "Living Room doesn't support heat_cool mode, so a hold or schedule event "
+        "can't use it. Its modes are: off, heat."
+    )
     assert cloud.hold is None
 
 

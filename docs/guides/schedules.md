@@ -33,6 +33,8 @@ data:
 
 Days are `mon` through `sun`. Each event accepts `hvac_mode: heat`, `cool` or `off`; the default is `heat`. Schedule times use the thermostat's time zone, so check that it matches Home Assistant's.
 
+Both actions accept only the modes the thermostat's climate entity offers (its `hvac_modes` attribute). A hold may use any of them; a schedule event may use `heat`, `cool` or `off` when the thermostat offers it. A heater offers `off` and `heat`, so a `cool` hold or event is refused on it. A Mini-Split AC offers the modes its Mysa capability data lists. Nothing is sent when a mode is refused: the message names the mode and the thermostat's modes. `off` is accepted wherever the climate entity offers it; an `off` hold or event carries no temperature. A hold without `hvac_mode` keeps the current mode, or uses `heat` when that is unknown.
+
 Temperatures in `hold` and `set_schedule` are in Home Assistant's unit (°C or °F) and are rounded to the thermostat's step. Out-of-range values are refused with a message in your unit. An `off` event ignores its temperature. Baseboard V3, Central HVAC and Climate Sensor thermostats can't use these actions.
 
 To hold 22 °C until you resume the schedule:

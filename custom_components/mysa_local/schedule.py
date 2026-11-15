@@ -8,8 +8,9 @@ from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.components.climate.const import HVACMode
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from homeassistant.util.hass_dict import HassKey
@@ -31,6 +32,7 @@ from mysa_client.cloud.schedule_workflow import (
 from .cloud_coordinator import translated_error
 from .const import DOMAIN, LOGGER, VERSION
 from .temperature import Unit, setpoint_error
+from .thermostat import HVAC_TO_MODE, MODE_TO_HVAC
 
 if TYPE_CHECKING:
     from .thermostat import Thermostat
@@ -49,21 +51,54 @@ def _home_id(thermostat: Thermostat) -> str:
     return record.home_id
 
 
+def supported_mode(thermostat: Thermostat, requested: Mode | str) -> Mode:
+    """The Mysa mode for an action's mode, refused unless the thermostat has it.
+
+    ``requested`` is a Mysa ``Mode`` or a Home Assistant mode name. The modes
+    allowed are the climate entity's own (``Thermostat.hvac_modes``), so a
+    hold or schedule event can use exactly the modes the card offers.
+    """
+    allowed = thermostat.hvac_modes
+    if isinstance(requested, Mode):
+        name = str(MODE_TO_HVAC.get(requested, requested.name.lower()))
+    else:
+        name = str(requested)
+    if name not in allowed:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="mode_not_supported",
+            translation_placeholders={
+                "name": thermostat.name,
+                "mode": name,
+                "modes": ", ".join(allowed),
+            },
+        )
+    return HVAC_TO_MODE[HVACMode(name)]
+
+
 async def async_hold(
     hass: HomeAssistant,
     thermostat: Thermostat,
     temperature: float | None,
-    mode: Mode | None,
+    mode: Mode | str | None,
     until: datetime | None,
     *,
     unit: Unit = "C",
 ) -> None:
     """Hold a state over the schedule, permanently or until a time.
 
+    ``mode`` is a Mysa ``Mode`` or a Home Assistant mode name, and must be one
+    the thermostat offers. Without it the hold keeps the current mode, or heat
+    when that is unknown (refused on a thermostat without heat).
     ``temperature`` is in the owner's ``unit``: HA never converts service
     fields. It must be in range for the held mode; it is rounded to the step.
     """
     cloud = thermostat.require_legacy_cloud()
+    requested_mode: Mode | None = None
+    if mode is not None:
+        requested_mode = supported_mode(thermostat, mode)
+    elif thermostat.mode is None:
+        requested_mode = supported_mode(thermostat, Mode.HEAT)
     if until is not None:
         until = dt_util.as_utc(
             until
@@ -76,7 +111,7 @@ async def async_hold(
         # Rounded here, so the hold and the immediate command carry one value;
         # the current target it may re-send is normalised too.
         command = resolve_hold(
-            requested_mode=mode,
+            requested_mode=requested_mode,
             current_mode=thermostat.mode,
             requested_temperature=temperature,
             current_temperature=thermostat.target_temperature,
@@ -275,7 +310,20 @@ def _schedule_content_matches(actual: dict[str, Any], expected: dict[str, Any]) 
 async def async_set_schedule(
     thermostat: Thermostat, events: list[dict[str, Any]], *, unit: Unit = "C"
 ) -> None:
-    """Replace the thermostat's weekly schedule (temperatures in ``unit``)."""
+    """Replace the thermostat's weekly schedule (temperatures in ``unit``).
+
+    Each event's mode (heat when left out) must be one the thermostat offers.
+    """
+    thermostat.require_legacy_cloud()
+    events = [
+        {
+            **event,
+            "hvac_mode": supported_mode(
+                thermostat, event.get("hvac_mode", HVACMode.HEAT)
+            ).name,
+        }
+        for event in events
+    ]
     encoded_events = build_events(events, Mode.HEAT, rules=thermostat.rules, unit=unit)
     if not encoded_events:
         raise HomeAssistantError("A schedule must include at least one event day.")

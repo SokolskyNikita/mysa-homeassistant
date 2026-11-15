@@ -59,20 +59,13 @@ from .thermostat import (
     ACTION_HEATING,
     ACTION_IDLE,
     ACTION_OFF,
+    HVAC_TO_MODE,
+    MODE_TO_HVAC,
     Thermostat,
 )
 
 PARALLEL_UPDATES = 0
 
-MODE_TO_HVAC: dict[Mode, HVACMode] = {
-    Mode.OFF: HVACMode.OFF,
-    Mode.AUTO: HVACMode.HEAT_COOL,
-    Mode.HEAT: HVACMode.HEAT,
-    Mode.COOL: HVACMode.COOL,
-    Mode.FAN_ONLY: HVACMode.FAN_ONLY,
-    Mode.DRY: HVACMode.DRY,
-}
-HVAC_TO_MODE = {v: k for k, v in MODE_TO_HVAC.items()}
 # Fan and swing names; the integration's translations label the custom ones.
 FAN_NAMES: dict[AcFan, str] = {
     AcFan.AUTO: FAN_AUTO,
@@ -157,16 +150,7 @@ class MysaClimate(MysaEntity, ClimateEntity):
     @property
     def hvac_modes(self) -> list[HVACMode]:
         """Modes from the model's capability data."""
-        modes = [
-            MODE_TO_HVAC[m]
-            for m in self.thermostat.supported_modes
-            if m in MODE_TO_HVAC
-        ]
-        return (
-            modes
-            if self.thermostat.basic_cloud_only
-            else modes or [HVACMode.OFF, HVACMode.HEAT]
-        )
+        return self.thermostat.hvac_modes
 
     @property
     def hvac_mode(self) -> HVACMode | None:
@@ -438,9 +422,13 @@ class MysaClimate(MysaEntity, ClimateEntity):
         until: datetime | None = None,
     ) -> None:
         """Hold a setpoint over the Mysa schedule."""
-        mode = HVAC_TO_MODE[hvac_mode] if hvac_mode else None
         await async_hold(
-            self.hass, self.thermostat, temperature, mode, until, unit=self.owner_unit
+            self.hass,
+            self.thermostat,
+            temperature,
+            hvac_mode,
+            until,
+            unit=self.owner_unit,
         )
 
     async def async_resume_schedule(self) -> None:
