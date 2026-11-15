@@ -88,11 +88,16 @@ class HeaterTypeSelect(MysaCloudEntity, SelectEntity):
 
     @property
     def current_option(self) -> str | None:
-        """Baseboard or fan_forced."""
-        record = self.thermostat.cloud_record
-        value = record.duty_cycle_opt if record else None
-        if value is None and (state := self.cloud_state) is not None:
-            value = state.control_type
+        """Baseboard or fan_forced, as the thermostat reports it.
+
+        The settings record can disagree with the device: a re-add that sent
+        DutyCycleOpt 9 left the record at baseboard while the thermostat kept
+        reporting controlType 8. The record is only a fallback.
+        """
+        state = self.cloud_state
+        value = state.control_type if state is not None else None
+        if value is None and (record := self.thermostat.cloud_record) is not None:
+            value = record.duty_cycle_opt
         try:
             return HEATER_OPTIONS.get(HeaterType(value)) if value is not None else None
         except ValueError:
