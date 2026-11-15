@@ -29,6 +29,8 @@
   its own call is in flight, can show the confirmed value.
 - Requires mysa-client with `SetpointRules` (unreleased; tests use its `main`).
 
+Thanks to @mcrutherford for the first setpoint-rounding fix (#27), @lionello for the Baseboard V3 report and the schedule-recovery fix (#30, #31), @noahtallen for the thermostat-layer rounding idea and for testing (#34, #26, #33), @giesler for the In-Floor report and patch (#32), @mscholtz for confirming it on a Baseboard V2 (#32), @barakthecat and @rkoak for the Baseboard V1 reports (#26), @neotrantor for the local-only report (#33), and @dlenski for reporting the HomeKit light sensor (SokolskyNikita/mysa-client#29).
+
 ## 0.8.4 (2026-10-21)
 
 - Resolve thermostat time zones with Home Assistant's async time zone helper so
