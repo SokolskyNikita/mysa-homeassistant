@@ -93,6 +93,18 @@ ACTION_HEATING = "heating"
 ACTION_COOLING = "cooling"
 
 
+def snap_to_step(value: float, step: float | None) -> float:
+    """Round a Celsius setpoint to the thermostat's setpoint step.
+
+    Home Assistant converts a Fahrenheit target to Celsius before calling the
+    integration, so whole Fahrenheit degrees fall between Mysa's half-Celsius
+    steps (73 °F is 22.78 °C) and the thermostat rejects them.
+    """
+    if not step:
+        return value
+    return round(round(value / step) * step, 4)
+
+
 class RuntimeTracker:
     """Heating on-time since local midnight, derived from the relay state."""
 
@@ -629,16 +641,42 @@ class Thermostat:
         """Set mode and associated targets as one validated library operation."""
         if mode is None and temperature is None and low is None and high is None:
             return
-        await self._async_prepared_cloud_command(
-            lambda cloud: climate_command(
+
+        def command(cloud: MysaCloudCoordinator) -> CloudCommand:
+            selected_mode = cloud.command_value(self.device_id, "mode", self.mode)
+            target_mode = mode if mode is not None else selected_mode
+            return climate_command(
                 self.family,
-                cloud.command_value(self.device_id, "mode", self.mode),
+                selected_mode,
                 mode=mode,
-                temperature=temperature,
-                low=low,
-                high=high,
+                temperature=self._snap(temperature, self._mode_step(target_mode)),
+                low=self._snap(low, self._mode_step(Mode.AUTO, heat=True)),
+                high=self._snap(high, self._mode_step(Mode.AUTO, heat=False)),
             )
-        )
+
+        await self._async_prepared_cloud_command(command)
+
+    def _mode_step(self, mode: Mode | None, *, heat: bool = True) -> float:
+        """Setpoint step for one target, from that mode's own capability range.
+
+        Central HVAC advertises separate heat, cool and auto ranges; the other
+        models only have the heating range behind ``setpoint_range``.
+        """
+        caps = self.capabilities
+        if self.is_hvac and caps:
+            if mode is Mode.AUTO:
+                limits = caps.auto_heat_range if heat else caps.auto_cool_range
+            elif mode is Mode.COOL:
+                limits = caps.cool_setpoint_range
+            else:
+                limits = caps.heat_setpoint_range
+            if limits and limits[2]:
+                return float(limits[2])
+        return self.setpoint_range[2]
+
+    @staticmethod
+    def _snap(value: float | None, step: float) -> float | None:
+        return None if value is None else snap_to_step(float(value), step)
 
     @property
     def hvac_fan_speeds(self) -> tuple[int, ...]:
@@ -719,11 +757,16 @@ class Thermostat:
         """Drain commands and close the local connection."""
         await self.commands.async_stop()
 
+    def snap_setpoint(self, value: float) -> float:
+        """Round a single Celsius setpoint to the step the thermostat accepts."""
+        return snap_to_step(float(value), self.setpoint_range[2])
+
     async def async_set_temperature(self, value: float) -> None:
         """Change the setpoint using the latest serialized operating mode."""
         if self.basic_cloud_only:
             await self.async_set_basic_temperature(temperature=value)
             return
+        value = self.snap_setpoint(value)
 
         def prepare() -> RouteRequest[Field, Any, MysaCloudCoordinator, DeviceState]:
             mode = (

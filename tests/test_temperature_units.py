@@ -20,6 +20,7 @@ from .common import (
     update_fake_characteristic,
 )
 from .conftest import setup_entry
+from .test_new_cloud_models import configure
 
 CLIMATE = "climate.living_room"
 
@@ -154,3 +155,95 @@ async def test_setpoint_snaps_to_thermostat_step(
         pairing, CharacteristicsTypes.TEMPERATURE_TARGET
     )
     put.assert_awaited_once_with([(aid, iid, pytest.approx(expected_celsius))])
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected_celsius"),
+    [(22.78, 23.0), (21.2, 21.0), (19, 19)],
+)
+async def test_hold_snaps_to_thermostat_step(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    *,
+    requested: float,
+    expected_celsius: float,
+) -> None:
+    """A hold rounds both its payload and the immediate setpoint command."""
+    cloud.schedules = [{"id": "existing", "deviceIds": [DEVICE_ID]}]
+    await setup_entry(hass, hub_entry(subentries=[thermostat_subentry(pairing=None)]))
+    with patch("custom_components.mysa_local.cloud_coordinator.CLOUD_WRITE_SPACING", 0):
+        await hass.services.async_call(
+            "mysa_local",
+            "hold",
+            {"entity_id": CLIMATE, "temperature": requested},
+            blocking=True,
+        )
+    assert cloud.hold is not None
+    assert cloud.hold["state"]["targetHeat"] == {
+        "setpoint": pytest.approx(expected_celsius)
+    }
+    assert cloud.updates == [
+        {"source": 3, "targetHeat": {"setpoint": pytest.approx(expected_celsius)}}
+    ]
+
+
+async def test_basic_cloud_heater_snaps_fahrenheit_target(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """Experimental models skip the routed path, but still get a valid step."""
+    hass.config.units = US_CUSTOMARY_SYSTEM
+    await setup_entry(hass, hub_entry(subentries=[configure(cloud, "BB-V3-0")]))
+    await hass.services.async_call(
+        "climate",
+        "set_temperature",
+        {"entity_id": CLIMATE, "temperature": 73},
+        blocking=True,
+    )
+    # 73 °F is 22.78 °C.
+    assert cloud.updates == [
+        {"source": 3, "targetHeat": {"setpoint": pytest.approx(23.0)}}
+    ]
+
+
+async def test_basic_cloud_hvac_snaps_each_target(
+    hass: HomeAssistant, cloud: FakeCloud
+) -> None:
+    """Central HVAC rounds single and dual targets to their own mode's step."""
+    hass.config.units = US_CUSTOMARY_SYSTEM
+    entry = hub_entry(subentries=[configure(cloud, "ST-V1-0")])
+    await setup_entry(hass, entry)
+    await hass.services.async_call(
+        "climate",
+        "set_temperature",
+        {"entity_id": CLIMATE, "target_temp_low": 70, "target_temp_high": 76},
+        blocking=True,
+    )
+    # 70 °F is 21.11 °C and 76 °F is 24.44 °C.
+    assert cloud.updates[-1] == {
+        "source": 3,
+        "targetAuto": {
+            "heatSetpoint": pytest.approx(21.0),
+            "coolSetpoint": pytest.approx(24.5),
+        },
+    }
+    await entry.runtime_data.cloud.async_refresh()
+    await hass.services.async_call(
+        "climate",
+        "set_temperature",
+        {"entity_id": CLIMATE, "hvac_mode": "cool", "temperature": 77},
+        blocking=True,
+    )
+    # 77 °F is exactly 25 °C.
+    assert cloud.updates[-1]["targetCool"] == {"setpoint": pytest.approx(25.0)}
+    await entry.runtime_data.cloud.async_refresh()
+    await hass.services.async_call(
+        "climate",
+        "set_temperature",
+        {"entity_id": CLIMATE, "temperature": 79},
+        blocking=True,
+    )
+    # 79 °F is 26.11 °C; the cool step applies once the mode is cool.
+    assert cloud.updates[-1] == {
+        "source": 3,
+        "targetCool": {"setpoint": pytest.approx(26.0)},
+    }
