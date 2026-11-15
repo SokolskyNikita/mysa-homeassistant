@@ -42,6 +42,7 @@ from custom_components.mysa_local.account import (
 from custom_components.mysa_local.const import (
     LOGGER,
     WIFI_SETUP_URL,
+    advertised_model,
     is_mysa_model,
 )
 from custom_components.mysa_local.homekit_adapter import (
@@ -157,7 +158,7 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             discovery = self._thermostat.discoveries[user_input[CONF_DEVICE]]
             self._thermostat.hkid = discovery.id.lower()
             self._thermostat.name = discovery.name
-            self._thermostat.model = discovery.model
+            self._thermostat.model = advertised_model(discovery.model)
             return await self.async_step_pair()
 
         self._thermostat.discoveries = {}
@@ -188,9 +189,9 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             SelectOptionDict(
                 value=hkid,
                 label=(
-                    f"{d.name} ({MODEL_NAMES.get(d.model, d.model)})"
-                    if isinstance(d.model, str)
-                    else f"{d.name} ({d.model})"
+                    f"{d.name} ({MODEL_NAMES.get(model, model)})"
+                    if (model := advertised_model(d.model))
+                    else d.name
                 ),
             )
             for hkid, d in self._thermostat.discoveries.items()
@@ -668,7 +669,9 @@ class ThermostatSteps(FlowHandler[Any, Any, Any]):
             )
         self._thermostat.hkid = discovery.id.lower()
         self._thermostat.name = discovery.name
-        self._thermostat.model = discovery.model
+        self._thermostat.model = (
+            advertised_model(discovery.model) or self._thermostat.model
+        )
         self._thermostat.finish_pairing = None
         return await self.async_step_pair()
 

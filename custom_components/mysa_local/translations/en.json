@@ -131,7 +131,7 @@
       "already_configured_hub": "Mysa Local is already set up. To add another thermostat, use **Add thermostat** on the integration's page.",
       "already_configured": "This thermostat is already set up.",
       "already_in_progress": "This thermostat is already being set up.",
-      "already_paired": "This thermostat is paired to another HomeKit controller (for example Apple Home). Remove it there first.",
+      "already_paired": "This thermostat is paired to another HomeKit controller (for example Apple Home). Remove it there first. If it isn't in Apple Home anymore, reset the thermostat (hold the up and down buttons until the smile appears), connect it to Wi-Fi again, then retry.",
       "cannot_connect": "Couldn't reach the thermostat's HomeKit service. An unpaired Mysa lets it doze off: press a button on the thermostat to wake it, wait a few seconds, then submit again.",
       "not_supported": "This device isn't a supported Mysa model.",
       "invalid_discovery": "The discovery data was incomplete.",
@@ -299,7 +299,7 @@
       },
       "abort": {
         "already_configured": "This thermostat is already set up.",
-        "already_paired": "This thermostat is paired to another HomeKit controller (for example Apple Home). Remove it there first.",
+        "already_paired": "This thermostat is paired to another HomeKit controller (for example Apple Home). Remove it there first. If it isn't in Apple Home anymore, reset the thermostat (hold the up and down buttons until the smile appears), connect it to Wi-Fi again, then retry.",
         "cannot_connect": "Couldn't reach the thermostat's HomeKit service. An unpaired Mysa lets it doze off: press a button on the thermostat to wake it, wait a few seconds, then submit again.",
         "thermostat_updated": "The thermostat was updated.",
         "no_homekit_device_entries": "No Mysa thermostats were found in the HomeKit Device integration.",
@@ -679,7 +679,7 @@
         "abort": {
           "not_available": "This thermostat isn't in Home Assistant anymore.",
           "not_now": "Nothing was changed.",
-          "already_paired": "This thermostat is paired to another HomeKit controller (for example Apple Home). Remove it there first.",
+          "already_paired": "This thermostat is paired to another HomeKit controller (for example Apple Home). Remove it there first. If it isn't in Apple Home anymore, reset the thermostat (hold the up and down buttons until the smile appears), connect it to Wi-Fi again, then retry.",
           "wrong_thermostat": "That was a different thermostat, not {name}, so its new pairing was removed again."
         }
       }

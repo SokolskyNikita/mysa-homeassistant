@@ -80,7 +80,21 @@ CLOUD_LIVE_MODE_RENEW: Final = timedelta(seconds=240)
 # manifest.json, where discovery of these goes to this integration): BB-V1-0,
 # BB-V2-0-L, INF-V1-0, ... The Baseboard V3 (BB-V3), Central HVAC (ST) and
 # Climate Sensor (CS) aren't supported, so their discovery is left alone.
-HOMEKIT_MODEL_PATTERNS: Final = ("BB-V1-*", "BB-V2-*", "INF-V?-*", "AC-V?-*")
+#
+# While unpaired, a Baseboard V1 on firmware 3.17.5.11 puts its hostname in the
+# HomeKit md field instead of its model: md=Mysa-<id> (issue #26). That's the
+# Mysa app's format: "Mysa-" and the last 6 hex digits of the device ID. Only
+# that exact shape matches; the "Mysa-" prefix is case-sensitive, as in HA's
+# zeroconf matcher. The hostname isn't a model, so the flows drop it (see
+# advertised_model) and take the model from the accessory database once paired.
+HOMEKIT_HOSTNAME_PATTERN: Final = "Mysa-" + "[0-9a-fA-F]" * 6
+HOMEKIT_MODEL_PATTERNS: Final = (
+    "BB-V1-*",
+    "BB-V2-*",
+    "INF-V?-*",
+    "AC-V?-*",
+    HOMEKIT_HOSTNAME_PATTERN,
+)
 
 
 def is_mysa_model(model: str | None) -> bool:
@@ -88,6 +102,13 @@ def is_mysa_model(model: str | None) -> bool:
     return bool(model) and any(
         fnmatch.fnmatchcase(str(model), pattern) for pattern in HOMEKIT_MODEL_PATTERNS
     )
+
+
+def advertised_model(model: str | None) -> str | None:
+    """The model in a HomeKit advertisement, or None if it's only the hostname."""
+    if not model or fnmatch.fnmatchcase(model, HOMEKIT_HOSTNAME_PATTERN):
+        return None
+    return model
 
 
 MANUFACTURER: Final = "Mysa"

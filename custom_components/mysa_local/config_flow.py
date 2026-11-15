@@ -56,6 +56,7 @@ from .const import (
     LOGGER,
     SUBENTRY_THERMOSTAT,
     USER_AGENT,
+    advertised_model,
     is_mysa_model,
 )
 from .flows.account import (
@@ -153,6 +154,14 @@ class MysaConfigFlow(ThermostatSteps, MysaReauthFlow, domain=DOMAIN):
             return self.async_abort(reason="invalid_discovery")
         if not is_mysa_model(advertisement.model):
             return self.async_abort(reason="not_supported")
+        props = discovery_info.properties
+        LOGGER.debug(
+            "HomeKit discovery: model %s, sf=%s, ff=%s, ci=%s",
+            advertised_model(advertisement.model) or "not advertised (hostname)",
+            props.get("sf"),
+            props.get("ff"),
+            props.get("ci"),
+        )
         hkid = advertisement.id
 
         hub = hub_entry(self.hass)
@@ -171,7 +180,7 @@ class MysaConfigFlow(ThermostatSteps, MysaReauthFlow, domain=DOMAIN):
         await self.async_set_unique_id(f"hk_{hkid}")
         self._abort_if_unique_id_configured()
         self._thermostat.hkid = hkid
-        self._thermostat.model = advertisement.model
+        self._thermostat.model = advertised_model(advertisement.model)
         self._thermostat.name = advertisement.name
         self.context["title_placeholders"] = {"name": self._thermostat.name}
         if self.hass.config_entries.flow.async_has_matching_flow(self):
