@@ -62,7 +62,10 @@ async def async_hold(
     command = resolve_hold(
         requested_mode=mode,
         current_mode=thermostat.mode,
-        requested_temperature=temperature,
+        # Round here too, so the hold and the immediate command carry one value.
+        requested_temperature=(
+            None if temperature is None else thermostat.snap_setpoint(temperature)
+        ),
         current_temperature=thermostat.target_temperature,
         until=until,
     )
