@@ -4,7 +4,7 @@
 
 ## Entities and controls
 
-Entities depend on the thermostat's capabilities and reported data. The [newer-model subset](../new-cloud-models.md#implemented-controls) excludes the deferred extras listed there. Local controls use cloud fallback where listed, provided the thermostat is on your account and cloud access is enabled.
+Entities depend on the thermostat's capabilities and reported data. The [newer-model subset](../compatibility.md#experimental-models) excludes the deferred extras listed there. Local controls use cloud fallback where listed, provided the thermostat is on your account and cloud access is enabled.
 
 | Entity or control | Connection | Behavior |
 |---|---|---|

@@ -17,20 +17,10 @@
 
 ### Capture a command problem
 
-No shell access or manual API requests are needed:
-
-1. Open **Settings → Devices & services → Mysa Local**, open the integration menu (**⋮**), and select **Enable debug logging**.
-2. Record the thermostat model, firmware, Mysa Local and HA versions, original settings, and the value you intend to request.
-3. Reproduce once with a small temporary change. Note the time and timezone, requested values, and what HA, the Mysa app and the physical thermostat actually show. Allow time for cloud reporting.
-4. Restore the original settings and note whether restoration worked.
-5. On the same integration page, open the affected account entry's **⋮ → Download diagnostics**. **Download before reloading the integration or restarting HA.**
-6. Select **Disable debug logging** and save the offered debug log. Review both files for personal data, then attach the diagnostics JSON and debug log to a [bug report](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=bug.yml) or [model report](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=model_report.yml), with your notes.
-
-Diagnostics include an in-memory history of at most **500 events**, retained for **24 hours**, with an **8 KiB limit per event**. Large events omit value details and are marked truncated. At most 100 retained events are recurring polling/failure observations; identical noisy events are suppressed for a minute. History is collected even without debug logging, has no disk persistence, and is cleared on unload, reload or restart. The export includes the retained time window and eviction, suppression and capture-failure counts. Download promptly after reproducing.
-
-Command events distinguish submission, HTTP acceptance, uncertain/lost responses, failures, configuration storage, unchanged values, supersession, expiry and device-reported confirmation. **Accepted does not mean applied.** `confirmed` means a qualifying device report matched the command; it does not independently prove a physical change. Compare with the app and thermostat. Earlier commands remain in history when a new command replaces their active tracking. Source timestamps, requested/baseline values, request routes/status/duration and anonymous correlation make the sequence reviewable.
-
-System information also has a Mysa Local section with connection counts, sign-in status and cloud health: **Settings → System → Repairs → ⋮ → System information**.
+Turn on debug logging, reproduce once, download diagnostics before any reload
+or restart, and attach both files to a report. The full steps, what the files
+contain and how to read a command's history are in
+[Debug and report a problem](debugging.md#capture-a-problem).
 
 ## Pairing and discovery
 

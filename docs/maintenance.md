@@ -13,7 +13,8 @@ references are maintained in [`mysa-client`](https://github.com/SokolskyNikita/m
 | Schedule/hold actions and YAML examples | [Schedule guide](guides/schedules.md) |
 | Local/cloud source policy and HTTPS freshness | [Behavior guide](guides/behavior.md) |
 | Troubleshooting and diagnostic capture | [Troubleshooting guide](guides/troubleshooting.md) |
-| Experimental model controls and hardware test procedure | [Newer-model guide](new-cloud-models.md) |
+| Experimental model controls and reports | [Model compatibility](compatibility.md) |
+| Capture steps and the hardware test procedure | [Debug and report a problem](guides/debugging.md) |
 | HA lifecycle, poll cadence, user choices, durable-storage adapters, presentation, and translated errors | [Architecture](architecture.md) and [account/schedule workflows](cloud-workflows.md) |
 | Mysa-specific validation, commands, state reconciliation, confirmation, reusable routing, telemetry freshness, and workflow correctness | [Client runtime guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/python/runtime.md) and [client cloud guide](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/python/cloud.md) |
 | MQTT controls, session lifecycle, HA source preferences, fallback, and hardware evidence | [MQTT guide](mqtt.md) |
@@ -46,6 +47,9 @@ Cross-link shared work instead of creating duplicate tasks.
 
 Keep app-derived behavior, simulated tests, and hardware validation distinct.
 The strongest live evidence is Baseboard Lite `BB-V2-0-L`, firmware `3.17.5.13`.
+[Model compatibility](compatibility.md) is the one user-facing record of what
+works on each model; put new hardware reports there, and keep the README's
+model table to a short status.
 An accepted request or stored record does not establish fresh device state or
 physical application. Preserve observation limits and cite relevant tests.
 Never publish credentials, pairing keys, private identifiers, or raw captures.
