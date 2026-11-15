@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 from collections import Counter
 import json
 from pathlib import Path
@@ -99,7 +100,28 @@ def check_link(source: Path, url: str) -> Path | None:
         last = int(fragment.split("-L")[-1].lstrip("L"))
         if last > len(target.read_text().splitlines()):
             fail(source, "source line anchor exceeds file length")
+        elif (
+            target.suffix == ".py"
+            and target.relative_to(boundary).parts[0] == "tests"
+            and int(fragment.split("-")[0].lstrip("L")) not in definition_lines(target)
+        ):
+            fail(source, f"test line link is not on a def, class or decorator: {url}")
     return target
+
+
+def definition_lines(path: Path) -> set[int]:
+    """Lines a test link may land on: top-level or method defs and their decorators."""
+    lines: set[int] = set()
+    tree = ast.parse(path.read_text())
+    nodes = list(tree.body)
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            nodes.extend(node.body)
+    for node in nodes:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            lines.add(node.lineno)
+            lines.update(decorator.lineno for decorator in node.decorator_list)
+    return lines
 
 
 def check_navigation(graph: dict[Path, set[Path]]) -> None:
@@ -179,7 +201,6 @@ def main() -> int:
         if not (CLIENT_ROOT / "src/mysa_client").is_dir():
             parser.error("--client-root must be a mysa-client checkout")
     ERRORS.clear()
-    # Dotfiles such as .impeccable.md are tool context, not reader documentation.
     markdown = sorted(
         path for path in ROOT.glob("*.md") if not path.name.startswith(".")
     )
@@ -201,7 +222,7 @@ def main() -> int:
         if SECRET.search(path.read_text()):
             fail(path, "possible credential material (value suppressed)")
     tracker_id_count = 0
-    for name, prefix in (("cloud", "c"), ("homekit", "hk")):
+    for name, prefix in (("cloud", "c"),):
         tracker = ROOT / f"docs/implementation/{name}.md"
         tracker_text = tracker.read_text()
         item_ids = re.findall(rf'<a id="({prefix}-[iapod]\d+)"', tracker_text)
@@ -221,7 +242,7 @@ def main() -> int:
     print(
         f"OK: {len(markdown)} Markdown files, "
         f"{len(list((ROOT / 'tests/fixtures').glob('*.json')))} strict fixtures, "
-        f"{tracker_id_count} cloud/HomeKit tracker IDs; all checks offline"
+        f"{tracker_id_count} cloud tracker IDs; all checks offline"
     )
     return 0
 

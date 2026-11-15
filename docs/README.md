@@ -25,10 +25,9 @@
 | [Management inventory](implementation/progress.md) | Current recorded status, acceptance criteria, evidence, and validation gaps |
 | [Documentation maintenance](maintenance.md) | Ownership and checks |
 | [Release history](../CHANGELOG.md) | Versioned changes |
-| [Historical client extraction](history/client-extraction.md) | Original migration plan and dated results |
 
-Legacy [cloud IDs](implementation/cloud.md) and [HomeKit IDs](implementation/homekit.md)
-are lookup tables for old issue links, not separate status inventories.
+Legacy [cloud IDs](implementation/cloud.md) are a lookup table for old issue
+links, not a separate status inventory.
 
 ## Mysa API and protocol references
 

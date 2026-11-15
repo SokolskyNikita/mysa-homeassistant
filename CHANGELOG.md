@@ -27,7 +27,17 @@
 - Climate and number entities write their state once more after a service
   call returns, so the Home Assistant frontend, which ignores updates while
   its own call is in flight, can show the confirmed value.
-- Requires mysa-client with `SetpointRules` (unreleased; tests use its `main`).
+- Discover unpaired Baseboard V1s that advertise their hostname
+  (`md=Mysa-<6 hex>`) instead of a model, and say how to reset a thermostat
+  that reports being paired to another controller (#37, #26).
+- Add an Illuminance sensor for thermostats with a HomeKit light sensor (#38).
+- Skip startup schedule recovery on models without schedules, which stops the
+  every-minute "schedule recovery is still pending" warning on Baseboard V3
+  (#31, #30).
+- The heater-type select shows the heater type the thermostat reports (#36).
+- Home Assistant 2026.11 no longer logs deprecated-temperature warnings for the
+  climate entity (#33).
+- Requires mysa-client 0.3.0.
 
 Thanks to @mcrutherford for the first setpoint-rounding fix (#27), @lionello for the Baseboard V3 report and the schedule-recovery fix (#30, #31), @noahtallen for the thermostat-layer rounding idea and for testing (#34, #26, #33), @giesler for the In-Floor report and patch (#32), @mscholtz for confirming it on a Baseboard V2 (#32), @barakthecat and @rkoak for the Baseboard V1 reports (#26), @neotrantor for the local-only report (#33), and @dlenski for reporting the HomeKit light sensor (SokolskyNikita/mysa-client#29).
 

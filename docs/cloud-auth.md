@@ -8,5 +8,5 @@ That guide covers SRP, refresh-token handling, headers, browser limits, and
 the client's authentication errors.
 
 For Home Assistant account setup, saved sign-in, password storage, and
-reauthentication, see the [integration README](guides/usage.md#options-and-account-management)
+reauthentication, see the [usage guide](guides/usage.md#options-and-account-management)
 and [integration architecture](architecture.md).

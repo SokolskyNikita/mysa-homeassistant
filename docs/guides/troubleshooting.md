@@ -6,7 +6,8 @@
 
 | Problem | What to check |
 |---|---|
-| Thermostat is missing from discovery or cannot be paired | Press a thermostat button to wake HomeKit, check Wi-Fi and mDNS connectivity, then retry. Remove an existing Apple Home pairing first. |
+| Thermostat is missing from discovery or cannot be paired | Press a thermostat button to wake HomeKit, check Wi-Fi and mDNS connectivity, then retry. Remove an existing Apple Home pairing first. Mysa Local refuses a thermostat that reports being paired to another controller; if it is no longer in Apple Home, reset it (hold the up and down buttons until the smile appears), connect it to Wi-Fi again in the Mysa app, then retry. |
+| A Baseboard V1 reboots when you submit the setup code | Seen on firmware 3.17.5.11 ([#26](https://github.com/SokolskyNikita/mysa-homeassistant/issues/26)). Fully reset it: hold the up and down buttons for about 10 seconds until the smile appears, set it up again in the Mysa app, then pair. One reporter also had to make their Wi-Fi temporarily 2.4 GHz-only. |
 | Connection path keeps changing to `cloud` | Check the thermostat's Wi-Fi signal and consider a DHCP reservation. The optional Wi-Fi signal entity can help. |
 | Cloud settings are unavailable | Check that you are signed in, Use Mysa cloud is enabled and the thermostat is on the account. Local controls can continue without them. |
 | Pairing fails after removing the thermostat from HA | If it was offline during removal, its old HomeKit pairing may still exist. Reset that pairing on the thermostat before pairing again. |

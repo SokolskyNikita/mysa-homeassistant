@@ -66,6 +66,36 @@ class DocumentationChecks(unittest.TestCase):
         self.scope["check_link"](source, url.replace("client-guide", "missing"))
         assert "missing anchor" in self.scope["ERRORS"][0]
 
+    def test_test_line_links_land_on_definitions(self):
+        """A line link into tests/ must hit a def, class or decorator, not a body line."""
+        self.page(
+            "tests/test_example.py",
+            "import pytest\n"  # 1
+            "\n"  # 2
+            "@pytest.mark.parametrize(\n"  # 3
+            '    "value", [1]\n'  # 4
+            ")\n"  # 5
+            "async def test_value(value):\n"  # 6
+            "    async def helper():\n"  # 7
+            "        return value\n"  # 8
+            "    assert await helper() == 1\n"  # 9
+            "\n"  # 10
+            "class TestGroup:\n"  # 11
+            "    def test_method(self):\n"  # 12
+            "        assert True\n",  # 13
+        )
+        self.page("custom_components/example.py", "VALUE = 1\nOTHER = 2\n")
+        source = self.page("docs/progress.md", "# Progress\n")
+        for line in (3, 6, 11, 12):
+            self.scope["check_link"](source, f"../tests/test_example.py#L{line}")
+        self.scope["check_link"](source, "../tests/test_example.py#L6-L9")
+        self.scope["check_link"](source, "../custom_components/example.py#L2")
+        assert self.scope["ERRORS"] == []
+        for line in (4, 7, 9):
+            self.scope["check_link"](source, f"../tests/test_example.py#L{line}")
+        assert len(self.scope["ERRORS"]) == 3
+        assert all("not on a def" in error for error in self.scope["ERRORS"])
+
     def test_orphan_and_compatibility_navigation(self):
         """Only explicitly marked forwarding pages may be unreachable."""
         readme = self.page("README.md", "# Start\n")
