@@ -121,7 +121,7 @@ evidence, and explicit remaining gaps.
 | <a id="mgt-workflow-01"></a>MGT-WORKFLOW-01 | Let the user add an already-enrolled account device and match local discovery to the correct cloud record without duplicating an existing device. | Implemented | [Account/device flow](../../custom_components/mysa_local/flows/thermostat.py), [configured-device discovery regression](../../tests/test_config_flow.py#L162), [subentry account flow regressions](../../tests/test_subentry_flow.py#L207). |
 | <a id="mgt-workflow-02"></a>MGT-WORKFLOW-02 | Gate entity creation on real capability data; do not default to heating controls when capabilities are missing, and create supported entities after later capability recovery. | Implemented | [Entity factories](../../custom_components/mysa_local/entity.py), [missing-capability regression](../../tests/test_new_cloud_models.py#L228), [partial-capability regression](../../tests/test_new_cloud_models.py#L431), [local recovery regression](../../tests/test_homekit_refresh.py#L36). |
 | <a id="mgt-workflow-03"></a>MGT-WORKFLOW-03 | Keep Climate Sensor read-only and prevent Central HVAC/Baseboard V3 from receiving legacy-only schedules, holds, heater configuration, and OTA entities. | Implemented | [Family-gated thermostat/entity behavior](../../custom_components/mysa_local/thermostat.py), [no-extras regression for all three newer families](../../tests/test_new_cloud_models.py#L52), [mixed account regression](../../tests/test_new_cloud_models.py#L332). |
-| <a id="mgt-workflow-04"></a>MGT-WORKFLOW-04 | Import app-enrolled newer devices through cloud account setup, clearly mark their support experimental, and avoid asking them for HomeKit pairing. | Implemented | [New-model setup scope](../new-cloud-models.md), [cloud-only setup regressions](../../tests/test_config_flow.py#L317), [experimental import and diagnostics regression](../../tests/test_new_cloud_models.py#L52). Hardware validation remains open in MGT-QUALITY-02. |
+| <a id="mgt-workflow-04"></a>MGT-WORKFLOW-04 | Import app-enrolled newer devices through cloud account setup, clearly mark their support experimental, and avoid asking them for HomeKit pairing. | Implemented | [New-model setup scope](../compatibility.md#experimental-models), [cloud-only setup regressions](../../tests/test_config_flow.py#L317), [experimental import and diagnostics regression](../../tests/test_new_cloud_models.py#L52). Hardware validation remains open in MGT-QUALITY-02. |
 | <a id="mgt-workflow-05"></a>MGT-WORKFLOW-05 | Recover account membership and pairing conflicts through explicit repair/setup steps without silently deleting or claiming another device. | Implemented | [Repair flows](../../custom_components/mysa_local/repairs.py), [repair regressions](../../tests/test_repairs.py#L36), [cloud-only account repair](../../tests/test_repairs.py#L87), [claim/setup scope](../cloud-workflows.md#claiming-an-older-model). Never-owned device claim behavior remains unverified in the cloud workflow notes. |
 | <a id="mgt-workflow-06"></a>MGT-WORKFLOW-06 | Manage newer-model initial provisioning and fleet ownership end to end, including credential transfer, claim/finalization, and update lifecycle. | Missing | [Current account import boundary](../cloud-workflows.md#baseboard-v3-central-hvac-and-climate-sensor), [new-model deferrals](../new-cloud-models.md#deferred-features). The HA workflow starts only after the user has completed setup/enrollment in Mysa's app; no matching credential-transfer or fleet finalization flow is implemented. |
 | <a id="mgt-workflow-07"></a>MGT-WORKFLOW-07 | Make experimental/support status and operational limits discoverable in device information and diagnostics without leaking account/device identifiers. | Implemented | [Device model/support label](../../custom_components/mysa_local/thermostat.py), [diagnostic redaction](../../custom_components/mysa_local/diagnostics.py), [diagnostic regression](../../tests/test_new_cloud_models.py#L52), [redaction regression](../../tests/test_features.py#L358). |
@@ -154,7 +154,9 @@ The strongest live evidence remains two Baseboard Lites (`BB-V2-0-L`, firmware
 workflows were exercised. Cloud setpoint/mode application differed between the
 devices, and no offered firmware release was installed during these checks.
 
-Community reports since 0.8.4 add limited evidence for other models:
+Community reports since 0.8.4 add limited evidence for other models. The
+per-model record that users read is [model compatibility](../compatibility.md);
+update it together with this list:
 
 - Baseboard V1 (`BB-V1-0`, `BB-V1-1`, firmware 3.17.5.11): unpaired units
   advertise their hostname, which 0.9.0 discovers. Some reboot during
@@ -170,8 +172,19 @@ Community reports since 0.8.4 add limited evidence for other models:
 AC, In-floor and other baseboard variants still need full hardware checks. V3,
 Central HVAC and Climate Sensor support is experimental, with app-derived
 mappings and synthetic fixtures. Newer credential transfer, fleet OTA and Matter
-also lack matching hardware validation. HomeKit metadata changes and migration failures remain simulated. See
-[newer-model evidence](../new-cloud-models.md#evidence-and-automated-tests).
+also lack matching hardware validation. HomeKit metadata changes and migration failures remain simulated.
+
+<a id="newer-model-evidence"></a>**Newer-model evidence.** API field provenance and the inspected Android app bundle are documented in the
+client's [evidence notes](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/new-cloud-models.md#evidence-and-limits).
+The HA repository's [fixtures](../../tests/fixtures/app_4201_new_models.json)
+contain **synthetic test scenarios**, not captured device responses. Tests in
+[`test_new_cloud_models.py`](../../tests/test_new_cloud_models.py) exercise
+account imports, model-specific entities, mixed accounts with a Lite, reload,
+capability failures, mode and range validation, native fan commands, source
+freshness, cloud errors, delayed confirmation and diagnostics. These establish
+integration behavior against documented shapes; they cannot establish actual
+device application, backend permissions, or the exact capabilities returned
+by a particular firmware.
 
 ## Outside the inventories
 

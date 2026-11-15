@@ -84,7 +84,7 @@ Sensor/HVAC-link and group cleanup are not implemented.
 The [client enrollment notes](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/cloud-workflows.md#baseboard-v3-central-hvac-and-climate-sensor)
 record the app-derived routes. Integration entities, command behavior,
 limitations, and hardware test steps remain in the
-[newer-model integration guide](new-cloud-models.md).
+[newer-model integration guide](compatibility.md#experimental-models).
 
 ## Firmware
 

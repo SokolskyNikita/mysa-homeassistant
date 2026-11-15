@@ -4,15 +4,16 @@
 
 | I want to… | Start here |
 | --- | --- |
-| Check model support or install the integration | [README](../README.md#supported-models) |
+| Check what works on your model | [Model compatibility](compatibility.md) |
+| Install the integration | [README](../README.md#installation) |
 | Pair locally, migrate HomeKit Device, or import an account thermostat | [Setup and recovery](guides/setup.md) |
 | Remember or delete HomeKit setup codes | [Remembering setup codes](guides/setup.md#remembering-setup-codes) |
 | Configure entities, polling, credentials, names, or account membership | [Usage and options](guides/usage.md) |
 | Create a schedule, hold a temperature, or resume scheduling | [Schedules and holds](guides/schedules.md) |
 | Understand unavailable readings or cloud fallback | [Reading freshness](guides/behavior.md) and [troubleshooting](guides/troubleshooting.md) |
 | Enable live humidity and heating duty readings | [MQTT telemetry](mqtt.md) |
-| Test V3, Central HVAC, or Climate Sensor support | [Experimental models](new-cloud-models.md) |
-| Report a command that did not apply | [Capture a command problem](guides/troubleshooting.md#capture-a-command-problem) |
+| Test a model nobody has reported on | [Debug and report a problem](guides/debugging.md#test-a-model-nobody-has-reported-on) |
+| Capture logs and report a problem | [Debug and report a problem](guides/debugging.md) |
 
 ## Home Assistant behavior
 

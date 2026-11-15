@@ -10,5 +10,5 @@ The client owns reusable per-field reconciliation, command evidence, and model
 semantics. Home Assistant's polling cadence, freshness thresholds, source
 preferences, entity presentation, and model feature scope remain in this
 repository's [management inventory](implementation/progress.md) and
-[new-model guide](new-cloud-models.md). The shared ownership boundary is
+[new-model guide](compatibility.md#experimental-models). The shared ownership boundary is
 described in the [architecture guide](architecture.md).

@@ -1,6 +1,6 @@
 # Mysa Local for Home Assistant
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://www.hacs.xyz/docs/faq/custom_repositories/)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://www.hacs.xyz/)
 [![Validate](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/validate.yml/badge.svg)](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/validate.yml)
 [![Tests](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/tests.yml/badge.svg)](https://github.com/SokolskyNikita/mysa-homeassistant/actions/workflows/tests.yml)
 
@@ -14,23 +14,22 @@ Powered by [`mysa-client`](https://github.com/SokolskyNikita/mysa-client). See [
 
 ## Supported models
 
-The maintainer has tested only the Baseboard Lite. Community reports are noted per model; other controls still need hardware testing.
+The maintainer has tested only the Baseboard Lite. Other models rely on owners' reports or on Mysa's app. [Model compatibility](docs/compatibility.md) has what was confirmed, on which firmware, and what is known not to work.
 
 | Model | Model IDs | Status |
 |---|---|---|
-| Baseboard Lite | `BB-V2-0-L` | Hardware-tested on firmware 3.17.5.13; cloud setpoint/mode application differed between the two tested units |
-| Other Baseboard V1 / V2 models | `BB-V1-*`, `BB-V2-*` | Supported in code. V2: a community owner hit the °F setpoint rejection that 0.9.0 fixes ([#32](https://github.com/SokolskyNikita/mysa-homeassistant/issues/32)). V1: discovery fixed in 0.9.0; some units on firmware 3.17.5.11 reboot during pairing. One reporter paired after a full reset (hold up and down about 10 seconds, set up again in the Mysa app) with Wi-Fi temporarily 2.4 GHz-only ([#26](https://github.com/SokolskyNikita/mysa-homeassistant/issues/26)) |
-| In-Floor | `INF-V1-0` | Community report on firmware 3.17.6.5: mode changes work locally; °F setpoints worked once rounded to the step, which 0.9.0 does ([#32](https://github.com/SokolskyNikita/mysa-homeassistant/issues/32)) |
-| Mini-Split AC | `AC-V1-0` | Supported in code; untested |
-| Central HVAC | `ST-V1-0`, `ST-V1`, `LV` | Experimental cloud support after setup in the Mysa app |
-| Baseboard V3 | `BB-V3-0` | Experimental cloud support after setup in the Mysa app. Community report on firmware 5.1.15: import, readings and setpoint changes made in the Mysa app work; writes from Home Assistant untested ([#30](https://github.com/SokolskyNikita/mysa-homeassistant/issues/30)) |
-| Climate Sensor | `CS-V1-0`, `CS-V1` | Experimental cloud readings; no climate entity |
+| Baseboard Lite | `BB-V2-0-L` | Hardware-tested |
+| Baseboard V2 | `BB-V2-*` | Reported working; [°F setpoint fix](docs/compatibility.md#baseboard-v2) unconfirmed |
+| Baseboard V1 | `BB-V1-*` | [Pairing fails on some units](docs/compatibility.md#baseboard-v1) |
+| In-Floor | `INF-V1-0`, `INF-V1` | [Reported working](docs/compatibility.md#in-floor) |
+| Mini-Split AC | `AC-V1-0`, `AC-V1` | Untested |
+| Central HVAC | `ST-V1-0`, `ST-V1`, `LV` | Untested; control through Mysa's cloud only |
+| Baseboard V3 | `BB-V3-0` | [Readings reported working](docs/compatibility.md#baseboard-v3); control through Mysa's cloud only |
+| Climate Sensor | `CS-V1-0`, `CS-V1` | Untested; readings through Mysa's cloud only |
 
-For the experimental models, finish setup in the Mysa app, then sign in here and import them from your account. V3 provides basic heat/off and setpoint control. Central HVAC adds heat/cool auto targets and supported fan controls. Climate Sensor provides readings only. Controls depend on the returned capabilities. Schedules/holds, energy/runtime, sensor linking and newer-model OTA are deferred. See [experimental cloud support and the V3 test guide](docs/new-cloud-models.md).
+The experimental models have no local control: they are set up in the Mysa app, then imported here from your Mysa account. See [experimental models](docs/compatibility.md#experimental-models).
 
-AC fan and swing controls were implemented from Mysa app 4.20.1 and tested with simulated responses. They show the remote's options for the current mode and are hidden while the AC is off. Toggle-only swing, AC auto mode and AC heating/cooling target ranges are not implemented. In-Floor's floor-sensor reading is not exposed.
-
-If you test another model, [submit a model report](https://github.com/SokolskyNikita/mysa-homeassistant/issues/new?template=model_report.yml) with its firmware version and integration diagnostics.
+Own a model that is untested? A report helps even when everything works: see [debug and report a problem](docs/guides/debugging.md).
 
 ## Installation
 
@@ -41,8 +40,6 @@ With Marketplace (built into Home Assistant from 2026.11) or HACS (earlier versi
 1. Open Marketplace (or HACS) and search for **Mysa Local**.
 2. Download it and restart Home Assistant.
 
-If Mysa Local isn't listed yet, first add `https://github.com/SokolskyNikita/mysa-homeassistant` as a custom repository, with type Integration.
-
 For a manual installation, copy [custom_components/mysa_local](custom_components/mysa_local) into your Home Assistant `config/custom_components/` directory, then restart.
 
 After restarting, follow the [setup guide](docs/guides/setup.md).
@@ -50,11 +47,13 @@ After restarting, follow the [setup guide](docs/guides/setup.md).
 ## Documentation
 
 - [Pair, migrate, import, or recover a thermostat](docs/guides/setup.md)
+- [Model compatibility: what works on which model](docs/compatibility.md)
 - [Entities, options, credentials, and account management](docs/guides/usage.md)
 - [Schedules and holds with action examples](docs/guides/schedules.md)
 - [Local control and cloud reading freshness](docs/guides/behavior.md)
 - [Enable MQTT and understand fallback](docs/mqtt.md)
-- [Troubleshoot and capture a command problem](docs/guides/troubleshooting.md)
+- [Troubleshoot common problems](docs/guides/troubleshooting.md)
+- [Debug and report a problem, or test an untested model](docs/guides/debugging.md)
 - [All documentation and maintainer references](docs/README.md)
 
 ## Other integration options

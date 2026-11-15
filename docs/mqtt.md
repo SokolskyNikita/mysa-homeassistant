@@ -66,7 +66,7 @@ rules.
 
 MQTT readings were validated in Home Assistant on two Baseboard Lite
 thermostats (`BB-V2-0-L`), including the per-thermostat switch; other models
-are unverified. Long-term MQTT availability is unverified, so the integration
+are unverified (see [model compatibility](compatibility.md)). Long-term MQTT availability is unverified, so the integration
 expires readings after 30 seconds and falls back per field to fresh cloud data.
 
 ## Protocol reference and older links
