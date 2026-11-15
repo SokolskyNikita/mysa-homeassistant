@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -14,6 +15,7 @@ import pytest
 
 from custom_components.mysa_local.const import (
     CONF_DEVICE_ID,
+    CONF_MODEL,
     CONF_PAIRING,
     CONF_REFRESH_TOKEN,
     CONF_SAVE_PASSWORD,
@@ -21,6 +23,8 @@ from custom_components.mysa_local.const import (
     DOMAIN,
     HOMEKIT_MODEL_PATTERNS,
     SUBENTRY_THERMOSTAT,
+    advertised_model,
+    is_mysa_model,
 )
 
 from .common import (
@@ -33,6 +37,7 @@ from .common import (
     REFRESH_TOKEN,
     USER_ID,
     FakeCloud,
+    LiteDescription,
     discovery,
     hub_entry,
 )
@@ -183,6 +188,104 @@ async def test_discovery_of_unsupported_model(hass: HomeAssistant, model: str) -
         data=discovery(model=model),
     )
     assert result["reason"] == "not_supported"
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("BB-V2-0-L", True),
+        ("BB-V1-1", True),
+        # An unpaired V1 on firmware 3.17.5.11 advertises its hostname (#26).
+        ("Mysa-d4e5f6", True),
+        ("Mysa-D4E5F6", True),
+        # Nothing else that merely looks similar.
+        ("Mysa-", False),
+        ("Mysa-d4e5f", False),
+        ("Mysa-d4e5f6a", False),
+        ("Mysa-g4e5f6", False),
+        ("Mysa-d4e5f6.local", False),
+        ("Mysa", False),
+        ("mysa-d4e5f6", False),
+        ("MYSA-d4e5f6", False),
+        ("Mysa d4e5f6", False),
+        ("MysaPro-1", False),
+        ("XMysa-d4e5f6", False),
+        ("Eve Thermo 20EBP1701", False),
+        ("ecobee3", False),
+        ("BB-V3-0", False),
+        (None, False),
+        ("", False),
+    ],
+)
+def test_is_mysa_model(model: str | None, expected: bool) -> None:
+    """Model strings and the V1's hostname match; other accessories don't."""
+    assert is_mysa_model(model) is expected
+
+
+def test_advertised_model_drops_hostname() -> None:
+    """A hostname in the md field is never used as the model."""
+    assert advertised_model("Mysa-d4e5f6") is None
+    assert advertised_model("BB-V1-1") == "BB-V1-1"
+    assert advertised_model(None) is None
+
+
+@pytest.mark.usefixtures("unpaired_controller")
+async def test_discovery_of_v1_advertising_hostname(hass: HomeAssistant) -> None:
+    """An unpaired V1 with md=Mysa-<id> is discovered and keeps its real model."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_HOMEKIT},
+        data=discovery(model="Mysa-d4e5f6"),
+    )
+    assert result["step_id"] == "pair"
+    assert result["description_placeholders"]["model"] == "Mysa"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"pairing_code": PAIRING_CODE}
+    )
+    assert result["step_id"] == "cloud_offer"
+    with patch("custom_components.mysa_local.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "finish"}
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    (subentry,) = result["result"].subentries.values()
+    assert subentry.unique_id == DEVICE_ID
+    # From the accessory database, not the advertised hostname.
+    assert subentry.data[CONF_MODEL] == "BB-V2-0-L"
+
+
+@pytest.mark.usefixtures("unpaired_controller")
+async def test_user_pick_lists_v1_advertising_hostname(hass: HomeAssistant) -> None:
+    """The manual pick list offers a V1 with md=Mysa-<id>, labelled by name."""
+    with patch(
+        "tests.common.LiteDescription", partial(LiteDescription, model="Mysa-d4e5f6")
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "pick"}
+        )
+        assert result["step_id"] == "pick"
+        options = result["data_schema"].schema["device"].config["options"]
+        assert options == [{"value": HKID.lower(), "label": "Mysa-d4e5f6"}]
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"device": HKID.lower()}
+        )
+        assert result["step_id"] == "pair"
+        assert result["description_placeholders"]["model"] == "Mysa"
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"pairing_code": PAIRING_CODE}
+        )
+        assert result["step_id"] == "cloud_offer"
+        with patch("custom_components.mysa_local.async_setup_entry", return_value=True):
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"], {"next_step_id": "finish"}
+            )
+    (subentry,) = result["result"].subentries.values()
+    assert subentry.data[CONF_MODEL] == "BB-V2-0-L"
 
 
 def test_manifest_homekit_models_match() -> None:
