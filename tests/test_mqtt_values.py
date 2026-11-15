@@ -10,7 +10,6 @@ from homeassistant.core import HomeAssistant
 from mysa_client.cloud import Mode
 from mysa_client.homekit import LocalMode
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.mysa_local.climate import MysaClimate
 from custom_components.mysa_local.local_adapter import CURRENT_STATE, TARGET_STATE
@@ -25,6 +24,7 @@ from custom_components.mysa_local.thermostat import (
 )
 
 from .common import DEVICE_ID
+from .harness import MockConfigEntry
 
 
 class FakeMqtt:

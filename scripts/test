@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # Run the test suite in parallel. Extra arguments go to pytest; a later -n wins,
 # so `scripts/test -n 0 tests/test_holds.py` runs one file in-process.
+# Runs on the newest supported Home Assistant in the active environment;
+# MYSA_TEST_HA=min runs on the oldest, from .venv-min (see scripts/setup).
 # CI measures coverage; locally, add `--cov --cov-report=term-missing`.
 set -e
 cd "$(dirname "$0")/.."
+python=python3
+if [[ "${MYSA_TEST_HA}" == "min" ]]; then
+    python=.venv-min/bin/python
+fi
 # A fixed worker count, so several checkouts testing at once share the machine.
-python3 -m pytest -n "${MYSA_TEST_WORKERS:-6}" "$@"
+"${python}" -m pytest -n "${MYSA_TEST_WORKERS:-6}" "$@"

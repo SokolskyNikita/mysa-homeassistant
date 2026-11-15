@@ -329,7 +329,8 @@ async def test_record_fallback_does_not_relax_a_reported_limit(hass, cloud):
 async def test_delayed_write_readbacks_are_bounded(hass, cloud, freezer, confirm):
     """Reports arriving after the first read update entities without replaying writes."""
     from homeassistant.util import dt as dt_util
-    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    from .harness import async_fire_time_changed
 
     entry = hub_entry()
     await setup_entry(hass, entry)

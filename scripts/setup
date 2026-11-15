@@ -1,18 +1,30 @@
 #!/usr/bin/env bash
-# Install everything needed to develop, test and lint, into the active
-# virtual environment. Uses uv when it's installed (seconds), else pip.
+# Install everything needed to develop, test and lint. Uses uv when it's
+# installed (seconds), else pip.
+# - The active virtual environment gets the newest supported Home Assistant,
+#   for scripts/test and scripts/develop.
+# - .venv-min gets the oldest supported one with Ruff and mypy, for
+#   scripts/lint and `MYSA_TEST_HA=min scripts/test`. CI runs both.
 # mysa-client comes from PyPI at the version pyproject.toml pins, as in CI.
 # To develop against a local client checkout instead:
 #   MYSA_CLIENT_PATH=../mysa-client scripts/setup
 set -e
 cd "$(dirname "$0")/.."
-if command -v uv >/dev/null 2>&1; then
-    install=(uv pip install)
-else
-    python3 -m pip install --upgrade pip
-    install=(python3 -m pip install)
+if [[ -z "${VIRTUAL_ENV}" ]]; then
+    echo "Activate a virtual environment first (see docs/development.md)." >&2
+    exit 1
 fi
-"${install[@]}" --group dev --group lint
+min="${PWD}/.venv-min"
+if command -v uv >/dev/null 2>&1; then
+    [[ -x "${min}/bin/python" ]] || uv venv --quiet --python 3.14 "${min}"
+    install() { VIRTUAL_ENV="$1" uv pip install --python "$1/bin/python" "${@:2}"; }
+else
+    [[ -x "${min}/bin/python" ]] || python3 -m venv "${min}"
+    install() { "$1/bin/python" -m pip install --upgrade pip && "$1/bin/python" -m pip install "${@:2}"; }
+fi
+install "${VIRTUAL_ENV}" --group dev
+install "${min}" --group lint
 if [[ -n "${MYSA_CLIENT_PATH}" ]]; then
-    "${install[@]}" --editable "${MYSA_CLIENT_PATH}[homekit,mqtt]"
+    install "${VIRTUAL_ENV}" --editable "${MYSA_CLIENT_PATH}[homekit,mqtt]"
+    install "${min}" --editable "${MYSA_CLIENT_PATH}[homekit,mqtt]"
 fi

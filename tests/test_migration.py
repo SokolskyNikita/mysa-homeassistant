@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock, patch
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.mysa_local.const import CONF_MIGRATE_FROM, DOMAIN
 from custom_components.mysa_local.migration import async_migrate_homekit_controller
 
 from .common import DEVICE_ID, hub_entry, thermostat_subentry
+from .harness import MockConfigEntry
 
 
 @pytest.fixture(autouse=True)

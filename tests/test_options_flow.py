@@ -11,7 +11,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
 import pytest
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.mysa_local.const import (
     CONF_CLOUD_ENABLED,
@@ -32,6 +31,7 @@ from .common import (
     hub_entry,
 )
 from .conftest import setup_entry
+from .harness import async_fire_time_changed
 
 # Flows leave entry reloads running; finish them before patches are undone.
 pytestmark = pytest.mark.usefixtures("drain_background_tasks")

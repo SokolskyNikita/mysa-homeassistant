@@ -17,9 +17,6 @@ from mysa_client.cloud.const import LEGACY_API_BASE
 from mysa_client.cloud.observations import Observation
 from mysa_client.cloud.trace import route_template
 import pytest
-from pytest_homeassistant_custom_component.components.diagnostics import (
-    get_diagnostics_for_config_entry,
-)
 
 from custom_components.mysa_local.event_history import (
     MAX_EVENT_BYTES,
@@ -32,6 +29,9 @@ from custom_components.mysa_local.event_history import (
 
 from .common import DEVICE_ID, HOME_ID, PAIRING_DATA, REFRESH_TOKEN, hub_entry, setpoint
 from .conftest import setup_entry
+from .harness import (
+    get_diagnostics_for_config_entry,
+)
 from .test_new_cloud_models import configure
 
 LOGGER = "custom_components.mysa_local"

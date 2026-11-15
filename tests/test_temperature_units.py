@@ -27,10 +27,6 @@ from mysa_client.cloud import fahrenheit_label
 from mysa_client.cloud.const import API_BASE
 from mysa_client.homekit import Field
 import pytest
-from pytest_homeassistant_custom_component.common import (
-    MockUser,
-    async_capture_events,
-)
 
 from custom_components.mysa_local.const import DOMAIN
 
@@ -43,6 +39,10 @@ from .common import (
     thermostat_subentry,
 )
 from .conftest import setup_entry
+from .harness import (
+    MockUser,
+    async_capture_events,
+)
 from .test_new_cloud_models import configure
 
 CLIMATE = "climate.living_room"

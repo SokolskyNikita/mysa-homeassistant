@@ -48,7 +48,7 @@ async def test_pairing_remembers_only_successful_opted_in_code(hass, remember, c
     assert all(
         PAIRING_CODE not in record.getMessage()
         for record in caplog.records
-        if not record.name.startswith("pytest_homeassistant_custom_component")
+        if not record.name.startswith("pytest_homeassistant")
     )
 
 

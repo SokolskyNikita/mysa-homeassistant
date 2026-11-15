@@ -10,8 +10,18 @@ permissions: {}
 
 jobs:
   pytest:
-    name: Pytest
+    name: Pytest (Home Assistant ${{ matrix.ha }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The minimum in hacs.json, and the newest release. The versions match
+          # the pins in pyproject.toml's test-min and test groups.
+          - ha: "2026.9.4"
+            group: test-min
+          - ha: "2026.11.1"
+            group: test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -24,6 +34,6 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --group test
+          python -m pip install --group ${{ matrix.group }}
       - name: Run tests
         run: python -m pytest -n auto --cov=custom_components.mysa_local --cov-report=term-missing

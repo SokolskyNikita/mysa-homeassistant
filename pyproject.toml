@@ -7,13 +7,29 @@ license = "MIT"
 requires-python = ">=3.14.2"
 
 [dependency-groups]
-test = [
-    "pytest-homeassistant-custom-component==0.13.367",  # Home Assistant 2026.9.4
+# CI tests the oldest and the newest Home Assistant this integration supports.
+# Home Assistant 2026.11 ships its own harness, pytest-homeassistant; the
+# older pytest-homeassistant-custom-component stops at 2026.10 and cannot
+# import 2026.11 (it imports httpx before Home Assistant aliases it to httpx2).
+test-common = [
     "mysa-client[homekit,mqtt]==0.3.0",
     "aiohomekit==4.0.1",  # Integration tests use aiohomekit's fake accessories.
 ]
+test = [
+    "pytest-homeassistant==2026.11.1",  # Home Assistant 2026.11.1
+    "pytest-cov==7.1.0",
+    { include-group = "test-common" },
+]
+test-min = [
+    # The minimum in hacs.json is 2026.9.0; this is the last 2026.9 harness.
+    "pytest-homeassistant-custom-component==0.13.367",  # Home Assistant 2026.9.4
+    { include-group = "test-common" },
+]
 lint = [
-    { include-group = "test" },
+    # mypy checks against the minimum. 2026.11 types flow schemas as probatio
+    # and marks the pre-native_ climate names Final, which code that still
+    # supports 2026.9 cannot satisfy.
+    { include-group = "test-min" },
     "ruff==0.17.0",
     "mypy==2.4.0",
 ]
@@ -26,7 +42,8 @@ dev = [
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "-p no:cacheprovider"
+# no:respx lets Home Assistant alias httpx before respx imports it.
+addopts = "-p no:cacheprovider -p no:respx"
 markers = ["mqtt_runtime: run the persistent MQTT background task"]
 filterwarnings = [
     "ignore::DeprecationWarning:pycognito.*",

@@ -29,11 +29,6 @@ from mysa_client.cloud.const import (
     LEGACY_API_BASE,
 )
 from mysa_client.cloud.srp import BIG_N, G, K, pad_hex
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-from pytest_homeassistant_custom_component.test_util.aiohttp import (
-    AiohttpClientMocker,
-    AiohttpClientMockResponse,
-)
 from yarl import URL
 
 from custom_components.mysa_local.const import (
@@ -47,6 +42,12 @@ from custom_components.mysa_local.const import (
     CONF_USER_ID,
     DOMAIN,
     SUBENTRY_THERMOSTAT,
+)
+
+from .harness import (
+    AiohttpClientMocker,
+    AiohttpClientMockResponse,
+    MockConfigEntry,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
