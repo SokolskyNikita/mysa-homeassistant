@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Literal
 
 from homeassistant.components.number import (
     NumberDeviceClass,
@@ -14,12 +15,23 @@ from homeassistant.components.number import (
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from mysa_client.cloud import Capabilities, DeviceState
+from mysa_client.cloud import (
+    Capabilities,
+    DeviceState,
+    SetpointRange,
+    fahrenheit_bounds,
+    fahrenheit_offset,
+)
 from mysa_client.cloud.device import BRIGHTNESS_STEP, MIN_WAKE_BRIGHTNESS
 
 from .cloud_coordinator import translated_error
 from .data import MysaConfigEntry
 from .entity import MysaCloudEntity, MysaEntity, async_add_when_ready
+from .temperature import (
+    Unit,
+    display_setpoint,
+    ha_unit,
+)
 from .thermostat import Thermostat
 
 PARALLEL_UPDATES = 1
@@ -32,7 +44,10 @@ class MysaNumberDescription(NumberEntityDescription):
     value: Callable[[DeviceState], float | None]
     supported: Callable[[Capabilities], bool]
     value_range: Callable[[Capabilities], tuple[float, float, float] | None]
-    set_value: Callable[[Thermostat, float], Awaitable[None]]
+    set_value: Callable[[Thermostat, float, Unit], Awaitable[object]]
+    # Temperatures follow the owner's unit: whole °F for Fahrenheit owners.
+    temperature: Literal["setpoint", "offset"] | None = None
+    rules_range: Callable[[Thermostat], SetpointRange] | None = None
 
 
 # Mysa's app (4.20.1): brightness in steps of 5 and wake brightness never below
@@ -50,7 +65,7 @@ NUMBERS: tuple[MysaNumberDescription, ...] = (
         value=lambda s: s.active_brightness,
         supported=lambda c: c.brightness,
         value_range=lambda c: (MIN_WAKE_BRIGHTNESS, 100, BRIGHTNESS_STEP),
-        set_value=lambda thermostat, value: thermostat.async_set_brightness(
+        set_value=lambda thermostat, value, _unit: thermostat.async_set_brightness(
             value, active=True
         ),
     ),
@@ -63,7 +78,7 @@ NUMBERS: tuple[MysaNumberDescription, ...] = (
         value=lambda s: s.idle_brightness,
         supported=lambda c: c.brightness,
         value_range=lambda c: (0, 100, BRIGHTNESS_STEP),
-        set_value=lambda thermostat, value: thermostat.async_set_brightness(
+        set_value=lambda thermostat, value, _unit: thermostat.async_set_brightness(
             value, active=False
         ),
     ),
@@ -77,9 +92,11 @@ NUMBERS: tuple[MysaNumberDescription, ...] = (
         value=lambda s: s.setpoint_min,
         supported=lambda c: c.heat_setpoint_range is not None,
         value_range=lambda c: c.heat_setpoint_range,
-        set_value=lambda thermostat, value: thermostat.async_set_setpoint_limit(
-            value, minimum=True
+        set_value=lambda thermostat, value, unit: thermostat.async_set_setpoint_limit(
+            value, minimum=True, unit=unit
         ),
+        temperature="setpoint",
+        rules_range=lambda thermostat: thermostat.rules.hardware_heat_range,
     ),
     MysaNumberDescription(
         key="setpoint_max",
@@ -91,24 +108,28 @@ NUMBERS: tuple[MysaNumberDescription, ...] = (
         value=lambda s: s.setpoint_max,
         supported=lambda c: c.heat_setpoint_range is not None,
         value_range=lambda c: c.heat_setpoint_range,
-        set_value=lambda thermostat, value: thermostat.async_set_setpoint_limit(
-            value, minimum=False
+        set_value=lambda thermostat, value, unit: thermostat.async_set_setpoint_limit(
+            value, minimum=False, unit=unit
         ),
+        temperature="setpoint",
+        rules_range=lambda thermostat: thermostat.rules.hardware_heat_range,
     ),
     MysaNumberDescription(
         key="temperature_offset",
         translation_key="temperature_offset",
         entity_category=EntityCategory.CONFIG,
-        # A difference, not a temperature: no device class, so °F users aren't
-        # shown a converted absolute value.
+        # A difference, not a temperature: no device class, so HA doesn't
+        # convert it as an absolute value. °F owners get a whole °F delta.
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         mode=NumberMode.BOX,
         value=lambda s: s.temperature_offset,
         supported=lambda c: c.offset_range is not None,
         value_range=lambda c: c.offset_range,
-        set_value=lambda thermostat, value: thermostat.async_set_temperature_offset(
-            value
+        set_value=lambda thermostat, value, unit: (
+            thermostat.async_set_temperature_offset(value, unit=unit)
         ),
+        temperature="offset",
+        rules_range=lambda thermostat: thermostat.rules.offset_range,
     ),
 )
 
@@ -153,9 +174,31 @@ class MysaNumber(MysaCloudEntity, NumberEntity):
         super().__init__(thermostat, description.key, description)
 
     def _range(self) -> tuple[float, float, float]:
+        description = self.entity_description
         caps = self.thermostat.capabilities
-        rng = self.entity_description.value_range(caps) if caps else None
-        return rng or (0.0, 100.0, 1.0)
+        rng = description.value_range(caps) if caps else None
+        low, high, step = rng or (0.0, 100.0, 1.0)
+        if description.temperature is not None and description.rules_range:
+            limits = description.rules_range(self.thermostat)
+            r_low: float | None
+            r_high: float | None
+            if self.owner_unit == "F":
+                r_low, r_high = fahrenheit_bounds(
+                    limits, delta=description.temperature == "offset"
+                )
+                step = 1.0
+            else:
+                r_low, r_high, step = limits.minimum, limits.maximum, limits.step
+            low = low if r_low is None else r_low
+            high = high if r_high is None else r_high
+        return low, high, step
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        """The owner's unit for temperatures; a plain property, never cached."""
+        if self.entity_description.temperature is not None:
+            return ha_unit(self.owner_unit)
+        return self.entity_description.native_unit_of_measurement
 
     @property
     def native_min_value(self) -> float:
@@ -174,30 +217,32 @@ class MysaNumber(MysaCloudEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Current value."""
+        """Current value, in the owner's unit for temperatures."""
         state = self.cloud_state
         if state is None:
             return None
-        if self.entity_description.key == "setpoint_min":
-            return self.thermostat.setpoint_min
-        if self.entity_description.key == "setpoint_max":
-            return self.thermostat.setpoint_max
-        return self.entity_description.value(state)
+        key = self.entity_description.key
+        if key == "setpoint_min":
+            return display_setpoint(self.thermostat.setpoint_min, self.owner_unit)
+        if key == "setpoint_max":
+            return display_setpoint(self.thermostat.setpoint_max, self.owner_unit)
+        value = self.entity_description.value(state)
+        if (
+            self.entity_description.temperature == "offset"
+            and value is not None
+            and self.owner_unit == "F"
+        ):
+            return fahrenheit_offset(value)
+        return value
 
     async def async_set_native_value(self, value: float) -> None:
-        """Write the new value."""
+        """Write the new value (in the owner's unit for temperatures)."""
         state = self.cloud_state
         if state is None:
             raise translated_error("cloud_required", name=self.thermostat.name)
-        key = self.entity_description.key
-        if key == "setpoint_min" and (
-            (setpoint_max := self.thermostat.setpoint_max) is not None
-            and value >= setpoint_max
-        ):
-            raise translated_error("limits_invalid")
-        if key == "setpoint_max" and (
-            (setpoint_min := self.thermostat.setpoint_min) is not None
-            and value <= setpoint_min
-        ):
-            raise translated_error("limits_invalid")
-        await self.entity_description.set_value(self.thermostat, value)
+        # Limits are strict: one outside the hardware range, or not strictly
+        # inside the other limit, is refused by the rules in the owner's unit.
+        async with self._service_call():
+            await self.entity_description.set_value(
+                self.thermostat, value, self.owner_unit
+            )

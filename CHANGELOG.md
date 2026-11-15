@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+- Round and check every written temperature through mysa-client's
+  `SetpointRules`: climate targets, Central HVAC heat/cool pairs, holds, each
+  schedule event, setpoint limits and the temperature offset. Values are rounded
+  to the thermostat's step (halfway up), so whole °F picks no longer produce
+  setpoints the thermostat rejects (#32, #33).
+- For Fahrenheit owners, the climate entity, the setpoint limit numbers and the
+  temperature offset now work natively in whole °F, rounded halfway up like the
+  Mysa app (22.5 °C shows as 73 °F). Switching Home Assistant's unit system
+  applies at once. See [Fahrenheit](docs/guides/usage.md#fahrenheit).
+- A climate target outside the current mode's range is set to the nearest limit
+  and noted in the logbook. The `hold` and `set_schedule` actions take
+  temperatures in Home Assistant's unit and refuse out-of-range values, and a
+  Central HVAC heat/cool pair closer than its minimum gap is refused; the
+  messages use your unit.
+- In °F, a + or − on the climate card always moves the setpoint, even on a
+  thermostat with a 1 °C step (a Mini-Split AC, some Central HVAC ranges): +
+  from 73 °F goes to 75 °F instead of rounding back to 73 °F.
+- In °F, picking the whole °F a setpoint already shows leaves it unchanged
+  and sends nothing (22.5 °C stays 22.5 °C at 73 °F), for each side of a
+  Central HVAC pair too; a mode change in the same action still writes.
+- A Mini-Split AC's cool range and step come from its remote (16-30 °C in
+  whole degrees by default) when the capabilities don't give one.
+- Climate and number entities write their state once more after a service
+  call returns, so the Home Assistant frontend, which ignores updates while
+  its own call is in flight, can show the confirmed value.
+- Requires mysa-client with `SetpointRules` (unreleased; tests use its `main`).
+
 ## 0.8.4 (2026-10-21)
 
 - Resolve thermostat time zones with Home Assistant's async time zone helper so

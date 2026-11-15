@@ -81,6 +81,7 @@ async def test_timed_out_write_that_landed(
         patch.object(pairing, "put_characteristics", slow_put),
     ):
         await _set_temp(hass, 23)
+    await hass.async_block_till_done()
     assert cloud.updates == []
     assert hass.states.get(CLIMATE).attributes[ATTR_TEMPERATURE] == 23
 

@@ -13,7 +13,13 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from homeassistant.util.hass_dict import HassKey
-from mysa_client.cloud import Mode, MysaNotFoundError
+from mysa_client.cloud import (
+    Mode,
+    MysaNotFoundError,
+    Setpoint,
+    SetpointError,
+    SetpointRules,
+)
 from mysa_client.cloud.holds import async_apply_hold, resolve_hold
 from mysa_client.cloud.schedule_workflow import (
     ScheduleWorkflow,
@@ -24,6 +30,7 @@ from mysa_client.cloud.schedule_workflow import (
 
 from .cloud_coordinator import translated_error
 from .const import DOMAIN, LOGGER, VERSION
+from .temperature import Unit, setpoint_error
 
 if TYPE_CHECKING:
     from .thermostat import Thermostat
@@ -48,8 +55,14 @@ async def async_hold(
     temperature: float | None,
     mode: Mode | None,
     until: datetime | None,
+    *,
+    unit: Unit = "C",
 ) -> None:
-    """Hold a state over the schedule, permanently or until a time."""
+    """Hold a state over the schedule, permanently or until a time.
+
+    ``temperature`` is in the owner's ``unit``: HA never converts service
+    fields. It must be in range for the held mode; it is rounded to the step.
+    """
     cloud = thermostat.require_legacy_cloud()
     if until is not None:
         until = dt_util.as_utc(
@@ -59,16 +72,20 @@ async def async_hold(
         )
         if until <= dt_util.utcnow():
             raise translated_error("hold_in_past")
-    command = resolve_hold(
-        requested_mode=mode,
-        current_mode=thermostat.mode,
-        # Round here too, so the hold and the immediate command carry one value.
-        requested_temperature=(
-            None if temperature is None else thermostat.snap_setpoint(temperature)
-        ),
-        current_temperature=thermostat.target_temperature,
-        until=until,
-    )
+    try:
+        # Rounded here, so the hold and the immediate command carry one value;
+        # the current target it may re-send is normalised too.
+        command = resolve_hold(
+            requested_mode=mode,
+            current_mode=thermostat.mode,
+            requested_temperature=temperature,
+            current_temperature=thermostat.target_temperature,
+            until=until,
+            rules=thermostat.rules,
+            unit=unit,
+        )
+    except SetpointError as err:
+        raise setpoint_error(err, unit) from err
     device_id = thermostat.device_id
 
     async def set_hold(state: Mapping[str, Any], end_time: datetime | None) -> None:
@@ -87,11 +104,18 @@ async def async_hold(
             device_id=device_id,
             operation="set_hold",
             requested={
-                "temperature": command.temperature,
+                "temperature": (
+                    command.temperature.celsius
+                    if command.temperature is not None
+                    else None
+                ),
                 "mode": command.mode,
                 "until": end_time,
             },
         )
+
+    async def set_temperature(setpoint: Setpoint) -> None:
+        await thermostat.async_set_temperature(setpoint)
 
     await async_apply_hold(
         command,
@@ -99,7 +123,7 @@ async def async_hold(
         current_mode=lambda: thermostat.mode,
         current_temperature=lambda: thermostat.target_temperature,
         set_mode=thermostat.async_set_mode,
-        set_temperature=thermostat.async_set_temperature,
+        set_temperature=set_temperature,
     )
 
 
@@ -219,12 +243,28 @@ async def async_recover_schedule(thermostat: Thermostat) -> None:
 
 
 def build_events(
-    events: list[dict[str, Any]], default_mode: Mode
+    events: list[dict[str, Any]],
+    default_mode: Mode,
+    *,
+    rules: SetpointRules,
+    unit: Unit = "C",
 ) -> list[dict[str, Any]]:
-    """Turn the service action's events into Mysa schedule events."""
-    return build_schedule_events(
-        events, default_mode=default_mode, client_key=CLIENT_KEY
-    )
+    """Turn the service action's events into Mysa schedule events.
+
+    Temperatures are in the owner's ``unit``; each is rounded to its mode's
+    step, and one outside the mode's range is refused before anything is
+    sent. An off event's temperature is dropped.
+    """
+    try:
+        return build_schedule_events(
+            events,
+            default_mode=default_mode,
+            client_key=CLIENT_KEY,
+            rules=rules,
+            unit=unit,
+        )
+    except SetpointError as err:
+        raise setpoint_error(err, unit) from err
 
 
 def _schedule_content_matches(actual: dict[str, Any], expected: dict[str, Any]) -> bool:
@@ -233,10 +273,10 @@ def _schedule_content_matches(actual: dict[str, Any], expected: dict[str, Any]) 
 
 
 async def async_set_schedule(
-    thermostat: Thermostat, events: list[dict[str, Any]]
+    thermostat: Thermostat, events: list[dict[str, Any]], *, unit: Unit = "C"
 ) -> None:
-    """Replace the thermostat's weekly schedule."""
-    encoded_events = build_events(events, Mode.HEAT)
+    """Replace the thermostat's weekly schedule (temperatures in ``unit``)."""
+    encoded_events = build_events(events, Mode.HEAT, rules=thermostat.rules, unit=unit)
     if not encoded_events:
         raise HomeAssistantError("A schedule must include at least one event day.")
     store = _schedule_store(thermostat.hass, thermostat.device_id)

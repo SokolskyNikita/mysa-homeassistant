@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -32,6 +33,9 @@ from .common import (
     thermostat_subentry,
 )
 from .conftest import setup_entry
+
+# Flows leave entry reloads running; finish them before patches are undone.
+pytestmark = pytest.mark.usefixtures("drain_background_tasks")
 
 
 @pytest.mark.parametrize("connected", [True, False])
@@ -71,8 +75,13 @@ async def test_picker_hides_old_identities_at_healthy_endpoint(
 
 
 @pytest.mark.usefixtures("controller")
-async def test_subentry_reconfigure_wattage(hass: HomeAssistant) -> None:
-    """Setting a wattage adds the energy sensor."""
+async def test_subentry_reconfigure_wattage(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Setting a wattage adds the energy sensor, starting from zero."""
+    # Heating runtime (and so energy) follows the clock while the fixture's
+    # relay is on; a frozen clock keeps it at exactly zero.
+    freezer.move_to("2026-10-10T12:00:00-07:00")
     entry = hub_entry(signed_in=False)
     await setup_entry(hass, entry)
     assert hass.states.get("sensor.living_room_heater_energy_today") is None

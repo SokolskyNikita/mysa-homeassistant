@@ -20,12 +20,24 @@ from homeassistant.components.climate.const import (
     HVACAction,
     HVACMode,
 )
-from homeassistant.const import ATTR_TEMPERATURE, PRECISION_TENTHS, UnitOfTemperature
+from homeassistant.const import (
+    ATTR_TEMPERATURE,
+    EVENT_LOGBOOK_ENTRY,
+    PRECISION_TENTHS,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.util.unit_conversion import TemperatureDeltaConverter
-from mysa_client.cloud import SWING_HORIZONTAL, SWING_VERTICAL, AcFan, Mode, Swing
+from mysa_client.cloud import (
+    SWING_HORIZONTAL,
+    SWING_VERTICAL,
+    AcFan,
+    Mode,
+    Setpoint,
+    Swing,
+)
+from mysa_client.cloud.setpoints import to_celsius
 
+from .const import DOMAIN, LOGGER
 from .data import MysaConfigEntry
 from .entity import MysaEntity, async_add_when_ready
 from .schedule import (
@@ -33,6 +45,14 @@ from .schedule import (
     async_hold,
     async_resume_schedule,
     async_set_schedule,
+)
+from .temperature import (
+    Unit,
+    display_reading,
+    display_setpoint,
+    format_requested,
+    format_setpoint,
+    ha_unit,
 )
 from .thermostat import (
     ACTION_COOLING,
@@ -101,7 +121,6 @@ class MysaClimate(MysaEntity, ClimateEntity):
 
     _attr_name = None
     _attr_translation_key = "thermostat"
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_precision = PRECISION_TENTHS
 
     def __init__(self, thermostat: Thermostat) -> None:
@@ -161,10 +180,31 @@ class MysaClimate(MysaEntity, ClimateEntity):
         action = self.thermostat.action
         return ACTION_TO_HVAC.get(action) if action else None
 
+    # Temperatures are reported natively in the owner's unit, so a Fahrenheit
+    # owner sees whole °F as the Mysa app rounds them (22.5 °C is 73 °F, where
+    # HA's own conversion would show 72.5) and HA hands the picked whole °F
+    # straight to the setpoint rules. HA 2026.11 reads the native_ names; the
+    # old names keep 2026.10 working and lose to the native ones on 2026.11.
+
+    @property
+    def native_temperature_unit(self) -> str:
+        """The owner's unit; a plain property, since the base class caches it."""
+        return ha_unit(self.owner_unit)
+
+    @property
+    def temperature_unit(self) -> str:
+        """Pre-2026.11 name for native_temperature_unit."""
+        return self.native_temperature_unit
+
+    @property
+    def native_current_temperature(self) -> float | None:
+        """Room temperature, to one decimal in °F."""
+        return display_reading(self.thermostat.current_temperature, self.owner_unit)
+
     @property
     def current_temperature(self) -> float | None:
-        """Room temperature."""
-        return self.thermostat.current_temperature
+        """Pre-2026.11 name for native_current_temperature."""
+        return self.native_current_temperature
 
     @property
     def current_humidity(self) -> float | None:
@@ -174,29 +214,41 @@ class MysaClimate(MysaEntity, ClimateEntity):
         return self.thermostat.humidity if self.thermostat.cloud_ok else None
 
     @property
+    def native_target_temperature(self) -> float | None:
+        """Setpoint: whole °F (halfway up, like the Mysa app) or °C."""
+        return display_setpoint(self.thermostat.target_temperature, self.owner_unit)
+
+    @property
     def target_temperature(self) -> float | None:
-        """Setpoint."""
-        return self.thermostat.target_temperature
+        """Pre-2026.11 name for native_target_temperature."""
+        return self.native_target_temperature
+
+    def _auto_target(self, *, heat: bool) -> float | None:
+        state = self.thermostat.cloud_state
+        if not (self.thermostat.is_hvac and state and state.mode == Mode.AUTO):
+            return None
+        value = state.auto_heat_setpoint if heat else state.auto_cool_setpoint
+        return display_setpoint(value, self.owner_unit)
+
+    @property
+    def native_target_temperature_low(self) -> float | None:
+        """Confirmed heating target in Central HVAC auto mode."""
+        return self._auto_target(heat=True)
 
     @property
     def target_temperature_low(self) -> float | None:
-        """Confirmed heating target in Central HVAC auto mode."""
-        state = self.thermostat.cloud_state
-        return (
-            state.auto_heat_setpoint
-            if self.thermostat.is_hvac and state and state.mode == Mode.AUTO
-            else None
-        )
+        """Pre-2026.11 name for native_target_temperature_low."""
+        return self.native_target_temperature_low
+
+    @property
+    def native_target_temperature_high(self) -> float | None:
+        """Confirmed cooling target in Central HVAC auto mode."""
+        return self._auto_target(heat=False)
 
     @property
     def target_temperature_high(self) -> float | None:
-        """Confirmed cooling target in Central HVAC auto mode."""
-        state = self.thermostat.cloud_state
-        return (
-            state.auto_cool_setpoint
-            if self.thermostat.is_hvac and state and state.mode == Mode.AUTO
-            else None
-        )
+        """Pre-2026.11 name for native_target_temperature_high."""
+        return self.native_target_temperature_high
 
     @property
     def fan_modes(self) -> list[str]:
@@ -240,46 +292,97 @@ class MysaClimate(MysaEntity, ClimateEntity):
 
     @property
     def min_temp(self) -> float:
-        """Lowest setpoint (the hardware limit when the cloud knows it)."""
+        """Lowest setpoint in the native unit, from the setpoint rules."""
+        if self.owner_unit == "F":
+            return float(self.thermostat.fahrenheit_setpoint_range[0])
         return self.thermostat.setpoint_range[0]
 
     @property
     def max_temp(self) -> float:
-        """Highest setpoint."""
+        """Highest setpoint in the native unit."""
+        if self.owner_unit == "F":
+            return float(self.thermostat.fahrenheit_setpoint_range[1])
         return self.thermostat.setpoint_range[1]
 
     @property
     def target_temperature_step(self) -> float:
-        """Setpoint step in HA's display units (HA does not convert this field)."""
-        step = self.thermostat.setpoint_range[2]
-        unit = self.hass.config.units.temperature_unit
-        if unit == UnitOfTemperature.FAHRENHEIT and step == 0.5:
-            # Mysa's UI uses whole Fahrenheit degrees for its half-Celsius step.
-            return 1.0
-        return round(
-            TemperatureDeltaConverter.convert(step, UnitOfTemperature.CELSIUS, unit),
-            4,
-        )
+        """Whole degrees in °F, like the Mysa app; the thermostat's step in °C."""
+        return 1.0 if self.owner_unit == "F" else self.thermostat.setpoint_range[2]
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        """Change the setpoint (and the mode, if given)."""
-        if self.thermostat.basic_cloud_only:
-            hvac_mode = kwargs.get(ATTR_HVAC_MODE)
-            await self.thermostat.async_set_basic_temperature(
-                mode=HVAC_TO_MODE[hvac_mode] if hvac_mode is not None else None,
-                temperature=kwargs.get(ATTR_TEMPERATURE),
-                low=kwargs.get(ATTR_TARGET_TEMP_LOW),
-                high=kwargs.get(ATTR_TARGET_TEMP_HIGH),
+        """Change the setpoint (and the mode, if given).
+
+        Values arrive in the native unit. The rules clamp a value outside the
+        thermostat's range (HA has checked the card's bounds already, so that
+        only happens when a mode change narrows them) and log the change. In
+        °F a step to the next whole degree always moves the setpoint, even
+        when the thermostat's step is coarser (``tap_value``), and picking the
+        whole °F a target already shows leaves it unchanged.
+        """
+        unit = self.owner_unit
+        hvac_mode = kwargs.get(ATTR_HVAC_MODE)
+        requested = {
+            name: float(kwargs[key])
+            for name, key in (
+                ("temperature", ATTR_TEMPERATURE),
+                ("low", ATTR_TARGET_TEMP_LOW),
+                ("high", ATTR_TARGET_TEMP_HIGH),
             )
-            return
-        if (hvac_mode := kwargs.get(ATTR_HVAC_MODE)) is not None:
-            await self.async_set_hvac_mode(hvac_mode)
-        if (temperature := kwargs.get(ATTR_TEMPERATURE)) is not None:
-            await self.thermostat.async_set_temperature(float(temperature))
+            if kwargs.get(key) is not None
+        }
+        new_mode = HVAC_TO_MODE[hvac_mode] if hvac_mode is not None else None
+        # Taps and re-picked labels relate to the target of the current mode;
+        # a mode change in the same call has no current target to keep.
+        tap = new_mode is None or new_mode == self.thermostat.mode
+        async with self._service_call():
+            if self.thermostat.basic_cloud_only:
+                written = await self.thermostat.async_set_basic_temperature(
+                    mode=new_mode,
+                    unit=unit,
+                    strict=False,
+                    tap=tap,
+                    **requested,
+                )
+            else:
+                if new_mode is not None:
+                    await self.thermostat.async_set_mode(new_mode)
+                written = {}
+                if (temperature := requested.get("temperature")) is not None:
+                    written[
+                        "temperature"
+                    ] = await self.thermostat.async_set_temperature(
+                        temperature, unit=unit, strict=False, tap=tap
+                    )
+        for name, setpoint in written.items():
+            if setpoint.clamped:
+                self._log_clamp(requested[name], setpoint, unit)
+
+    def _log_clamp(self, requested: float, setpoint: Setpoint, unit: Unit) -> None:
+        """Tell the owner, in the logbook, that a target was clamped."""
+        assert setpoint.clamp is not None
+        limit = "lowest" if setpoint.clamp.bound == "min" else "highest"
+        wanted = format_requested(to_celsius(requested, unit), unit)
+        actual = format_setpoint(setpoint.celsius, unit)
+        message = (
+            f"was set to {actual} instead of the requested {wanted}, "
+            f"the {limit} setpoint it allows"
+        )
+        LOGGER.info("%s %s", self.thermostat.name, message)
+        self.hass.bus.async_fire(
+            EVENT_LOGBOOK_ENTRY,
+            {
+                "name": self.thermostat.name,
+                "message": message,
+                "entity_id": self.entity_id,
+                "domain": DOMAIN,
+            },
+            context=self._context,
+        )
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Change the mode."""
-        await self.thermostat.async_set_mode(HVAC_TO_MODE[hvac_mode])
+        async with self._service_call():
+            await self.thermostat.async_set_mode(HVAC_TO_MODE[hvac_mode])
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Change the AC's fan speed."""
@@ -300,16 +403,18 @@ class MysaClimate(MysaEntity, ClimateEntity):
 
     async def async_turn_on(self) -> None:
         """Turn on in the first non-off mode (heat on heaters)."""
-        for mode in self.thermostat.supported_modes:
-            if mode != Mode.OFF:
-                await self.thermostat.async_set_mode(mode)
-                return
-        if not self.thermostat.basic_cloud_only:
-            await self.thermostat.async_set_mode(Mode.HEAT)
+        async with self._service_call():
+            for mode in self.thermostat.supported_modes:
+                if mode != Mode.OFF:
+                    await self.thermostat.async_set_mode(mode)
+                    return
+            if not self.thermostat.basic_cloud_only:
+                await self.thermostat.async_set_mode(Mode.HEAT)
 
     async def async_turn_off(self) -> None:
         """Turn off."""
-        await self.thermostat.async_set_mode(Mode.OFF)
+        async with self._service_call():
+            await self.thermostat.async_set_mode(Mode.OFF)
 
     # ---- entity actions (registered in services.py) --------------------
 
@@ -321,7 +426,9 @@ class MysaClimate(MysaEntity, ClimateEntity):
     ) -> None:
         """Hold a setpoint over the Mysa schedule."""
         mode = HVAC_TO_MODE[hvac_mode] if hvac_mode else None
-        await async_hold(self.hass, self.thermostat, temperature, mode, until)
+        await async_hold(
+            self.hass, self.thermostat, temperature, mode, until, unit=self.owner_unit
+        )
 
     async def async_resume_schedule(self) -> None:
         """End a hold."""
@@ -329,7 +436,7 @@ class MysaClimate(MysaEntity, ClimateEntity):
 
     async def async_set_schedule(self, events: list[dict[str, Any]]) -> None:
         """Replace the thermostat's weekly schedule."""
-        await async_set_schedule(self.thermostat, events)
+        await async_set_schedule(self.thermostat, events, unit=self.owner_unit)
 
     async def async_clear_schedule(self) -> None:
         """Delete the thermostat's schedule."""
