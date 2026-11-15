@@ -86,6 +86,18 @@ async def test_imported_entities_and_no_extras(
     assert bool(hass.states.get(CLIMATE)) == (model != "CS-V1-0")
 
 
+async def test_no_schedule_recovery_for_models_without_schedules(
+    hass: HomeAssistant, cloud: FakeCloud, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Startup schedule recovery skips models whose schedules are not implemented."""
+    entry = hub_entry(subentries=[configure(cloud, "BB-V3-0")])
+    await setup_entry(hass, entry)
+    for _ in range(2):
+        await entry.runtime_data.cloud.async_refresh()
+        await hass.async_block_till_done(wait_background_tasks=True)
+    assert "schedule recovery is still pending" not in caplog.text
+
+
 async def test_v3_controls_and_delayed_confirmation(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:

@@ -247,7 +247,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
     if cloud is not None:
         _async_restore_cloud_entities(hass, entry)
         await cloud.async_refresh()
-        recoveries = set(runtime.thermostats)
+        # Models without schedule support never leave a schedule edit behind.
+        recoveries = {
+            subentry_id
+            for subentry_id, t in runtime.thermostats.items()
+            if not t.basic_cloud_only
+        }
         recovery_task: asyncio.Task[None] | None = None
 
         async def _recover_schedules() -> None:
@@ -262,6 +267,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
                         thermostat.history.label(thermostat.device_id),
                         type(err).__name__,
                     )
+                else:
+                    recoveries.discard(subentry_id)
 
         @callback
         def _cloud_updated() -> None:
