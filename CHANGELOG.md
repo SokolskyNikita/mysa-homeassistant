@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.1 (2026-11-15)
 
 - Restore °C for Fahrenheit owners where 0.9.0 changed the meaning of existing
   automations. The `hold` and `set_schedule` actions take temperatures in °C
@@ -27,6 +27,8 @@
   latest (2026.11).
 
 ## 0.9.0 (2026-11-15)
+
+0.9.1 put the hold, schedule and offset values described below back in °C.
 
 - Round and check every written temperature through mysa-client's
   `SetpointRules`: climate targets, Central HVAC heat/cool pairs, holds, each
