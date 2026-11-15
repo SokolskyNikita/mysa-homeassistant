@@ -45,6 +45,7 @@ from .conftest import setup_entry
 
 
 @pytest.mark.usefixtures("unpaired_controller")
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_user_pick_and_pair_local_only(hass: HomeAssistant) -> None:
     """Pick a discovered Lite, enter the code, skip the cloud."""
     result = await hass.config_entries.flow.async_init(
@@ -101,6 +102,7 @@ async def test_user_pick_and_pair_local_only(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.usefixtures("unpaired_controller")
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_discovery_pair_and_sign_in(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
@@ -139,6 +141,7 @@ async def test_discovery_pair_and_sign_in(
 
 
 @pytest.mark.usefixtures("unpaired_controller")
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_discovery_adds_to_existing_entry(hass: HomeAssistant) -> None:
     """A second thermostat joins the existing entry as a subentry."""
     entry = hub_entry(signed_in=False, subentries=[])
@@ -155,6 +158,7 @@ async def test_discovery_adds_to_existing_entry(hass: HomeAssistant) -> None:
     assert subentry.unique_id == DEVICE_ID
 
 
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_discovery_of_configured_updates_address(hass: HomeAssistant) -> None:
     """A known thermostat that moved gets its new address stored."""
     entry = hub_entry(signed_in=False)
@@ -169,6 +173,7 @@ async def test_discovery_of_configured_updates_address(hass: HomeAssistant) -> N
     assert subentry.data[CONF_PAIRING]["AccessoryIP"] == "192.0.2.99"
 
 
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_discovery_paired_elsewhere(hass: HomeAssistant) -> None:
     """Paired to Apple Home (or similar): nothing we can do."""
     result = await hass.config_entries.flow.async_init(
@@ -180,6 +185,7 @@ async def test_discovery_paired_elsewhere(hass: HomeAssistant) -> None:
 
 
 @pytest.mark.parametrize("model", ["BB-V3-0", "ST-V1-0", "CS-V1-0"])
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_discovery_of_unsupported_model(hass: HomeAssistant, model: str) -> None:
     """Newer models remain excluded from HomeKit discovery."""
     result = await hass.config_entries.flow.async_init(
@@ -230,6 +236,7 @@ def test_advertised_model_drops_hostname() -> None:
 
 
 @pytest.mark.usefixtures("unpaired_controller")
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_discovery_of_v1_advertising_hostname(hass: HomeAssistant) -> None:
     """An unpaired V1 with md=Mysa-<id> is discovered and keeps its real model."""
     result = await hass.config_entries.flow.async_init(
@@ -256,6 +263,7 @@ async def test_discovery_of_v1_advertising_hostname(hass: HomeAssistant) -> None
 
 
 @pytest.mark.usefixtures("unpaired_controller")
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_user_pick_lists_v1_advertising_hostname(hass: HomeAssistant) -> None:
     """The manual pick list offers a V1 with md=Mysa-<id>, labelled by name."""
     with patch(
@@ -295,6 +303,7 @@ def test_manifest_homekit_models_match() -> None:
     assert tuple(models) == HOMEKIT_MODEL_PATTERNS
 
 
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_user_when_configured(hass: HomeAssistant) -> None:
     """Only one entry; more thermostats are subentries."""
     hub_entry(signed_in=False).add_to_hass(hass)
@@ -304,6 +313,7 @@ async def test_user_when_configured(hass: HomeAssistant) -> None:
     assert result["reason"] == "already_configured_hub"
 
 
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_cloud_only_setup(hass: HomeAssistant, cloud: FakeCloud) -> None:
     """Sign in first and add thermostats from the account."""
     result = await hass.config_entries.flow.async_init(
@@ -332,6 +342,7 @@ async def test_cloud_only_setup(hass: HomeAssistant, cloud: FakeCloud) -> None:
     assert subentry.title == "Living Room"
 
 
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_cloud_only_setup_includes_new_models(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
@@ -351,6 +362,7 @@ async def test_cloud_only_setup_includes_new_models(
     assert key.default() == [DEVICE_ID, added]
 
 
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_sign_in_survives_bootstrap_failure(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
@@ -383,6 +395,7 @@ async def test_sign_in_survives_bootstrap_failure(
         ("challenge", "mfa_unsupported"),
     ],
 )
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_sign_in_errors(hass: HomeAssistant, error: str, key: str) -> None:
     """Sign-in problems show as form errors."""
     from mysa_client.cloud import (
@@ -411,6 +424,7 @@ async def test_sign_in_errors(hass: HomeAssistant, error: str, key: str) -> None
     assert result["errors"] == {"base": key}
 
 
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_sign_in_saves_password_when_asked(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
@@ -448,6 +462,7 @@ async def test_sign_in_saves_password_when_asked(
 
 @pytest.mark.usefixtures("unpaired_controller")
 @pytest.mark.parametrize("add", [True, False])
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_setup_offers_account_after_sign_in(
     hass: HomeAssistant, cloud: FakeCloud, add: bool
 ) -> None:
@@ -497,6 +512,7 @@ async def test_setup_offers_account_after_sign_in(
 
 
 @pytest.mark.usefixtures("unpaired_controller")
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_setup_from_account_then_pair_locally(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:
@@ -529,6 +545,7 @@ async def test_setup_from_account_then_pair_locally(
 
 
 @pytest.mark.usefixtures("unpaired_controller")
+@pytest.mark.usefixtures("drain_background_tasks")
 async def test_discovered_thermostat_offered_the_account(
     hass: HomeAssistant, cloud: FakeCloud
 ) -> None:

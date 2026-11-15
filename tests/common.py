@@ -17,9 +17,11 @@ from typing import Any
 
 from aiohomekit.controller.abstract import FinishPairing
 from aiohomekit.model import Accessories
+from aiohomekit.model.characteristics import CharacteristicsTypes
 from aiohomekit.model.status_flags import StatusFlags
 from aiohomekit.testing import FakeController, FakeDiscovery, FakePairing
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
+from mysa_client.cloud import Mode, Setpoint, SetpointRules
 from mysa_client.cloud.const import (
     API_BASE,
     COGNITO_URL,
@@ -48,6 +50,13 @@ from custom_components.mysa_local.const import (
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
+# Keys whose values are setpoints in °C, in cloud state, holds and schedules.
+SETPOINT_KEYS = frozenset(
+    {"setpoint", "heatSetpoint", "coolSetpoint", "lockoutMin", "lockoutMax"}
+    | {"MinSetpoint", "MaxSetpoint"}
+)
+# HAP status for a value the accessory refuses.
+HAP_INVALID_VALUE = -70410
 DEVICE_ID = "a1b2c3d4e5f6"
 HKID = "00:00:00:00:00:00"
 USER_ID = "00000000-0000-4000-8000-0000000000b1"
@@ -91,6 +100,57 @@ def discovery(
             "ci": "9",
         },
     )
+
+
+def setpoint(value: float, mode: Mode | None = Mode.HEAT) -> Setpoint:
+    """A Setpoint for direct coordinator calls in tests (no range limits)."""
+    return SetpointRules().setpoint(mode, value)
+
+
+def on_half_degree(value: Any) -> bool:
+    """Whether a written temperature is on Mysa's 0.5 °C grid."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return False
+    return abs(value * 2 - round(value * 2)) < 1e-9
+
+
+def off_step_setpoints(body: Any) -> list[Any]:
+    """Setpoint values in a request body that aren't on the 0.5 °C grid."""
+    found: list[Any] = []
+    if isinstance(body, dict):
+        for key, value in body.items():
+            if key in SETPOINT_KEYS and value is not None and not on_half_degree(value):
+                found.append(value)
+            else:
+                found.extend(off_step_setpoints(value))
+    elif isinstance(body, list):
+        for item in body:
+            found.extend(off_step_setpoints(item))
+    return found
+
+
+def strict_target_temperature(pairing: FakePairing) -> None:
+    """Make the fake accessory refuse a target that isn't on the 0.5 °C grid.
+
+    A real Mysa does, so any write path that skips the setpoint rules fails.
+    """
+    real_put = pairing.put_characteristics
+    target = fake_characteristic_address(
+        pairing, CharacteristicsTypes.TEMPERATURE_TARGET
+    )
+
+    async def put_characteristics(characteristics: Any) -> Any:
+        refused = {
+            (aid, iid): {"status": HAP_INVALID_VALUE}
+            for aid, iid, value in characteristics
+            if (aid, iid) == target and not on_half_degree(value)
+        }
+        if refused:
+            pairing.refused_writes = [*getattr(pairing, "refused_writes", []), refused]
+            return refused
+        return await real_put(characteristics)
+
+    pairing.put_characteristics = put_characteristics  # type: ignore[method-assign]
 
 
 def load_json(name: str) -> Any:
@@ -211,6 +271,7 @@ class LiteDiscovery(FakeDiscovery):
                 raise AuthenticationError("M4")
             pairing = FakePairing(self.controller, dict(PAIRING_DATA), self.accessories)
             pairing.pairing_data = dict(PAIRING_DATA)
+            strict_target_temperature(pairing)
             self.controller.aliases[HKID] = pairing
             self.controller.pairings[HKID] = pairing
             return pairing
@@ -227,6 +288,7 @@ async def make_controller(
     if paired:
         pairing = await controller.add_paired_device(lite_accessories(), alias=HKID)
         pairing.pairing_data = dict(PAIRING_DATA)
+        strict_target_temperature(pairing)
         controller.aliases[HKID] = pairing
     if unpaired:
         controller.discoveries[HKID] = LiteDiscovery(controller, lite_accessories())
@@ -295,6 +357,8 @@ class FakeCloud:
         self._srp: dict[str, Any] = {}
         self.apply_updates = True
         self.auto_telemetry = True
+        # Off-step setpoints the fake refused, as a real Mysa would.
+        self.refused: list[Any] = []
 
         b = API_BASE
         d = DEVICE_ID
@@ -415,6 +479,15 @@ class FakeCloud:
         return self._resp(method, url, status=202, body={})
 
     # -- helpers --
+
+    def _refuse_off_step(self, method: str, url: URL, body: Any) -> Any:
+        """A 400 for a body carrying a setpoint off the 0.5 °C grid, else None."""
+        if bad := off_step_setpoints(body):
+            self.refused.append(body)
+            return AiohttpClientMockResponse(
+                method, url, status=400, text=f'{{"message": "invalid setpoint {bad}"}}'
+            )
+        return None
 
     def _resp(
         self, method: str, url: URL, status: int = 200, body: Any = None
@@ -584,6 +657,8 @@ class FakeCloud:
         self, method: str, url: URL, data: Any
     ) -> AiohttpClientMockResponse:
         body = json.loads(data)
+        if refused := self._refuse_off_step(method, url, body):
+            return refused
         self.updates.append(body)
         if self.apply_updates:
             for section, fields in body.items():
@@ -599,6 +674,8 @@ class FakeCloud:
         self, method: str, url: URL, data: Any
     ) -> AiohttpClientMockResponse:
         body = json.loads(data)
+        if refused := self._refuse_off_step(method, url, body):
+            return refused
         self.settings.append(body)
         self.devices["DevicesObj"][DEVICE_ID].update(body)
         return self._resp(method, url, body=body)
@@ -635,7 +712,10 @@ class FakeCloud:
     async def _set_hold(
         self, method: str, url: URL, data: Any
     ) -> AiohttpClientMockResponse:
-        self.hold = json.loads(data)
+        body = json.loads(data)
+        if refused := self._refuse_off_step(method, url, body):
+            return refused
+        self.hold = body
         return self._resp(method, url, status=201, body={"holdId": "h1"})
 
     async def _delete_hold(
@@ -657,6 +737,8 @@ class FakeCloud:
         self, method: str, url: URL, data: Any
     ) -> AiohttpClientMockResponse:
         body = json.loads(data)
+        if refused := self._refuse_off_step(method, url, body):
+            return refused
         body["id"] = f"s{len(self.schedules) + 1}"
         self.schedules.append(body)
         return self._resp(method, url, status=201, body={"scheduleId": body["id"]})

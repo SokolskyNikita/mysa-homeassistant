@@ -30,7 +30,7 @@ from custom_components.mysa_local.event_history import (
     error_category,
 )
 
-from .common import DEVICE_ID, HOME_ID, PAIRING_DATA, REFRESH_TOKEN, hub_entry
+from .common import DEVICE_ID, HOME_ID, PAIRING_DATA, REFRESH_TOKEN, hub_entry, setpoint
 from .conftest import setup_entry
 from .test_new_cloud_models import configure
 
@@ -164,9 +164,9 @@ async def test_v3_download_reconstructs_supersession_and_delayed_report(
     cloud.apply_updates = False
     caplog.set_level(logging.DEBUG, logger=LOGGER)
     with patch("custom_components.mysa_local.cloud_coordinator.CLOUD_WRITE_SPACING", 0):
-        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 23)
+        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, setpoint(23))
         older = coordinator.pending[DEVICE_ID]["heat_setpoint"].correlation_id
-        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 24)
+        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, setpoint(24))
     newer = coordinator.pending[DEVICE_ID]["heat_setpoint"].correlation_id
     assert older != newer
     assert [r["status"] for r in events(history, event="command", command=older)] == [
@@ -223,7 +223,7 @@ async def test_failed_requests_have_safe_lifecycle(hass, cloud, caplog, error, s
         patch.object(coordinator.client, "update_state", AsyncMock(side_effect=error)),
         pytest.raises(HomeAssistantError),
     ):
-        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 24)
+        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, setpoint(24))
     rows = events(entry.runtime_data.history, event="command")
     assert [r["status"] for r in rows] == ["submitted", status]
     assert rows[-1]["error"] == error_category(error)
@@ -241,7 +241,7 @@ async def test_storage_unchanged_expiry_and_reload(hass, cloud):
     history = entry.runtime_data.history
     with patch("custom_components.mysa_local.cloud_coordinator.CLOUD_WRITE_SPACING", 0):
         await coordinator.async_set_temperature(
-            DEVICE_ID, Mode.HEAT, coordinator.state(DEVICE_ID).heat_setpoint
+            DEVICE_ID, Mode.HEAT, setpoint(coordinator.state(DEVICE_ID).heat_setpoint)
         )
         assert events(history, event="command")[-1]["status"] == "unchanged"
         await coordinator.async_set_display_unit(DEVICE_ID, "F")
@@ -251,7 +251,7 @@ async def test_storage_unchanged_expiry_and_reload(hass, cloud):
             events(history, event="command")[-1]["evidence"] == "configuration_storage"
         )
         cloud.apply_updates = False
-        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 24)
+        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, setpoint(24))
     command = coordinator.pending[DEVICE_ID]["heat_setpoint"]
     coordinator._reconcile_pending(
         coordinator.data, command.expires_at + timedelta(seconds=1)
@@ -327,7 +327,7 @@ async def test_http_failure_metadata_and_request_privacy(hass, cloud, caplog, st
     cloud.path_status[f"/state/{DEVICE_ID}/update"] = status
     caplog.set_level(logging.DEBUG, logger=LOGGER)
     with pytest.raises(HomeAssistantError):
-        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 24)
+        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, setpoint(24))
     request = events(entry.runtime_data.history, event="request")[-1]
     assert request["http_status"] == status
     assert request["route"] == "/state/{id}/update"
@@ -365,7 +365,7 @@ async def test_protocol_fallback_and_auth_retry_keep_command_id(hass, cloud):
         patch("custom_components.mysa_local.cloud_coordinator.CLOUD_WRITE_SPACING", 0),
         pytest.raises(HomeAssistantError),
     ):
-        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 24)
+        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, setpoint(24))
     command = coordinator.pending[DEVICE_ID]["heat_setpoint"].correlation_id
     assert any(
         r["event"] == "retry" and r.get("reason") == "auth_refresh"
@@ -430,7 +430,7 @@ async def test_capture_failure_and_cancellation_do_not_change_commands(hass, clo
     coordinator = entry.runtime_data.cloud
     history = entry.runtime_data.history
     with patch.object(history, "_sanitize", side_effect=RuntimeError("secret")):
-        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 24)
+        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, setpoint(24))
     assert len(cloud.updates) == 1
     assert history.dropped > 0
     started = asyncio.Event()
@@ -444,7 +444,7 @@ async def test_capture_failure_and_cancellation_do_not_change_commands(hass, clo
         patch("custom_components.mysa_local.cloud_coordinator.CLOUD_WRITE_SPACING", 0),
     ):
         task = asyncio.create_task(
-            coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 25)
+            coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, setpoint(25))
         )
         await started.wait()
         task.cancel()

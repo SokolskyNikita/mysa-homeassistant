@@ -29,7 +29,9 @@ from mysa_client.cloud import (
     MysaError,
     MysaNotFoundError,
     MysaRateLimitError,
+    Setpoint,
     Swing,
+    TemperatureOffset,
 )
 from mysa_client.cloud.commands import (
     CloudCommand,
@@ -829,7 +831,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         await self._tracked_write(device_id, call, command)
 
     async def async_set_temperature(
-        self, device_id: str, mode: Mode | None, temperature: float
+        self, device_id: str, mode: Mode | None, temperature: Setpoint
     ) -> None:
         """Set a temperature target using the cloud protocol's mode mapping."""
         await self.async_execute(
@@ -870,7 +872,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         await self.async_execute(device_id, state_command(button_lock_changes(value)))
 
     async def async_set_setpoint_limit(
-        self, device_id: str, value: float, *, minimum: bool
+        self, device_id: str, value: Setpoint, *, minimum: bool
     ) -> None:
         """Set a heating setpoint bound through the cloud."""
         await self.async_execute(
@@ -878,7 +880,9 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             state_command(setpoint_limit_changes(value, minimum=minimum)),
         )
 
-    async def async_set_temperature_offset(self, device_id: str, value: float) -> None:
+    async def async_set_temperature_offset(
+        self, device_id: str, value: TemperatureOffset
+    ) -> None:
         """Set the thermostat's room-temperature correction."""
         await self.async_execute(
             device_id, state_command(temperature_offset_changes(value))

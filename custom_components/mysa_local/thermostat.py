@@ -27,7 +27,13 @@ from mysa_client.cloud import (
     Mode,
     ModelFamily,
     MysaError,
+    Setpoint,
+    SetpointError,
+    SetpointKind,
+    SetpointRange,
+    SetpointRules,
     Swing,
+    TemperatureOffset,
     model_family,
 )
 from mysa_client.cloud.commands import CloudCommand
@@ -38,7 +44,6 @@ from mysa_client.cloud.const import (
 from mysa_client.cloud.device import (
     HEATING_FAMILIES,
     basic_modes,
-    heating_range,
     hvac_fan_operation,
 )
 from mysa_client.cloud.device_commands import (
@@ -46,6 +51,12 @@ from mysa_client.cloud.device_commands import (
     climate_command,
     hvac_fan_command,
     hvac_fan_speed_command,
+)
+from mysa_client.cloud.setpoints import (
+    fahrenheit_label,
+    round_half_up,
+    round_to_step,
+    to_celsius,
 )
 from mysa_client.homekit import Field, LocalMode
 from mysa_client.runtime.routing import RouteRequest
@@ -73,6 +84,7 @@ from .local_adapter import (
     TARGET_TEMPERATURE,
     LocalThermostat,
 )
+from .temperature import Unit, setpoint_error
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
@@ -94,16 +106,56 @@ ACTION_HEATING = "heating"
 ACTION_COOLING = "cooling"
 
 
-def snap_to_step(value: float, step: float | None) -> float:
-    """Round a Celsius setpoint to the thermostat's setpoint step.
+def _same_inputs(old: tuple[Any, ...], new: tuple[Any, ...]) -> bool:
+    """Capabilities and record by identity (replaced on each fetch), else equality."""
+    return all(
+        a is b if index in (0, 4) else a == b
+        for index, (a, b) in enumerate(zip(old, new, strict=True))
+    )
 
-    Home Assistant converts a Fahrenheit target to Celsius before calling the
-    integration, so whole Fahrenheit degrees fall between Mysa's half-Celsius
-    steps (73 °F is 22.78 °C) and the thermostat rejects them.
+
+class Unchanged(Exception):  # noqa: N818 - a signal, not an error
+    """A whole-°F request for the label already shown: nothing to send.
+
+    ``setpoint`` is the current target, for callers that report what is set.
     """
-    if not step:
-        return value
-    return round(round(value / step) * step, 4)
+
+    def __init__(self, setpoint: Setpoint | None) -> None:
+        """Keep the unchanged target."""
+        super().__init__()
+        self.setpoint = setpoint
+
+
+def repicks_label(value: float, unit: Unit, current: float | None) -> bool:
+    """Whether a °F request is exactly the whole °F the current target shows.
+
+    22.5 °C shows as 73 °F; 73 °F itself would round to 23 °C, so picking the
+    label you already see would change the setpoint (owner, 2026-11-15).
+    """
+    return unit == "F" and current is not None and value == fahrenheit_label(current)
+
+
+def tap_value(
+    limits: SetpointRange, requested: float, unit: Unit, current: float | None
+) -> tuple[float, Unit]:
+    """Make a whole-°F tap on the card always move the setpoint.
+
+    With a step coarser than 1 °F (a 1 °C cool step, say), the next whole °F
+    can round straight back to the current setpoint: + from 73 °F (23 °C)
+    asks for 74 °F, which is 23.3 °C and rounds to 23 °C again. When the
+    request rounds to the current setpoint but isn't its label, move one step
+    towards the request instead (+ from 73 goes to 24 °C, 75 °F). A value far
+    from the current one, or any value with a 0.5 °C step, is unaffected.
+    Returns the value to normalise and its unit.
+    """
+    if unit != "F" or current is None:
+        return requested, unit
+    label = fahrenheit_label(current)
+    rounded = round_to_step(to_celsius(requested, "F"), limits.step)
+    if rounded != current or round_half_up(requested) == label:
+        return requested, unit
+    direction = 1 if requested > label else -1
+    return round(current + direction * limits.step, 4), "C"
 
 
 class RuntimeTracker:
@@ -183,6 +235,7 @@ class Thermostat:
         self._listeners: set[CALLBACK_TYPE] = set()
         self.runtime = RuntimeTracker()
         self._in_fallback = False
+        self._rules: tuple[tuple[Any, ...], SetpointRules] | None = None
         self.commands = CommandRouter(
             hass,
             device_id=self.device_id,
@@ -223,6 +276,12 @@ class Thermostat:
         # state. During fallback only the device's measured daily usage counts.
         self.runtime.update(self.heating if self.local_ok else None)
         self.commands.schedule_reconciliation()
+        for listener in list(self._listeners):
+            listener()
+
+    @callback
+    def notify_entities(self) -> None:
+        """Ask entities to write their state again, without other side effects."""
         for listener in list(self._listeners):
             listener()
 
@@ -608,40 +667,132 @@ class Thermostat:
             return [LOCAL_MODE_TO_MODE[m] for m in self.local.supported_modes]
         return [Mode.OFF, Mode.HEAT]
 
-    @property
-    def setpoint_range(self) -> tuple[float, float, float]:
-        """(min, max, step) for the setpoint, honoring the hardware limits."""
-        caps = self.capabilities
-        if self.is_hvac and caps:
-            # HA validates before applying a requested mode change. Expose the
-            # envelope; the write boundary enforces each mode's own limits.
-            ranges = [
-                r
-                for r in (
-                    caps.heat_setpoint_range,
-                    caps.cool_setpoint_range,
-                    caps.auto_heat_range,
-                    caps.auto_cool_range,
-                )
-                if r
-            ]
-            if ranges:
-                return (
-                    min(r[0] for r in ranges),
-                    max(r[1] for r in ranges),
-                    min(r[2] for r in ranges),
-                )
-        low, high, step = heating_range(
-            self.local.temperature_range if self.local else (None, None, None),
-            caps,
+    def _rules_inputs(self) -> tuple[Any, ...]:
+        return (
+            self.capabilities,
+            self.local.temperature_range if self.local else None,
             self.setpoint_min,
             self.setpoint_max,
+            self.cloud_record,
         )
-        low = 5.0 if low is None else float(low)
-        high = 30.0 if high is None else float(high)
-        if high <= low:
-            high = low + 0.5
-        return low, high, float(step or 0.5)
+
+    @property
+    def rules(self) -> SetpointRules:
+        """The one rules object every written temperature goes through.
+
+        Rebuilt only when an input changes: the cloud capabilities, the
+        HomeKit range, the owner's confirmed limits or the settings record
+        (which carries a Mini-Split AC's cool range).
+        """
+        inputs = self._rules_inputs()
+        cached = self._rules
+        if cached is None or not _same_inputs(cached[0], inputs):
+            caps, local_range, setpoint_min, setpoint_max, record = inputs
+            rules = SetpointRules(
+                caps,
+                local_range,
+                setpoint_min=setpoint_min,
+                setpoint_max=setpoint_max,
+                record=record,
+            )
+            self._rules = cached = (inputs, rules)
+        return cached[1]
+
+    @property
+    def setpoint_kinds(self) -> tuple[SetpointKind, ...]:
+        """The setpoint ranges the climate entity's bounds have to cover.
+
+        HA validates a target before applying a mode change in the same call,
+        so Central HVAC exposes the envelope of all its ranges; the rules
+        enforce each mode's own limits when writing. Other models show the
+        range of the mode they're in.
+        """
+        if self.is_hvac and self.capabilities is not None:
+            return tuple(SetpointKind)
+        return (SetpointKind.COOL if self.mode == Mode.COOL else SetpointKind.HEAT,)
+
+    @property
+    def setpoint_range(self) -> tuple[float, float, float]:
+        """(min, max, step) in °C for the climate entity, from the rules."""
+        limits = self.rules.envelope(self.setpoint_kinds)
+        assert limits.minimum is not None
+        assert limits.maximum is not None
+        return limits.minimum, limits.maximum, limits.step
+
+    @property
+    def fahrenheit_setpoint_range(self) -> tuple[int, int]:
+        """Lowest and highest whole °F the climate entity accepts."""
+        return self.rules.fahrenheit_envelope(self.setpoint_kinds)
+
+    def _setpoint(
+        self,
+        mode: Mode | None,
+        value: float | Setpoint,
+        *,
+        unit: Unit,
+        strict: bool,
+        current: float | None = None,
+    ) -> Setpoint:
+        """One target for ``mode``, rounded and checked; errors in ``unit``.
+
+        ``current`` is the target the card is stepping from (°C), for taps;
+        re-picking its shown whole °F raises ``Unchanged``.
+        """
+        if isinstance(value, Setpoint):
+            return value
+        rules = self.rules
+        if repicks_label(float(value), unit, current):
+            assert current is not None
+            raise Unchanged(rules.setpoint(mode, current, strict=False))
+        value, unit_in = tap_value(rules.range_for(mode), float(value), unit, current)
+        try:
+            return rules.setpoint(mode, value, unit=unit_in, strict=strict)
+        except SetpointError as err:
+            raise setpoint_error(err, unit) from err
+
+    def _heat_cool(
+        self,
+        low: float,
+        high: float,
+        *,
+        unit: Unit,
+        strict: bool,
+        current: tuple[float | None, float | None] | None = None,
+    ) -> tuple[Setpoint, Setpoint]:
+        """A heat/cool pair; the gap is always checked, whatever ``strict`` says.
+
+        With ``current``, each side is treated like a single target: a re-picked
+        label keeps that side as it is, and if both are kept nothing is sent
+        (``Unchanged``).
+        """
+        rules = self.rules
+        if current is not None and unit == "F":
+            # Each side on its own; both then go to the rules in °C.
+            sides: list[float] = []
+            kept = 0
+            for kind, value, now in (
+                (SetpointKind.AUTO_HEAT, low, current[0]),
+                (SetpointKind.AUTO_COOL, high, current[1]),
+            ):
+                if repicks_label(float(value), unit, now):
+                    assert now is not None
+                    sides.append(now)
+                    kept += 1
+                else:
+                    limits = rules.range_for(kind)
+                    sides.append(
+                        to_celsius(*tap_value(limits, float(value), unit, now))
+                    )
+            if kept == 2:
+                raise Unchanged(None)
+            low, high = sides
+            unit_in: Unit = "C"
+        else:
+            unit_in = unit
+        try:
+            return rules.heat_cool(float(low), float(high), unit=unit_in, strict=strict)
+        except SetpointError as err:
+            raise setpoint_error(err, unit) from err
 
     @property
     def hvac_fan_modes(self) -> list[str]:
@@ -658,49 +809,70 @@ class Thermostat:
         self,
         *,
         mode: Mode | None = None,
-        temperature: float | None = None,
+        temperature: float | Setpoint | None = None,
         low: float | None = None,
         high: float | None = None,
-    ) -> None:
-        """Set mode and associated targets as one validated library operation."""
+        unit: Unit = "C",
+        strict: bool = True,
+        tap: bool = False,
+    ) -> dict[str, Setpoint]:
+        """Set mode and associated targets as one validated library operation.
+
+        Returns the written targets by name (temperature, low, high), so the
+        caller can tell the owner about any value the rules clamped. ``tap``
+        makes a whole-°F card step always move the setpoint (``tap_value``),
+        and re-picking a target's shown whole °F leaves it as it is.
+        """
+        written: dict[str, Setpoint] = {}
         if mode is None and temperature is None and low is None and high is None:
-            return
+            return written
 
         def command(cloud: MysaCloudCoordinator) -> CloudCommand:
             selected_mode = cloud.command_value(self.device_id, "mode", self.mode)
             target_mode = mode if mode is not None else selected_mode
+            written.clear()
+            # No current label to step from or keep when the mode changes.
+            same_mode = mode is None or mode == selected_mode
+            state = self.cloud_state if tap and same_mode else None
+            if temperature is not None:
+                written["temperature"] = self._setpoint(
+                    target_mode,
+                    temperature,
+                    unit=unit,
+                    strict=strict,
+                    current=state.setpoint_for(target_mode) if state else None,
+                )
+            if low is not None and high is not None:
+                written["low"], written["high"] = self._heat_cool(
+                    low,
+                    high,
+                    unit=unit,
+                    strict=strict,
+                    current=(
+                        (state.auto_heat_setpoint, state.auto_cool_setpoint)
+                        if state and state.mode == Mode.AUTO
+                        else None
+                    ),
+                )
+            elif low is not None or high is not None:
+                raise ValueError("Supply both low and high setpoints in heat/cool mode")
             return climate_command(
                 self.family,
                 selected_mode,
                 mode=mode,
-                temperature=self._snap(temperature, self._mode_step(target_mode)),
-                low=self._snap(low, self._mode_step(Mode.AUTO, heat=True)),
-                high=self._snap(high, self._mode_step(Mode.AUTO, heat=False)),
+                temperature=written.get("temperature"),
+                low=written.get("low"),
+                high=written.get("high"),
             )
 
-        await self._async_prepared_cloud_command(command)
-
-    def _mode_step(self, mode: Mode | None, *, heat: bool = True) -> float:
-        """Setpoint step for one target, from that mode's own capability range.
-
-        Central HVAC advertises separate heat, cool and auto ranges; the other
-        models only have the heating range behind ``setpoint_range``.
-        """
-        caps = self.capabilities
-        if self.is_hvac and caps:
-            if mode is Mode.AUTO:
-                limits = caps.auto_heat_range if heat else caps.auto_cool_range
-            elif mode is Mode.COOL:
-                limits = caps.cool_setpoint_range
-            else:
-                limits = caps.heat_setpoint_range
-            if limits and limits[2]:
-                return float(limits[2])
-        return self.setpoint_range[2]
-
-    @staticmethod
-    def _snap(value: float | None, step: float) -> float | None:
-        return None if value is None else snap_to_step(float(value), step)
+        try:
+            await self._async_prepared_cloud_command(command)
+        except Unchanged as unchanged:
+            # The shown label was picked again: nothing was sent.
+            if unchanged.setpoint is None:
+                return {}
+            return {"temperature": unchanged.setpoint}
+        return written
 
     @property
     def hvac_fan_speeds(self) -> tuple[int, ...]:
@@ -781,16 +953,28 @@ class Thermostat:
         """Drain commands and close the local connection."""
         await self.commands.async_stop()
 
-    def snap_setpoint(self, value: float) -> float:
-        """Round a single Celsius setpoint to the step the thermostat accepts."""
-        return snap_to_step(float(value), self.setpoint_range[2])
+    async def async_set_temperature(
+        self,
+        value: float | Setpoint,
+        *,
+        unit: Unit = "C",
+        strict: bool = True,
+        tap: bool = False,
+    ) -> Setpoint:
+        """Change the setpoint using the latest serialized operating mode.
 
-    async def async_set_temperature(self, value: float) -> None:
-        """Change the setpoint using the latest serialized operating mode."""
+        A plain number in ``unit`` goes through the rules for the mode the
+        write is made in; ``strict=False`` clamps instead of refusing, and
+        ``tap`` makes a whole-°F card step always move (``tap_value``), and
+        re-picking the shown whole °F sends nothing (``repicks_label``).
+        Returns what was written.
+        """
         if self.basic_cloud_only:
-            await self.async_set_basic_temperature(temperature=value)
-            return
-        value = self.snap_setpoint(value)
+            written = await self.async_set_basic_temperature(
+                temperature=value, unit=unit, strict=strict, tap=tap
+            )
+            return written["temperature"]
+        result: list[Setpoint] = []
 
         def prepare() -> RouteRequest[Field, Any, MysaCloudCoordinator, DeviceState]:
             mode = (
@@ -798,15 +982,31 @@ class Thermostat:
                 if self.cloud
                 else self.mode
             )
+            # Step from the shown target only when the mode isn't changing.
+            current = self.target_temperature if tap and mode == self.mode else None
+            setpoint = self._setpoint(
+                mode, value, unit=unit, strict=strict, current=current
+            )
+            result[:] = [setpoint]
+            celsius = setpoint.celsius
             return RouteRequest(
-                local_values={TARGET_TEMPERATURE: value},
+                # The Setpoint itself: HomeKit writes take only ruled values.
+                local_values={TARGET_TEMPERATURE: setpoint},
                 cloud_write=lambda cloud: cloud.async_set_temperature(
-                    self.device_id, mode or Mode.HEAT, value
+                    self.device_id, mode or Mode.HEAT, setpoint
                 ),
-                cloud_applied=lambda state: state.setpoint_for(mode) == value,
+                cloud_applied=lambda state: state.setpoint_for(mode) == celsius,
             )
 
-        await self.commands.async_route_prepared(prepare)
+        try:
+            await self.commands.async_route_prepared(prepare)
+        except Unchanged as unchanged:
+            # The shown label was picked again: nothing was sent.
+            kept = unchanged.setpoint
+        else:
+            return result[0]
+        assert kept is not None
+        return kept
 
     async def async_set_mode(self, mode: Mode) -> None:
         """Change the mode through an available transport."""
@@ -956,21 +1156,48 @@ class Thermostat:
 
         await self._async_prepared_cloud_command(prepare)
 
-    async def async_set_setpoint_limit(self, value: float, *, minimum: bool) -> None:
+    def limit_setpoint(
+        self, value: float | Setpoint, *, minimum: bool, unit: Unit = "C"
+    ) -> Setpoint:
+        """An owner limit, rounded and checked against the hardware range."""
+        if isinstance(value, Setpoint):
+            return value
+        rules = self.rules
+        try:
+            return rules.limit(float(value), minimum=minimum, unit=unit)
+        except SetpointError as err:
+            raise setpoint_error(err, unit) from err
+
+    async def async_set_setpoint_limit(
+        self, value: float | Setpoint, *, minimum: bool, unit: Unit = "C"
+    ) -> Setpoint:
         """Change one hardware setpoint limit."""
+        setpoint = self.limit_setpoint(value, minimum=minimum, unit=unit)
         await self._async_cloud_command(
             lambda cloud: cloud.async_set_setpoint_limit(
-                self.device_id, value, minimum=minimum
+                self.device_id, setpoint, minimum=minimum
             ),
-            {"setpoint_min" if minimum else "setpoint_max": value},
+            {"setpoint_min" if minimum else "setpoint_max": setpoint.celsius},
         )
+        return setpoint
 
-    async def async_set_temperature_offset(self, value: float) -> None:
-        """Change the ambient sensor calibration offset."""
+    async def async_set_temperature_offset(
+        self, value: float | TemperatureOffset, *, unit: Unit = "C"
+    ) -> TemperatureOffset:
+        """Change the ambient sensor calibration offset (a °C or °F delta)."""
+        if isinstance(value, TemperatureOffset):
+            offset = value
+        else:
+            rules = self.rules
+            try:
+                offset = rules.offset(float(value), unit=unit)
+            except SetpointError as err:
+                raise setpoint_error(err, unit) from err
         await self._async_cloud_command(
-            lambda cloud: cloud.async_set_temperature_offset(self.device_id, value),
-            {"temperature_offset": value},
+            lambda cloud: cloud.async_set_temperature_offset(self.device_id, offset),
+            {"temperature_offset": offset.celsius},
         )
+        return offset
 
     async def async_set_button_lock(self, value: ButtonLock) -> None:
         """Change the thermostat's physical button lock."""

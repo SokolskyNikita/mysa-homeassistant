@@ -16,6 +16,7 @@ from homeassistant.const import (
     CONF_EMAIL,
     CONF_PASSWORD,
     CONF_SCAN_INTERVAL,
+    EVENT_CORE_CONFIG_UPDATE,
     EVENT_HOMEASSISTANT_STARTED,
     Platform,
 )
@@ -231,6 +232,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: MysaConfigEntry) -> bool
             mqtt_getter=lambda: runtime.mqtt,
         )
         entry.async_on_unload(runtime.thermostats[subentry.subentry_id].stop)
+
+    @callback
+    def _core_config_updated(_event: Event) -> None:
+        """Rewrite every entity's state so a unit-system switch shows at once."""
+        for thermostat in runtime.thermostats.values():
+            thermostat.notify_entities()
+
+    entry.async_on_unload(
+        hass.bus.async_listen(EVENT_CORE_CONFIG_UPDATE, _core_config_updated)
+    )
 
     # Give the LAN connections a few seconds; slow ones keep connecting in the
     # background and their entities turn available when they're up.

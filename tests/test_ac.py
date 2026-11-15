@@ -171,6 +171,7 @@ async def test_ac_off_hides_fan_and_swing(
     _make_ac(cloud)
     await setup_entry(hass, hub_entry())
     await _call(hass, SERVICE_SET_HVAC_MODE, {ATTR_HVAC_MODE: HVACMode.OFF})
+    await hass.async_block_till_done()
     attrs = hass.states.get(CLIMATE).attributes
     assert attrs[ATTR_SUPPORTED_FEATURES] & FAN_AND_SWING == 0
     assert ATTR_FAN_MODES not in attrs

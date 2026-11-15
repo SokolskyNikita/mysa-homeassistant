@@ -24,7 +24,7 @@ from custom_components.mysa_local.schedule import (
     async_clear_schedule,
     async_set_schedule,
 )
-from tests.common import DEVICE_ID, hub_entry
+from tests.common import DEVICE_ID, hub_entry, setpoint
 from tests.conftest import setup_entry
 
 NOW = datetime(2026, 10, 12, 12, tzinfo=UTC)
@@ -65,7 +65,7 @@ async def test_independent_sources_and_pending_state(hass, cloud):
     coordinator = entry.runtime_data.cloud
     old = coordinator.state(DEVICE_ID)
     cloud.apply_updates = False
-    await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 24)
+    await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, setpoint(24))
     assert coordinator.state(DEVICE_ID).heat_setpoint == old.heat_setpoint
     command = coordinator.pending[DEVICE_ID]["heat_setpoint"]
     assert command.status == "pending"
@@ -157,9 +157,9 @@ async def test_newer_command_survives_delayed_confirmation(hass, cloud):
     coordinator = entry.runtime_data.cloud
     cloud.apply_updates = False
     with patch("custom_components.mysa_local.cloud_coordinator.CLOUD_WRITE_SPACING", 0):
-        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 23)
+        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, setpoint(23))
         older = coordinator.pending[DEVICE_ID]["heat_setpoint"]
-        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 24)
+        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, setpoint(24))
     newer = coordinator.pending[DEVICE_ID]["heat_setpoint"]
     assert older.status == "superseded"
     cloud.state["targetHeat"]["reported"].update(
@@ -320,7 +320,7 @@ async def test_record_fallback_does_not_relax_a_reported_limit(hass, cloud):
         DEVICE_ID, [partial], record, None, now
     )
     with pytest.raises(HomeAssistantError, match="known device limits"):
-        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, 20)
+        await coordinator.async_set_temperature(DEVICE_ID, Mode.HEAT, setpoint(20))
     assert cloud.updates == []
 
 
@@ -340,7 +340,9 @@ async def test_delayed_write_readbacks_are_bounded(hass, cloud, freezer, confirm
             coordinator, "async_refresh", wraps=coordinator.async_refresh
         ) as read,
     ):
-        await coordinator.async_set_setpoint_limit(DEVICE_ID, 5.5, minimum=True)
+        await coordinator.async_set_setpoint_limit(
+            DEVICE_ID, setpoint(5.5), minimum=True
+        )
         freezer.tick(timedelta(seconds=3))
         async_fire_time_changed(hass)
         await hass.async_block_till_done(wait_background_tasks=True)

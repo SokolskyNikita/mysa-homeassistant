@@ -11,6 +11,7 @@ from aiohomekit.model.characteristics import CharacteristicsTypes
 from aiohomekit.testing import FakeController
 from homeassistant.const import LIGHT_LUX, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from mysa_client.homekit import HomeKitProtocol
 import pytest
 
@@ -18,6 +19,7 @@ from custom_components.mysa_local.const import DOMAIN
 from custom_components.mysa_local.local_adapter import AMBIENT_LIGHT
 
 from .common import (
+    DEVICE_ID,
     HKID,
     PAIRING_DATA,
     fake_characteristic_address,
@@ -120,6 +122,12 @@ async def test_illuminance_follows_homekit(
     assert state.attributes["unit_of_measurement"] == LIGHT_LUX
     assert state.attributes["device_class"] == "illuminance"
     assert state.attributes["state_class"] == "measurement"
+    # Named from its device class: the sensor has no translation key.
+    assert state.attributes["friendly_name"] == "Living Room Illuminance"
+    entry = er.async_get(hass).async_get(ILLUMINANCE)
+    assert entry is not None
+    assert entry.unique_id == f"{DEVICE_ID}_illuminance"
+    assert entry.translation_key is None
 
     pairing = light_controller.aliases[HKID]
     update_fake_characteristic(pairing, LIGHT_LEVEL, 412)

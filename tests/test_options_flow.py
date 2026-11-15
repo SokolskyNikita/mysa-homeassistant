@@ -33,6 +33,9 @@ from .common import (
 )
 from .conftest import setup_entry
 
+# Flows leave entry reloads running; finish them before patches are undone.
+pytestmark = pytest.mark.usefixtures("drain_background_tasks")
+
 
 @pytest.mark.usefixtures("controller")
 async def test_reauth(hass: HomeAssistant, cloud: FakeCloud) -> None:

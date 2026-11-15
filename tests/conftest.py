@@ -52,6 +52,22 @@ def mqtt_client_factory(request: pytest.FixtureRequest) -> Generator[MagicMock]:
 
 
 @pytest.fixture
+async def drain_background_tasks(
+    hass: HomeAssistant, mqtt_client_factory: MagicMock
+) -> AsyncGenerator[None]:
+    """Finish reloads a flow left running before the test's patches are undone.
+
+    A flow that creates or changes a (sub)entry schedules an entry reload and
+    may return before it finishes. Under load the reload then ran during
+    teardown, after mqtt_client_factory had stopped patching the MQTT start,
+    and left the real MQTT task lingering. Depending on both fixtures makes
+    this run first at teardown, while the patches still apply.
+    """
+    yield
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+
+@pytest.fixture
 def cloud(aioclient_mock: AiohttpClientMocker) -> FakeCloud:
     """The simulated Mysa cloud."""
     return FakeCloud(aioclient_mock)

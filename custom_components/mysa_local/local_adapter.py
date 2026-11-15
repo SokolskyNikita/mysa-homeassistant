@@ -289,9 +289,13 @@ class LocalThermostat:
         return await self.__device.async_read(requested, timeout=timeout)
 
     def start_write(self, values: Mapping[Field, Any]) -> asyncio.Task[None]:
-        """Start a HomeKit write that cannot be cancelled by a caller timeout."""
+        """Start a HomeKit write that cannot be cancelled by a caller timeout.
+
+        ``TARGET_TEMPERATURE`` must be a ``Setpoint`` from the setpoint rules.
+        """
         return self.hass.async_create_background_task(
-            self.__device.async_write(values), f"mysa {self.name} local write"
+            self.__device.async_write(values),
+            f"mysa {self.name} local write",
         )
 
     @callback

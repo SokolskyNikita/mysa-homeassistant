@@ -575,6 +575,30 @@
     },
     "firmware_timeout": {
       "message": "{name} didn't report the new firmware within 6 minutes. Check it in a while."
+    },
+    "setpoint_below_minimum": {
+      "message": "{requested} is below the lowest setpoint the thermostat allows, {limit}."
+    },
+    "setpoint_above_maximum": {
+      "message": "{requested} is above the highest setpoint the thermostat allows, {limit}."
+    },
+    "heat_setpoint_below_minimum": {
+      "message": "The heating target {requested} is below the lowest the thermostat allows, {limit}."
+    },
+    "heat_setpoint_above_maximum": {
+      "message": "The heating target {requested} is above the highest the thermostat allows, {limit}."
+    },
+    "cool_setpoint_below_minimum": {
+      "message": "The cooling target {requested} is below the lowest the thermostat allows, {limit}."
+    },
+    "cool_setpoint_above_maximum": {
+      "message": "The cooling target {requested} is above the highest the thermostat allows, {limit}."
+    },
+    "setpoint_mode_unsupported": {
+      "message": "A hold or schedule event in heat/cool mode can't carry a temperature. Leave the temperature out, or use heat or cool."
+    },
+    "setpoint_gap_too_small": {
+      "message": "The heating target ({low}) and cooling target ({high}) must be at least {required} apart."
     }
   },
   "issues": {
@@ -701,7 +725,7 @@
       "fields": {
         "temperature": {
           "name": "Temperature",
-          "description": "Setpoint to hold. Defaults to the current setpoint."
+          "description": "Setpoint to hold, in Home Assistant's temperature unit (°C or °F, from your unit system). Rounded to the thermostat's step. Defaults to the current setpoint."
         },
         "hvac_mode": {
           "name": "Mode",
@@ -723,7 +747,7 @@
       "fields": {
         "events": {
           "name": "Events",
-          "description": "List of events, each with days (mon to sun), time (HH:MM), temperature and optionally hvac_mode."
+          "description": "List of events, each with days (mon to sun), time (HH:MM), temperature and optionally hvac_mode. Temperatures are in Home Assistant's temperature unit (°C or °F, from your unit system) and are rounded to the thermostat's step."
         }
       }
     },

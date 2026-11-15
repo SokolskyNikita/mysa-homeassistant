@@ -63,6 +63,8 @@ async def test_local_write(hass: HomeAssistant, controller: FakeController) -> N
         {ATTR_ENTITY_ID: CLIMATE, ATTR_TEMPERATURE: 22.5},
         blocking=True,
     )
+    # The state is written once the call has returned.
+    await hass.async_block_till_done()
     assert hass.states.get(CLIMATE).attributes[ATTR_TEMPERATURE] == 22.5
 
     await hass.services.async_call(
@@ -71,6 +73,7 @@ async def test_local_write(hass: HomeAssistant, controller: FakeController) -> N
         {ATTR_ENTITY_ID: CLIMATE, ATTR_HVAC_MODE: HVACMode.OFF},
         blocking=True,
     )
+    await hass.async_block_till_done()
     state = hass.states.get(CLIMATE)
     assert state.state == HVACMode.OFF
     assert state.attributes[ATTR_HVAC_ACTION] == HVACAction.OFF

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable
+from contextlib import asynccontextmanager
 
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
@@ -12,6 +13,7 @@ from mysa_client.cloud import DeviceState
 
 from .const import DOMAIN, MANUFACTURER
 from .data import MysaConfigEntry
+from .temperature import Unit, user_unit
 from .thermostat import Thermostat
 
 
@@ -48,6 +50,13 @@ class MysaEntity(Entity):
         if firmware := thermostat.firmware:
             device_info["sw_version"] = firmware
         self._attr_device_info = device_info
+        self._service_calls = 0
+        self._removed = False
+
+    @property
+    def owner_unit(self) -> Unit:
+        """The owner's temperature unit (C or F)."""
+        return user_unit(self.hass)
 
     @property
     def available(self) -> bool:
@@ -59,9 +68,46 @@ class MysaEntity(Entity):
         await super().async_added_to_hass()
         self.async_on_remove(self.thermostat.add_listener(self._handle_update))
 
+    async def async_will_remove_from_hass(self) -> None:
+        """Stop deferred state writes."""
+        self._removed = True
+        await super().async_will_remove_from_hass()
+
     @callback
     def _handle_update(self) -> None:
         self.async_write_ha_state()
+
+    @asynccontextmanager
+    async def _service_call(self) -> AsyncIterator[None]:
+        """Write this entity's state once more after its service call returns.
+
+        State is still written during the call, so scripts see the new value
+        as soon as the call returns. The HA frontend ignores updates that
+        arrive while its own call is in flight, so the extra write afterwards
+        is what reaches it when the state changed only then. If the state was
+        already written during the call unchanged, the state machine drops the
+        repeat; a clamped value can then leave the card showing its own value
+        until the next update (owner, 2026-11-15).
+        """
+        self._service_calls += 1
+        try:
+            yield
+        finally:
+            self._service_calls -= 1
+            if not self._service_calls:
+                self._schedule_write_after_call()
+
+    @callback
+    def _schedule_write_after_call(self) -> None:
+        # Two loop turns: one for the service task that ran this method to
+        # finish, one for its caller (the websocket handler) to send the result.
+        loop = self.hass.loop
+        loop.call_soon(loop.call_soon, self._write_after_call)
+
+    @callback
+    def _write_after_call(self) -> None:
+        if not self._removed and not self._service_calls:
+            self.async_write_ha_state()
 
 
 class MysaCloudEntity(MysaEntity):

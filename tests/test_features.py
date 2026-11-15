@@ -151,10 +151,12 @@ def test_build_events_off_mode() -> None:
     """An off event carries no setpoint."""
     from datetime import time
 
-    from mysa_client.cloud import Mode
+    from mysa_client.cloud import Mode, SetpointRules
 
     events = build_events(
-        [{"days": ["sat"], "time": time(8, 0), "hvac_mode": "off"}], Mode.HEAT
+        [{"days": ["sat"], "time": time(8, 0), "hvac_mode": "off"}],
+        Mode.HEAT,
+        rules=SetpointRules(),
     )
     assert events[0]["state"] == {"modes": {"mode": 0}}
     assert events[0]["dayOfWeek"] == "6"

@@ -9,7 +9,9 @@ requires-python = ">=3.14.2"
 [dependency-groups]
 test = [
     "pytest-homeassistant-custom-component==0.13.367",  # Home Assistant 2026.9.4
-    "mysa-client[homekit,mqtt]==0.2.1",
+    # Unreleased SetpointRules (mysa-client#31); pin the release here and in
+    # manifest.json once it is published.
+    "mysa-client[homekit,mqtt] @ git+https://github.com/SokolskyNikita/mysa-client@aff218a01762c941493ab36f679f1f337956cbfb",
     "aiohomekit==4.0.1",  # Integration tests use aiohomekit's fake accessories.
 ]
 lint = [

@@ -7,10 +7,10 @@ hold:
     temperature:
       selector:
         number:
+          # In the owner's unit (°C or °F), so the range covers both.
           min: 5
-          max: 35
+          max: 104
           step: 0.5
-          unit_of_measurement: "°C"
           mode: box
     hvac_mode:
       selector:
