@@ -26,4 +26,4 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --group test
       - name: Run tests
-        run: python -m pytest --cov=custom_components.mysa_local --cov-report=term-missing
+        run: python -m pytest -n auto --cov=custom_components.mysa_local --cov-report=term-missing
