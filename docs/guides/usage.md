@@ -29,15 +29,16 @@ Other status entities show HomeKit pairing, Mysa account membership, cloud conne
 
 ### Fahrenheit
 
-Mysa stores setpoints in °C and accepts only its 0.5 °C steps. When Home Assistant's unit system uses Fahrenheit, the climate entity, the lowest and highest setpoint numbers and the temperature offset work in whole °F, as in the Mysa app:
+Mysa stores setpoints in °C and accepts only its 0.5 °C steps. When Home Assistant's unit system uses Fahrenheit, the climate entity and the lowest and highest setpoint numbers work in whole °F, as in the Mysa app:
 
 - Setpoints show as whole °F, rounded halfway up like the app, so 22.5 °C shows as 73 °F.
 - A degree you pick is rounded to the thermostat's step before it is sent, and shows the same afterwards.
 - Picking the whole °F a setpoint already shows sends nothing: at 22.5 °C (73 °F), choosing 73 keeps 22.5 °C rather than sending 23 °C. This applies to each side of a heat/cool pair, but not when the same action also changes the mode.
-- Seven 0.5 °C steps between 5 and 40 °C have no whole °F of their own (7.5, 12.5, …, 37.5 °C). You can't pick them in °F; one set in the Mysa app shows as the °F above it (22.5 °C as 73 °F). That is why a 21.5 °C highest setpoint lets the card go up to 71 °F, but a 22.5 °C one only to 72 °F.
+- Seven 0.5 °C steps between 5 and 40 °C have no whole °F of their own (7.5, 12.5, …, 37.5 °C). You can't pick them in °F; one set in the Mysa app shows as the °F above it (22.5 °C as 73 °F). A 21.5 °C highest setpoint lets the card go up to 71 °F. A 22.5 °C one shows as 73 °F, so the card goes up to 73 °F, and picking 73 gives 22.5 °C.
 - On a thermostat whose step is coarser than 1 °F (a Mini-Split AC or a Central HVAC range with a 1 °C step), a + or − on the card always moves the setpoint by one of its steps, even when the next whole °F would round back to the current setpoint: + from 73 °F (23 °C) goes to 75 °F (24 °C). Only a person's change does this. A value set by an automation, or by a script an automation runs, goes to the nearest setpoint, so one that keeps asking for 74 °F settles on 23 °C (73 °F).
 - A target outside the thermostat's range is set to the nearest limit, with a logbook entry saying what was asked for and what was set. This only happens when the requested mode has a narrower range than the card shows, as on Central HVAC.
-- The `hold` and `set_schedule` actions take temperatures in your unit too; see [Manage schedules and holds](schedules.md) for the rules.
+- The temperature offset stays in °C (±5 in 0.5 steps). To see it in °F, change the unit in the entity's settings; Home Assistant then converts it as a difference.
+- The `hold` and `set_schedule` actions take temperatures in °C; see [Manage schedules and holds](schedules.md).
 
 Switching Home Assistant's unit system takes effect at once. The temperature sensor is still converted by Home Assistant as usual.
 

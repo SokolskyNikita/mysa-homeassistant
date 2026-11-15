@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Restore °C for Fahrenheit owners where 0.9.0 changed the meaning of existing
+  automations. The `hold` and `set_schedule` actions take temperatures in °C
+  again on every unit system (0.9.0 refused an old `21` as below 41 °F), and the
+  temperature offset number is back in °C (±5, step 0.5), where 0.9.0's whole °F
+  made an automation's `1` mean 0.5 °C. The offset now has the temperature
+  difference class, so its unit can be set to °F in the entity's settings. The
+  climate card and the setpoint limit numbers still work in whole °F. #48 tracks
+  giving hold and schedule temperatures in °F.
+- In °F, a highest setpoint that has no whole °F of its own (22.5 °C, shown as
+  73 °F) no longer leaves the card's maximum one degree below the value it
+  shows: the card goes up to 73 °F, and picking it gives 22.5 °C.
 - Fix a Fahrenheit target flipping between two setpoints on a thermostat with a
   1 °C step (a Mini-Split AC, some Central HVAC ranges): an automation that kept
   setting 74 °F alternated between 23 and 24 °C. Only a person's + or − now

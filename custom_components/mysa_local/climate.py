@@ -34,6 +34,7 @@ from mysa_client.cloud import (
     Mode,
     Setpoint,
     Swing,
+    fahrenheit_label,
 )
 from mysa_client.cloud.setpoints import to_celsius
 
@@ -62,6 +63,7 @@ from .thermostat import (
     HVAC_TO_MODE,
     MODE_TO_HVAC,
     Thermostat,
+    repicks_label,
 )
 
 PARALLEL_UPDATES = 0
@@ -283,9 +285,19 @@ class MysaClimate(MysaEntity, ClimateEntity):
 
     @property
     def max_temp(self) -> float:
-        """Highest setpoint in the native unit."""
+        """Highest setpoint in the native unit.
+
+        In °F it is never below the label of the highest setpoint itself: a
+        22.5 °C limit shows as 73 °F although 73 °F alone would round to
+        23 °C, so the card's top is 73 and picking it gives 22.5 °C.
+        """
         if self.owner_unit == "F":
-            return float(self.thermostat.fahrenheit_setpoint_range[1])
+            return float(
+                max(
+                    self.thermostat.fahrenheit_setpoint_range[1],
+                    fahrenheit_label(self.thermostat.setpoint_range[1]),
+                )
+            )
         return self.thermostat.setpoint_range[1]
 
     @property
@@ -351,7 +363,11 @@ class MysaClimate(MysaEntity, ClimateEntity):
                         temperature, unit=unit, strict=False, tap=tap, step=step
                     )
         for name, setpoint in written.items():
-            if setpoint.clamped:
+            if setpoint.clamped and not repicks_label(
+                requested[name], unit, setpoint.celsius
+            ):
+                # Not worth a logbook line when the owner sees what they picked
+                # (73 °F held at a 22.5 °C limit still shows 73 °F).
                 self._log_clamp(requested[name], setpoint, unit)
 
     def _log_clamp(self, requested: float, setpoint: Setpoint, unit: Unit) -> None:
@@ -428,7 +444,9 @@ class MysaClimate(MysaEntity, ClimateEntity):
             temperature,
             hvac_mode,
             until,
-            unit=self.owner_unit,
+            # Always °C: HA passes action fields as bare numbers, and these
+            # have meant °C since before the card worked in °F (#48).
+            unit="C",
         )
 
     async def async_resume_schedule(self) -> None:
@@ -437,7 +455,8 @@ class MysaClimate(MysaEntity, ClimateEntity):
 
     async def async_set_schedule(self, events: list[dict[str, Any]]) -> None:
         """Replace the thermostat's weekly schedule."""
-        await async_set_schedule(self.thermostat, events, unit=self.owner_unit)
+        # Event temperatures are always °C, like the hold's (#48).
+        await async_set_schedule(self.thermostat, events, unit="C")
 
     async def async_clear_schedule(self) -> None:
         """Delete the thermostat's schedule."""
