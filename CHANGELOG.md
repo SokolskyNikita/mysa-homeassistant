@@ -10,6 +10,18 @@
 
 ## 0.9.0 (2026-11-15)
 
+**Breaking, if Home Assistant is set to Fahrenheit.** Check automations and
+scripts that use these; nothing changes for Celsius owners.
+
+- The temperature offset number is now in whole °F (it was °C), so setting it to
+  `1` now means 1 °F (0.5 °C), not 1 °C.
+- The setpoint limit numbers are in whole °F.
+- The `hold` and `set_schedule` actions take temperatures in °F (they took °C).
+  A Celsius value left in an automation, such as `21`, is below the lowest
+  setpoint in °F and is refused with an error rather than applied.
+
+Changes:
+
 - Round and check every written temperature through mysa-client's
   `SetpointRules`: climate targets, Central HVAC heat/cool pairs, holds, each
   schedule event, setpoint limits and the temperature offset. Values are rounded

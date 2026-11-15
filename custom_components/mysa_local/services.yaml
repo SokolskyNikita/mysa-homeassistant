@@ -39,6 +39,7 @@ set_schedule:
     events:
       required: true
       example: |
+        # Temperatures are in Home Assistant's unit: °C here, 70 and 64 in °F.
         - days: [mon, tue, wed, thu, fri]
           time: "06:30"
           temperature: 21
