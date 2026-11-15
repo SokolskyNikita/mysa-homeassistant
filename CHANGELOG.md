@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 (2026-11-15)
 
 - Round and check every written temperature through mysa-client's
   `SetpointRules`: climate targets, Central HVAC heat/cool pairs, holds, each
