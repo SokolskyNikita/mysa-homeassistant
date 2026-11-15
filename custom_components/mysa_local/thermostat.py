@@ -732,11 +732,14 @@ class Thermostat:
         unit: Unit,
         strict: bool,
         current: float | None = None,
+        step: bool = False,
     ) -> Setpoint:
         """One target for ``mode``, rounded and checked; errors in ``unit``.
 
-        ``current`` is the target the card is stepping from (°C), for taps;
-        re-picking its shown whole °F raises ``Unchanged``.
+        ``current`` is the target now shown (°C); re-picking its whole °F
+        raises ``Unchanged``. ``step`` says the value is a + or - on the card,
+        which always moves the setpoint (``tap_value``); without it the value
+        goes to its nearest setpoint, so repeating a request settles.
         """
         if isinstance(value, Setpoint):
             return value
@@ -744,7 +747,9 @@ class Thermostat:
         if repicks_label(float(value), unit, current):
             assert current is not None
             raise Unchanged(rules.setpoint(mode, current, strict=False))
-        value, unit_in = tap_value(rules.range_for(mode), float(value), unit, current)
+        value, unit_in = float(value), unit
+        if step:
+            value, unit_in = tap_value(rules.range_for(mode), value, unit, current)
         try:
             return rules.setpoint(mode, value, unit=unit_in, strict=strict)
         except SetpointError as err:
@@ -758,6 +763,7 @@ class Thermostat:
         unit: Unit,
         strict: bool,
         current: tuple[float | None, float | None] | None = None,
+        step: bool = False,
     ) -> tuple[Setpoint, Setpoint]:
         """A heat/cool pair; the gap is always checked, whatever ``strict`` says.
 
@@ -779,10 +785,10 @@ class Thermostat:
                     sides.append(now)
                     kept += 1
                 else:
-                    limits = rules.range_for(kind)
-                    sides.append(
-                        to_celsius(*tap_value(limits, float(value), unit, now))
-                    )
+                    side: tuple[float, Unit] = (float(value), unit)
+                    if step:
+                        side = tap_value(rules.range_for(kind), *side, now)
+                    sides.append(to_celsius(*side))
             if kept == 2:
                 raise Unchanged(None)
             low, high = sides
@@ -815,13 +821,15 @@ class Thermostat:
         unit: Unit = "C",
         strict: bool = True,
         tap: bool = False,
+        step: bool = False,
     ) -> dict[str, Setpoint]:
         """Set mode and associated targets as one validated library operation.
 
         Returns the written targets by name (temperature, low, high), so the
-        caller can tell the owner about any value the rules clamped. ``tap``
-        makes a whole-°F card step always move the setpoint (``tap_value``),
-        and re-picking a target's shown whole °F leaves it as it is.
+        caller can tell the owner about any value the rules clamped. With
+        ``tap``, re-picking a target's shown whole °F leaves it as it is;
+        ``step`` (a + or - on the card) also makes a whole-°F step always
+        move the setpoint (``tap_value``).
         """
         written: dict[str, Setpoint] = {}
         if mode is None and temperature is None and low is None and high is None:
@@ -841,6 +849,7 @@ class Thermostat:
                     unit=unit,
                     strict=strict,
                     current=state.setpoint_for(target_mode) if state else None,
+                    step=step,
                 )
             if low is not None and high is not None:
                 written["low"], written["high"] = self._heat_cool(
@@ -853,6 +862,7 @@ class Thermostat:
                         if state and state.mode == Mode.AUTO
                         else None
                     ),
+                    step=step,
                 )
             elif low is not None or high is not None:
                 raise ValueError("Supply both low and high setpoints in heat/cool mode")
@@ -960,18 +970,20 @@ class Thermostat:
         unit: Unit = "C",
         strict: bool = True,
         tap: bool = False,
+        step: bool = False,
     ) -> Setpoint:
         """Change the setpoint using the latest serialized operating mode.
 
         A plain number in ``unit`` goes through the rules for the mode the
-        write is made in; ``strict=False`` clamps instead of refusing, and
-        ``tap`` makes a whole-°F card step always move (``tap_value``), and
-        re-picking the shown whole °F sends nothing (``repicks_label``).
+        write is made in; ``strict=False`` clamps instead of refusing. With
+        ``tap``, re-picking the shown whole °F sends nothing
+        (``repicks_label``); ``step`` (a + or - on the card) also makes a
+        whole-°F step always move (``tap_value``).
         Returns what was written.
         """
         if self.basic_cloud_only:
             written = await self.async_set_basic_temperature(
-                temperature=value, unit=unit, strict=strict, tap=tap
+                temperature=value, unit=unit, strict=strict, tap=tap, step=step
             )
             return written["temperature"]
         result: list[Setpoint] = []
@@ -985,7 +997,7 @@ class Thermostat:
             # Step from the shown target only when the mode isn't changing.
             current = self.target_temperature if tap and mode == self.mode else None
             setpoint = self._setpoint(
-                mode, value, unit=unit, strict=strict, current=current
+                mode, value, unit=unit, strict=strict, current=current, step=step
             )
             result[:] = [setpoint]
             celsius = setpoint.celsius

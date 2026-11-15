@@ -19,7 +19,7 @@ from homeassistant.const import (
     EVENT_STATE_REPORTED,
     UnitOfTemperature,
 )
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import Context, HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util.unit_system import METRIC_SYSTEM, US_CUSTOMARY_SYSTEM
@@ -27,7 +27,10 @@ from mysa_client.cloud import fahrenheit_label
 from mysa_client.cloud.const import API_BASE
 from mysa_client.homekit import Field
 import pytest
-from pytest_homeassistant_custom_component.common import async_capture_events
+from pytest_homeassistant_custom_component.common import (
+    MockUser,
+    async_capture_events,
+)
 
 from custom_components.mysa_local.const import DOMAIN
 
@@ -66,13 +69,28 @@ def report(cloud: FakeCloud, section: str, **fields: Any) -> None:
     cloud.state[section].setdefault("desired", {}).update(fields)
 
 
-async def call(hass: HomeAssistant, domain: str, service: str, **data: Any) -> None:
-    await hass.services.async_call(domain, service, data, blocking=True)
+async def call(
+    hass: HomeAssistant,
+    domain: str,
+    service: str,
+    *,
+    context: Context | None = None,
+    **data: Any,
+) -> None:
+    await hass.services.async_call(
+        domain, service, data, blocking=True, context=context
+    )
     await hass.async_block_till_done()
 
 
-async def set_temperature(hass: HomeAssistant, **data: Any) -> None:
-    await call(hass, "climate", "set_temperature", entity_id=CLIMATE, **data)
+async def set_temperature(
+    hass: HomeAssistant, *, user: MockUser | None = None, **data: Any
+) -> None:
+    """Set a target; with ``user``, as that person on the card would."""
+    context = Context(user_id=user.id) if user else None
+    await call(
+        hass, "climate", "set_temperature", context=context, entity_id=CLIMATE, **data
+    )
 
 
 def attrs(hass: HomeAssistant) -> dict[str, Any]:
@@ -757,6 +775,7 @@ async def test_ac_cool_range_comes_from_its_record(
 async def test_fahrenheit_taps_always_move_with_a_coarse_step(
     hass: HomeAssistant,
     cloud: FakeCloud,
+    hass_admin_user: MockUser,
     *,
     current: float,
     requested: int,
@@ -767,14 +786,67 @@ async def test_fahrenheit_taps_always_move_with_a_coarse_step(
     await setup_entry(hass, ac_in_cool(cloud, current))
     if requested > 86:
         with pytest.raises(ServiceValidationError):
-            await set_temperature(hass, temperature=requested)
+            await set_temperature(hass, user=hass_admin_user, temperature=requested)
         assert cloud.updates == []
         return
+    await set_temperature(hass, user=hass_admin_user, temperature=requested)
+    expected = (
+        [] if written is None else [{"source": 3, "targetCool": {"setpoint": written}}]
+    )
+    assert cloud.updates == expected
+
+
+@pytest.mark.parametrize(
+    ("current", "requested", "written"),
+    [
+        # 74 °F is 23.3 °C: its nearest setpoint is the current one, re-sent.
+        (23, 74, 23.0),
+        # From 24 °C the nearest setpoint to 74 °F is still 23 °C.
+        (24, 74, 23.0),
+        # The label already shown is kept, as for a person.
+        (23, 73, None),
+        (23, 80, 27.0),
+    ],
+)
+async def test_automation_targets_go_to_the_nearest_setpoint(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    *,
+    current: float,
+    requested: int,
+    written: float | None,
+) -> None:
+    """A call with no person behind it isn't a + or -, so it is never nudged."""
+    use_units(hass, True)
+    await setup_entry(hass, ac_in_cool(cloud, current))
     await set_temperature(hass, temperature=requested)
     expected = (
         [] if written is None else [{"source": 3, "targetCool": {"setpoint": written}}]
     )
     assert cloud.updates == expected
+
+
+async def test_automation_repeating_a_target_settles(
+    hass: HomeAssistant, cloud: FakeCloud, hass_admin_user: MockUser
+) -> None:
+    """Re-asserting 74 °F used to flip a 1 °C-step AC between 23 and 24 °C."""
+    use_units(hass, True)
+    await setup_entry(hass, ac_in_cool(cloud, 24))
+    settled = {"source": 3, "targetCool": {"setpoint": 23.0}}
+    for _ in range(4):
+        await set_temperature(hass, temperature=74)
+    assert cloud.updates == [settled] * 4
+    # A script or automation started by a person has a parent context.
+    child = Context(user_id=hass_admin_user.id, parent_id="01JPARENT")
+    await call(
+        hass,
+        "climate",
+        "set_temperature",
+        context=child,
+        entity_id=CLIMATE,
+        temperature=74,
+    )
+    assert cloud.updates == [settled] * 5
 
 
 @pytest.mark.parametrize(
@@ -845,7 +917,7 @@ async def test_central_hvac_mode_change_with_the_shown_label_still_writes(
 
 
 async def test_central_hvac_pair_taps_move_each_side(
-    hass: HomeAssistant, cloud: FakeCloud
+    hass: HomeAssistant, cloud: FakeCloud, hass_admin_user: MockUser
 ) -> None:
     """The heat/cool pair steps each side with its own (1 °C) step."""
     use_units(hass, True)
@@ -857,7 +929,9 @@ async def test_central_hvac_pair_taps_move_each_side(
     await setup_entry(hass, hub_entry(subentries=[sub]))
     assert (attrs(hass)["target_temp_low"], attrs(hass)["target_temp_high"]) == (68, 75)
     # + on the low end asks for 69 °F (20.6 °C), which rounds back to 20 °C.
-    await set_temperature(hass, target_temp_low=69, target_temp_high=75)
+    await set_temperature(
+        hass, user=hass_admin_user, target_temp_low=69, target_temp_high=75
+    )
     assert cloud.updates[-1] == {
         "source": 3,
         "targetAuto": {"heatSetpoint": 21.0, "coolSetpoint": 24.0},

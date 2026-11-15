@@ -315,9 +315,11 @@ class MysaClimate(MysaEntity, ClimateEntity):
         Values arrive in the native unit. The rules clamp a value outside the
         thermostat's range (HA has checked the card's bounds already, so that
         only happens when a mode change narrows them) and log the change. In
-        °F a step to the next whole degree always moves the setpoint, even
-        when the thermostat's step is coarser (``tap_value``), and picking the
-        whole °F a target already shows leaves it unchanged.
+        °F, picking the whole °F a target already shows leaves it unchanged,
+        and a person's step to the next whole degree always moves the
+        setpoint, even when the thermostat's step is coarser (``tap_value``).
+        An automation's value goes to its nearest setpoint instead, so one
+        that keeps asking for the same target settles on it.
         """
         unit = self.owner_unit
         hvac_mode = kwargs.get(ATTR_HVAC_MODE)
@@ -334,6 +336,16 @@ class MysaClimate(MysaEntity, ClimateEntity):
         # Taps and re-picked labels relate to the target of the current mode;
         # a mode change in the same call has no current target to keep.
         tap = new_mode is None or new_mode == self.thermostat.mode
+        # Only a person steps with + and -. Home Assistant gives their calls a
+        # user and no parent; automations and the scripts they run have neither
+        # or a parent.
+        context = self._context
+        step = (
+            tap
+            and context is not None
+            and context.user_id is not None
+            and context.parent_id is None
+        )
         async with self._service_call():
             if self.thermostat.basic_cloud_only:
                 written = await self.thermostat.async_set_basic_temperature(
@@ -341,6 +353,7 @@ class MysaClimate(MysaEntity, ClimateEntity):
                     unit=unit,
                     strict=False,
                     tap=tap,
+                    step=step,
                     **requested,
                 )
             else:
@@ -351,7 +364,7 @@ class MysaClimate(MysaEntity, ClimateEntity):
                     written[
                         "temperature"
                     ] = await self.thermostat.async_set_temperature(
-                        temperature, unit=unit, strict=False, tap=tap
+                        temperature, unit=unit, strict=False, tap=tap, step=step
                     )
         for name, setpoint in written.items():
             if setpoint.clamped:

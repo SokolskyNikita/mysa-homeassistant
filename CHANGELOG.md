@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Fix a Fahrenheit target flipping between two setpoints on a thermostat with a
+  1 °C step (a Mini-Split AC, some Central HVAC ranges): an automation that kept
+  setting 74 °F alternated between 23 and 24 °C. Only a person's + or − now
+  always moves the setpoint; an automation's value goes to its nearest setpoint.
+  Thermostats with a 0.5 °C step were not affected.
+
 ## 0.9.0 (2026-11-15)
 
 - Round and check every written temperature through mysa-client's
