@@ -69,6 +69,12 @@ async def test_cloud_hold_mode_and_commands(
     """Hold payload and immediate commands preserve OFF and the selected target."""
     cloud.state["modes"]["reported"]["mode"] = initial_mode
     cloud.state["targetCool"] = {"reported": {"setpoint": 24}}
+    # A thermostat that offers cool, so a cool hold is allowed.
+    cloud.capabilities["features"]["climateControl"]["mode"]["validValues"] = [
+        "off",
+        "heat",
+        "cool",
+    ]
     cloud.schedules = [{"id": "existing", "deviceIds": [DEVICE_ID]}]
     entry = hub_entry(subentries=[thermostat_subentry(pairing=None)])
     await setup_entry(hass, entry)

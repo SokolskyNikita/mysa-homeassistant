@@ -594,6 +594,9 @@
     "cool_setpoint_above_maximum": {
       "message": "The cooling target {requested} is above the highest the thermostat allows, {limit}."
     },
+    "mode_not_supported": {
+      "message": "{name} doesn't support {mode} mode, so a hold or schedule event can't use it. Its modes are: {modes}."
+    },
     "setpoint_mode_unsupported": {
       "message": "A hold or schedule event in heat/cool mode can't carry a temperature. Leave the temperature out, or use heat or cool."
     },
@@ -729,7 +732,7 @@
         },
         "hvac_mode": {
           "name": "Mode",
-          "description": "Mode to hold. Defaults to the current mode."
+          "description": "Mode to hold, one of the modes the thermostat offers. Defaults to the current mode."
         },
         "until": {
           "name": "Until",
@@ -747,7 +750,7 @@
       "fields": {
         "events": {
           "name": "Events",
-          "description": "List of events, each with days (mon to sun), time (HH:MM), temperature and optionally hvac_mode. Temperatures are in Home Assistant's temperature unit (°C or °F, from your unit system) and are rounded to the thermostat's step."
+          "description": "List of events, each with days (mon to sun), time (HH:MM), temperature and optionally hvac_mode (heat, cool or off, if the thermostat offers it; heat by default). Temperatures are in Home Assistant's temperature unit (°C or °F, from your unit system) and are rounded to the thermostat's step."
         }
       }
     },
