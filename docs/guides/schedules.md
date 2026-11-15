@@ -31,7 +31,9 @@ data:
       temperature: 18
 ```
 
-Days are `mon` through `sun`. Each event accepts `hvac_mode: heat`, `cool` or `off`; the default is `heat`. Temperatures in these custom actions are Celsius. Schedule times use the thermostat's time zone, so check that it matches Home Assistant's.
+Days are `mon` through `sun`. Each event accepts `hvac_mode: heat`, `cool` or `off`; the default is `heat`. Schedule times use the thermostat's time zone, so check that it matches Home Assistant's.
+
+Temperatures in `hold` and `set_schedule` are in Home Assistant's unit (°C or °F) and are rounded to the thermostat's step. Out-of-range values are refused with a message in your unit. An `off` event ignores its temperature. Baseboard V3, Central HVAC and Climate Sensor thermostats can't use these actions.
 
 To hold 22 °C until you resume the schedule:
 

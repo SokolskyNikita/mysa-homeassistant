@@ -90,7 +90,7 @@ limitations, and hardware test steps remain in the
 
 Firmware installation is opt-in. When enabled, the integration calls the client
 once to trigger an update, then polls every 20 seconds for up to six minutes.
-Version 0.5.2 corrected the required empty JSON request body. An accepted trigger
+An accepted trigger
 was observed on an already up-to-date Lite; installing an offered release remains
 unverified. The [firmware validation tracker](implementation/progress.md#mgt-quality-04)
 owns HA completion criteria, and the client's [firmware reference](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/firmware-and-connectivity.md#firmware)

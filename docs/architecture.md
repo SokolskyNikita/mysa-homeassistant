@@ -84,7 +84,10 @@ The integration layer owns lifecycle, policy, persistence, and presentation:
   scheduling, and option changes. See the [MQTT guide](mqtt.md).
 - `thermostat.py` adapts the client `DeviceView` to HA climate attributes and
   entity state, while supplying current local/cloud/MQTT values and freshness
-  policy.
+  policy. It builds and caches the client's `SetpointRules` for each
+  thermostat, and every temperature write goes through them.
+- `temperature.py` converts setpoints to the owner's unit (whole °F rounded
+  halfway up, or °C) and words setpoint errors in that unit.
 - `command_router.py` adapts HA's local session and cloud callbacks to the
   client's optional `CommandRouter`. The runtime serializes writes and
   reconciles late local outcomes; HA owns adapter lifecycle and error wording.
@@ -101,8 +104,9 @@ The integration layer owns lifecycle, policy, persistence, and presentation:
 Entities should ask the thermostat layer for semantic operations. They should
 not construct Mysa request dictionaries, decode device bitfields, or refer to
 HomeKit characteristic identifiers. The client owns those reusable device
-rules; HA owns climate-unit conversion for the UI, service validation and
-presentation, polling choices, and translating outcomes to entities.
+rules, and the client's `SetpointRules` rounds and validates every written
+temperature. HA owns presentation in the owner's unit, error wording, polling
+choices, and translating outcomes to entities.
 
 Cloud response models remain public so standalone callers and HA can inspect
 the same parsed observations and capability data. Client reconciliation and

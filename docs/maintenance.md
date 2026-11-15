@@ -19,8 +19,7 @@ references are maintained in [`mysa-client`](https://github.com/SokolskyNikita/m
 | MQTT controls, session lifecycle, HA source preferences, fallback, and hardware evidence | [MQTT guide](mqtt.md) |
 | Current recorded HA status, acceptance criteria, and validation gaps | [Management inventory](implementation/progress.md) |
 | Product exclusions, scope decisions, and transport boundaries | [Feature scope](cloud-scope.md) |
-| Legacy C-* and HK-* bookmarks | [Cloud ID lookup](implementation/cloud.md) and [HomeKit ID lookup](implementation/homekit.md); link new references directly to their destinations |
-| Historical extraction design | [Client extraction record](history/client-extraction.md) |
+| Legacy C-* bookmarks | [Cloud ID lookup](implementation/cloud.md); link new references directly to their destinations |
 | Public client APIs, MQTT authorization and wire protocol, endpoint/payload details, firmware and provisioning research | [Client protocol index](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md) |
 | Raw API method coverage | [Client API inventory](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/api-coverage.md) |
 | Sanitized cloud/MQTT exchanges and protocol tools | [Client examples](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/README.md) and [tools](https://github.com/SokolskyNikita/mysa-client/tree/main/tools) |
@@ -61,16 +60,16 @@ git diff --check
 ```
 
 The checks cover all root reader Markdown (including forwarding pages), `docs/`,
-and Markdown under `custom_components/`. Dotfiles such as `.impeccable.md` are
-editor context and excluded. Relative links and same-repository GitHub `main`
+and Markdown under `custom_components/`. Relative links and same-repository GitHub `main`
 URLs are checked for targets and anchors; directory links resolve their README.
 Maintained pages must be reachable from both the root README and docs index.
 Only pages marked `<!-- compatibility-forwarder -->` may be unreachable; keep
 those pages limited to directing old bookmarks to current content.
 
-`tools/docs_anchors.json` records pre-reorganization page/section contracts.
-Do not remove entries to make a failed move pass. Keep an old anchor with a
-link to its maintained destination. Add new public bookmarks when reorganizing
+`tools/docs_anchors.json` records published page/section contracts. Don't
+remove entries to make a failed move pass: keep an old anchor with a link to
+its maintained destination. Remove a page's entry only when the page itself is
+deliberately retired. Add new public bookmarks when reorganizing
 newly published pages. The inventory's integration version must match the
 manifest; review it on releases without relabeling old hardware evidence as new.
 Its status-assessment date remains separate from documentation maintenance.

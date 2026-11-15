@@ -14,16 +14,16 @@ Powered by [`mysa-client`](https://github.com/SokolskyNikita/mysa-client). See [
 
 ## Supported models
 
-Only the Baseboard Lite has been tested on hardware. Other models are supported in code with the limits below; their controls still need hardware testing.
+The maintainer has tested only the Baseboard Lite. Community reports are noted per model; other controls still need hardware testing.
 
 | Model | Model IDs | Status |
 |---|---|---|
 | Baseboard Lite | `BB-V2-0-L` | Hardware-tested on firmware 3.17.5.13; cloud setpoint/mode application differed between the two tested units |
-| Other Baseboard V1 / V2 models | `BB-V1-*`, `BB-V2-*` | Supported in code; untested |
-| In-Floor | `INF-V1-0` | Supported in code; untested |
+| Other Baseboard V1 / V2 models | `BB-V1-*`, `BB-V2-*` | Supported in code. V2: a community owner hit the °F setpoint rejection that 0.9.0 fixes ([#32](https://github.com/SokolskyNikita/mysa-homeassistant/issues/32)). V1: discovery fixed in 0.9.0; some units on firmware 3.17.5.11 reboot during pairing. One reporter paired after a full reset (hold up and down about 10 seconds, set up again in the Mysa app) with Wi-Fi temporarily 2.4 GHz-only ([#26](https://github.com/SokolskyNikita/mysa-homeassistant/issues/26)) |
+| In-Floor | `INF-V1-0` | Community report on firmware 3.17.6.5: mode changes work locally; °F setpoints worked once rounded to the step, which 0.9.0 does ([#32](https://github.com/SokolskyNikita/mysa-homeassistant/issues/32)) |
 | Mini-Split AC | `AC-V1-0` | Supported in code; untested |
 | Central HVAC | `ST-V1-0`, `ST-V1`, `LV` | Experimental cloud support after setup in the Mysa app |
-| Baseboard V3 | `BB-V3-0` | Experimental cloud support after setup in the Mysa app |
+| Baseboard V3 | `BB-V3-0` | Experimental cloud support after setup in the Mysa app. Community report on firmware 5.1.15: import, readings and setpoint changes made in the Mysa app work; writes from Home Assistant untested ([#30](https://github.com/SokolskyNikita/mysa-homeassistant/issues/30)) |
 | Climate Sensor | `CS-V1-0`, `CS-V1` | Experimental cloud readings; no climate entity |
 
 For the experimental models, finish setup in the Mysa app, then sign in here and import them from your account. V3 provides basic heat/off and setpoint control. Central HVAC adds heat/cool auto targets and supported fan controls. Climate Sensor provides readings only. Controls depend on the returned capabilities. Schedules/holds, energy/runtime, sensor linking and newer-model OTA are deferred. See [experimental cloud support and the V3 test guide](docs/new-cloud-models.md).

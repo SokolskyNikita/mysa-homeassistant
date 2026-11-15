@@ -64,34 +64,10 @@ rules.
 
 ## Hardware validation and limits
 
-On 2026-10-12, Mysa Local 0.6.0 with `mysa-client` 0.1.2 was installed on Home
-Assistant 2026.10.1 and validated with two Baseboard Lite thermostats
-(`BB-V2-0-L`, firmware `3.17.5.13`). Both reported MQTT humidity and numeric
-duty cycle, and both values showed `source: mqtt`. The release added two duty
-cycle sensors, increasing the active entity count from 42 to 44. Existing
-configuration, sign-in, pairings, entity IDs, modes, and setpoints were
-preserved.
-
-The per-thermostat switch was tested in Home Assistant. Turning one device off
-removed only its MQTT requests and subscription; that device used cloud
-fallback while the other kept MQTT readings. Turning it back on restored MQTT
-readings for both. In the observation after that toggle, all 14 Home Assistant
-snapshots over 216 seconds showed fresh MQTT humidity and duty cycle for both,
-with zero dropped events. Snapshots were taken 15 seconds apart; that is the
-validator's sampling interval, not a guarantee of message cadence. A later
-final HACS-release install and Core restart reconnected both devices
-automatically. Their final numeric duty-cycle readings were 100% on one device
-and 0% on the other.
-
-An earlier development-machine probe had gaps longer than the 30-second
-freshness window and a connection that stopped acknowledging requests while
-still reporting connected. The deployed observation confirms sustained fresh
-readings for this setup over the measured window, but does not establish
-long-term availability. The integration expires MQTT readings after 30 seconds
-and falls back per field to fresh cloud data when available; this protects
-against stale values during a quiet or disconnected session. Hardware
-validation currently covers only these two Baseboard Lite devices; behavior on
-other models remains unverified.
+MQTT readings were validated in Home Assistant on two Baseboard Lite
+thermostats (`BB-V2-0-L`), including the per-thermostat switch; other models
+are unverified. Long-term MQTT availability is unverified, so the integration
+expires readings after 30 seconds and falls back per field to fresh cloud data.
 
 ## Protocol reference and older links
 

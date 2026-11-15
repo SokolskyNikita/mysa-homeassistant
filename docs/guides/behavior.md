@@ -17,5 +17,3 @@ With Live mode during local outages enabled (the default), a lost LAN connection
 The Connection path sensor shows the active route. If a paired thermostat's LAN path stays down for 15 minutes, a repair notice appears and clears after recovery. Cloud errors and rate limits cause polling to back off; writes are spaced apart.
 
 MQTT has its own receipt-time freshness window and per-field fallback, documented in [MQTT values and fallback](../mqtt.md#values-and-fallback). To investigate unavailable readings, see [troubleshooting](troubleshooting.md).
-
-For maintenance, the integration supplies these windows in [measurement_max_age](../../custom_components/mysa_local/cloud_coordinator.py#L521); the default comes from the pinned client dependency.

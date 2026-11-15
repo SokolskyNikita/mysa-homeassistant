@@ -8,8 +8,12 @@ Complete Wi-Fi setup, account enrollment and equipment configuration in Mysa's
 app first. Then sign in through Mysa Local and select the devices. No helper,
 credential copy, HomeKit pairing or Matter setup is needed for cloud control.
 
-These models have **experimental, app-derived support**. They have not been
-validated on hardware here. The client-side source fields, enum encodings,
+These models have **experimental, app-derived support**. The maintainer has
+not tested them on hardware. One community report covers a V3 on firmware
+5.1.15 ([#30](https://github.com/SokolskyNikita/mysa-homeassistant/issues/30)):
+import, temperature, humidity, mode, setpoint and HVAC action matched the Mysa
+app, and a setpoint change made in the app reached HA within one poll. Commands
+from HA, display controls and cloud outages were not tested. The client-side source fields, enum encodings,
 stage decoding, fan-program data, and evidence are in the
 [`mysa-client newer-model API reference`](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/reference/protocol/new-cloud-models.md).
 This page focuses on Home Assistant behavior and testing.
@@ -77,7 +81,7 @@ by a particular firmware.
 ## First V3 hardware check
 
 1. Set up V3 in Mysa's app and verify its basic controls there.
-2. Install Mysa Local 0.5.2 or later, sign in and import V3. Confirm it shows
+2. Install Mysa Local 0.9.0 or later, sign in and import V3. Confirm it shows
    experimental cloud support and does not ask for HomeKit pairing.
 3. Compare temperature, humidity, current mode and target against the app.
    Record the model, firmware, integration and HA versions, and original
@@ -100,5 +104,7 @@ by a particular firmware.
 See the [complete capture instructions](guides/troubleshooting.md#capture-a-command-problem)
 for retention limits and the distinction between stored, reported and applied.
 
-Real V3 feedback is the next validation step. Central HVAC and Climate Sensor
-will still need their own hardware checks afterward.
+V3 import and readings are reported working
+([#30](https://github.com/SokolskyNikita/mysa-homeassistant/issues/30)).
+Commands started from HA on V3, Central HVAC and Climate Sensor still need
+hardware checks.
