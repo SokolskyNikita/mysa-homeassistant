@@ -27,9 +27,6 @@
 | [Documentation maintenance](maintenance.md) | Ownership and checks |
 | [Release history](../CHANGELOG.md) | Versioned changes |
 
-Legacy [cloud IDs](implementation/cloud.md) are a lookup table for old issue
-links, not a separate status inventory.
-
 ## Mysa API and protocol references
 
 The [client documentation index](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md)
