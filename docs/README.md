@@ -14,6 +14,7 @@
 | Enable live humidity and heating duty readings | [MQTT telemetry](mqtt.md) |
 | Test a model nobody has reported on | [Debug and report a problem](guides/debugging.md#test-a-model-nobody-has-reported-on) |
 | Capture logs and report a problem | [Debug and report a problem](guides/debugging.md) |
+| Compare Mysa Local with other open-source Mysa projects | [Other Mysa clients](other-clients.md) |
 
 ## Home Assistant behavior
 

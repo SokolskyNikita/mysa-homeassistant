@@ -60,14 +60,7 @@ After restarting, follow the [setup guide](docs/guides/setup.md).
 
 ## Other integration options
 
-| Option | Control path | Requirements |
-|---|---|---|
-| Mysa Local | HomeKit on the LAN, with optional HTTPS cloud features and fallback | HomeKit code for local pairing; Mysa account for cloud features |
-| [HomeKit Device](https://www.home-assistant.io/integrations/homekit_controller/) | Local HomeKit; available controls depend on the services the thermostat exposes | Built into HA; HomeKit pairing |
-| [Mysa_HA](https://github.com/kgelinas/Mysa_HA) | Mysa's cloud through MQTT and HTTP | Custom HA integration, Mysa credentials and internet access |
-| [mysa2mqtt](https://github.com/bourquep/mysa2mqtt/tree/main/packages/mysa2mqtt) | Mysa's cloud through a bridge to your MQTT broker and HA | Node.js or Docker, an MQTT broker, Mysa credentials and internet access |
-
-Check each project's model and feature list before switching. Mysa Local's hardware testing is limited to the Lite; other integrations may expose controls it does not, including In-Floor sensor data.
+Mysa Local controls thermostats over HomeKit on your network, with optional cloud features. Other open-source projects use Mysa's cloud, a separate MQTT bridge, or Mysa's official API, and some support models or controls that Mysa Local does not. [Other Mysa clients](docs/other-clients.md) lists them with what each one does.
 
 ## Credits and license
 
