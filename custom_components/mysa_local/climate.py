@@ -138,7 +138,11 @@ class MysaClimate(MysaEntity, ClimateEntity):
                 features |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
         else:
             features = ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
-            if self.thermostat.mode not in (Mode.FAN_ONLY, Mode.DRY, Mode.AUTO):
+            if (
+                self.thermostat.mode not in (Mode.FAN_ONLY, Mode.DRY, Mode.AUTO)
+                # A Mini-Split AC's heat/cool target, once the cloud reports it.
+                or self.thermostat.reports_auto_target
+            ):
                 features |= ClimateEntityFeature.TARGET_TEMPERATURE
         # Mini-Split AC only, in modes where its remote has them.
         if self.thermostat.fan_speeds or self.thermostat.hvac_fan_modes:

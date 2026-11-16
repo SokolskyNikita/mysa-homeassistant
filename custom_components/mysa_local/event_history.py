@@ -194,34 +194,6 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def error_category(error: BaseException | None) -> str:
-    """Classify without ever formatting an exception or its arguments."""
-    from mysa_client.cloud import (
-        MysaApiError,
-        MysaAuthError,
-        MysaConnectionError,
-        MysaNotFoundError,
-        MysaRateLimitError,
-    )
-    from mysa_client.homekit.exceptions import (
-        HomeKitAuthenticationError,
-        HomeKitConnectionError,
-        HomeKitWriteRejectedError,
-    )
-
-    if isinstance(error, MysaAuthError | HomeKitAuthenticationError):
-        return "authentication_failed"
-    if isinstance(error, MysaRateLimitError):
-        return "rate_limited"
-    if isinstance(error, MysaNotFoundError):
-        return "not_found"
-    if isinstance(error, MysaApiError | HomeKitWriteRejectedError):
-        return "request_rejected"
-    if isinstance(error, MysaConnectionError | HomeKitConnectionError | OSError):
-        return "connection_error"
-    return "unexpected_error"
-
-
 def _scalar(value: Any) -> Any:
     if value is None or isinstance(value, bool):
         return value

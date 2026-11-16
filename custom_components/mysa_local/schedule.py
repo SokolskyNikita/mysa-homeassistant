@@ -320,7 +320,7 @@ async def async_set_schedule(
             **event,
             "hvac_mode": supported_mode(
                 thermostat, event.get("hvac_mode", HVACMode.HEAT)
-            ).name,
+            ),
         }
         for event in events
     ]

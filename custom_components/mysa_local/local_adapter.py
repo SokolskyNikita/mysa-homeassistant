@@ -11,6 +11,7 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 from mysa_client.homekit import (
+    ESSENTIAL_FIELDS,
     AccessoryInfo,
     CharacteristicInfo,
     Field,
@@ -35,15 +36,6 @@ DISPLAY_UNITS = Field.DISPLAY_UNIT
 # Lux from the optional HomeKit Light Sensor service (mysa-client#29). None
 # with a mysa-client release that predates the field.
 AMBIENT_LIGHT: Field | None = Field.__members__.get("AMBIENT_LIGHT")
-
-_ESSENTIAL_FIELDS = frozenset(
-    {
-        CURRENT_TEMPERATURE,
-        TARGET_TEMPERATURE,
-        CURRENT_STATE,
-        TARGET_STATE,
-    }
-)
 
 CONNECTION_ERRORS: tuple[type[BaseException], ...] = (
     HomeKitConnectionError,
@@ -181,25 +173,21 @@ class LocalThermostat:
             if not self.ready:
                 self.__set_available(False, "HomeKit missing required fields")
         essential_error = any(
-            field in _ESSENTIAL_FIELDS for field in event.failed_fields
+            field in ESSENTIAL_FIELDS for field in event.failed_fields
         )
         if essential_error:
             self.__set_available(False, self.__format_event_error(event))
             return
 
-        if (
-            self.ready
-            and not (_ESSENTIAL_FIELDS & self.__device.failed_fields.keys())
-            and (
-                event.reconnected
-                or any(field in _ESSENTIAL_FIELDS for field in event.values)
-            )
+        if self.__device.healthy and (
+            event.reconnected
+            or any(field in ESSENTIAL_FIELDS for field in event.values)
         ):
             self.__set_available(True)
         # An optional field (the light sensor) can fail or recover with an
         # unchanged value; its entity still needs to update.
         optional_failures = frozenset(
-            self.__device.failed_fields.keys() - _ESSENTIAL_FIELDS
+            self.__device.failed_fields.keys() - ESSENTIAL_FIELDS
         )
         failures_changed = optional_failures != self.__optional_failures
         self.__optional_failures = optional_failures
@@ -244,13 +232,13 @@ class LocalThermostat:
             self.__set_available(False, str(error) or type(error).__name__)
             return
         if not self.ready:
-            missing = _ESSENTIAL_FIELDS - self.__device.supported_fields
+            missing = ESSENTIAL_FIELDS - self.__device.supported_fields
             self.__set_available(
                 False,
                 "HomeKit missing required fields: "
                 + ", ".join(sorted(field.value for field in missing)),
             )
-        elif not (_ESSENTIAL_FIELDS & self.__device.failed_fields.keys()):
+        elif self.__device.healthy:
             self.__set_available(True)
 
     async def _async_scheduled_poll(self, _now: datetime | None = None) -> None:
@@ -269,7 +257,7 @@ class LocalThermostat:
 
             try:
                 await self.async_read(
-                    tuple(self.__device.supported_fields | _ESSENTIAL_FIELDS),
+                    tuple(self.__device.supported_fields | ESSENTIAL_FIELDS),
                     timeout=LOCAL_READ_TIMEOUT * 3,
                 )
             except LOCAL_ERRORS as error:
@@ -301,7 +289,7 @@ class LocalThermostat:
     @callback
     def mark_available(self) -> None:
         """Mark healthy after a successful router read-back."""
-        if not (_ESSENTIAL_FIELDS & self.__device.failed_fields.keys()) and self.ready:
+        if self.__device.healthy:
             self.__set_available(True)
 
     @callback

@@ -73,10 +73,15 @@ The integration layer owns lifecycle, policy, persistence, and presentation:
 - `homekit_adapter.py` connects Home Assistant discovery, controller, and
   pairing lifecycle to the HomeKit protocol package.
 - `local_adapter.py` adapts the HomeKit device to Home Assistant polling,
-  subscriptions, availability, and shutdown.
+  subscriptions, availability, and shutdown. Whether the device is healthy
+  (`HomeKitDevice.healthy`) and which fields are essential (`ESSENTIAL_FIELDS`)
+  come from the client.
 - `cloud_coordinator.py` schedules cloud refreshes and retries. It delegates
-  Mysa field reconciliation, command construction/validation, and pending
-  confirmation to client helpers, then adapts typed state to HA.
+  Mysa field reconciliation, command construction/validation, pending
+  confirmation, today's usage window (`MysaClient.get_usage_today`), error
+  categories and whether a failed write's outcome is unknown
+  (`mysa_client.runtime.errors`) to client helpers, then adapts typed state to
+  HA. HA loads the thermostat's time zone off the event loop.
 - The account runtime owns one MQTT session for account thermostats selected by
   the global and per-thermostat options. It delegates field filtering,
   receipt-time freshness, quiet-stream requests, and renewal deadlines to the
@@ -85,7 +90,8 @@ The integration layer owns lifecycle, policy, persistence, and presentation:
 - `thermostat.py` adapts the client `DeviceView` to HA climate attributes and
   entity state, while supplying current local/cloud/MQTT values and freshness
   policy. It builds and caches the client's `SetpointRules` for each
-  thermostat, and every temperature write goes through them.
+  thermostat (with its model family), and every temperature write goes through
+  them. The HomeKit-to-cloud mode maps come from `mysa_client.runtime.state`.
 - `temperature.py` converts setpoints to the owner's unit (whole °F rounded
   halfway up, or °C) and words setpoint errors in that unit.
 - `command_router.py` adapts HA's local session and cloud callbacks to the

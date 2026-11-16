@@ -19,7 +19,7 @@ from mysa_client.cloud.reconciliation import reconcile
 from mysa_client.cloud.schedules import WEEKDAYS
 import pytest
 
-from custom_components.mysa_local.cloud_coordinator import _async_local_midnight
+from custom_components.mysa_local.cloud_coordinator import CloudData
 from custom_components.mysa_local.schedule import (
     async_clear_schedule,
     async_set_schedule,
@@ -369,15 +369,42 @@ async def test_delayed_write_readbacks_are_bounded(hass, cloud, freezer, confirm
 
 
 @pytest.mark.parametrize(
-    ("time_zone", "expected"),
+    ("time_zone", "expected", "sent_name"),
     [
-        ("America/Vancouver", datetime(2026, 10, 12, 7, tzinfo=UTC)),
-        ("Not/A_Zone", datetime(2026, 10, 12, tzinfo=UTC)),
-        (None, datetime(2026, 10, 12, tzinfo=UTC)),
+        (
+            "America/Vancouver",
+            datetime(2026, 10, 12, 7, tzinfo=UTC),
+            "America/Vancouver",
+        ),
+        # A zone Home Assistant can't load: the day starts in Home Assistant's
+        # zone, but Mysa still gets the thermostat's own zone name.
+        ("Not/A_Zone", datetime(2026, 10, 12, tzinfo=UTC), "Not/A_Zone"),
+        (None, datetime(2026, 10, 12, tzinfo=UTC), "UTC"),
     ],
 )
-async def test_local_midnight_resolves_zone_without_blocking(hass, time_zone, expected):
+@pytest.mark.usefixtures("controller", "cloud")
+async def test_usage_today_resolves_zone_without_blocking(
+    hass, time_zone, expected, sent_name
+):
     """Unknown or missing thermostat zones fall back to Home Assistant's zone."""
     await hass.config.async_set_time_zone("UTC")
-    midnight = await _async_local_midnight(NOW, time_zone)
-    assert midnight == expected
+    entry = hub_entry()
+    await setup_entry(hass, entry)
+    coordinator = entry.runtime_data.cloud
+    record = DeviceRecord.from_api(
+        DEVICE_ID, {"Id": DEVICE_ID, **({"TimeZone": time_zone} if time_zone else {})}
+    )
+    data = CloudData(records={DEVICE_ID: record})
+    get_usage = AsyncMock(return_value=[])
+    with (
+        patch.object(coordinator.client, "get_usage", get_usage),
+        patch(
+            "custom_components.mysa_local.cloud_coordinator.dt_util.utcnow",
+            return_value=NOW,
+        ),
+    ):
+        await coordinator._fetch_usage(data, DEVICE_ID)
+    get_usage.assert_awaited_once_with(DEVICE_ID, sent_name, expected, NOW)
+    start, seconds = data.usage_today[DEVICE_ID]
+    assert start == expected
+    assert seconds == 0.0

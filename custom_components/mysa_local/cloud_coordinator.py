@@ -53,7 +53,7 @@ from mysa_client.cloud.const import (
     model_family,
 )
 from mysa_client.cloud.device_commands import display_unit_command
-from mysa_client.cloud.observations import MEASUREMENT_MAX_AGE
+from mysa_client.cloud.observations import MEASUREMENT_MAX_AGE, observe
 from mysa_client.cloud.reconciliation import (
     PendingCommand,
     PendingCommandTracker,
@@ -61,7 +61,9 @@ from mysa_client.cloud.reconciliation import (
     pending_command,
     reconcile,
 )
+from mysa_client.cloud.setpoints import SetpointError
 from mysa_client.cloud.validation import validate_cloud_command
+from mysa_client.runtime.errors import error_category, is_outcome_unknown
 
 from .const import (
     CLOUD_CAPABILITIES_INTERVAL,
@@ -78,7 +80,8 @@ from .const import (
     DOMAIN,
     LOGGER,
 )
-from .event_history import EventHistory, error_category
+from .event_history import EventHistory
+from .temperature import setpoint_error
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -94,12 +97,17 @@ class CloudData:
     firmware: dict[str, FirmwareInfo] = field(default_factory=dict)
     usage_today: dict[str, tuple[datetime, float]] = field(default_factory=dict)
     holds: dict[str, dict[str, Any] | None] = field(default_factory=dict)
+    # (reading_time, power_time) of the structured state each thermostat's
+    # health values (free heap, voltage, ...) came from. Reconciliation
+    # carries those values from its structured base without a clock of
+    # their own, so these clocks decide whether they are current.
+    health_clocks: dict[str, tuple[datetime | None, datetime | None]] = field(
+        default_factory=dict
+    )
 
 
-async def _async_local_midnight(now: datetime, time_zone: str | None) -> datetime:
-    tz = await dt_util.async_get_time_zone(time_zone) if time_zone else None
-    local = now.astimezone(tz or dt_util.get_default_time_zone())
-    return local.replace(hour=0, minute=0, second=0, microsecond=0)
+def _health_clock(state: DeviceState) -> tuple[datetime | None, datetime | None]:
+    return state.reading_time, state.power_time
 
 
 def translated_error(key: str, **placeholders: str) -> HomeAssistantError:
@@ -267,6 +275,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             firmware=dict(old.firmware),
             usage_today=dict(old.usage_today),
             holds=dict(old.holds),
+            health_clocks=dict(old.health_clocks),
         )
         ids = sorted(self.device_ids)
 
@@ -305,6 +314,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         now = dt_util.utcnow()
         successful = []
         failures = []
+        structured: dict[str, DeviceState] = {}
         for source, result in zip(requests, results, strict=True):
             previous_health = self.source_health.get(source)
             if isinstance(result, MysaAuthError):
@@ -355,6 +365,8 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
                         reason="unusable",
                     )
                 successful.append(result)
+                if source == "S":
+                    structured = result
         if not successful:
             self._reconcile_pending(data, now)
             raise failures[0]
@@ -362,6 +374,8 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             self._record_observation_issues(
                 dev, [r[dev] for r in successful if dev in r], now
             )
+            if dev in structured:
+                data.health_clocks[dev] = _health_clock(structured[dev])
             data.states[dev] = reconcile(
                 dev,
                 [r[dev] for r in successful if dev in r],
@@ -481,19 +495,17 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
 
     async def _fetch_usage(self, data: CloudData, dev: str) -> None:
         record = data.records.get(dev)
-        now = dt_util.utcnow()
-        midnight = await _async_local_midnight(
-            now, record.time_zone if record else None
+        zone_name = record.time_zone if record else None
+        # async_get_time_zone loads the zone off the event loop. If Home
+        # Assistant can't load the thermostat's zone, the day starts in Home
+        # Assistant's zone but Mysa is still sent the thermostat's zone name.
+        tz = (
+            await dt_util.async_get_time_zone(zone_name) if zone_name else None
+        ) or dt_util.get_default_time_zone()
+        usage = await self.client.get_usage_today(
+            dev, tz, time_zone_name=zone_name, now=dt_util.utcnow()
         )
-        tz_name = str(midnight.tzinfo) if midnight.tzinfo else "UTC"
-        if record and record.time_zone:
-            tz_name = record.time_zone
-        days = await self.client.get_usage(dev, tz_name, midnight, now)
-        seconds = 0.0
-        for day in days:
-            if day.start >= midnight - timedelta(minutes=1) and day.heat_seconds:
-                seconds += day.heat_seconds
-        data.usage_today[dev] = (midnight, seconds)
+        data.usage_today[dev] = (usage.start, usage.heat_seconds)
         self._mark_done(f"usage:{dev}", CLOUD_USAGE_INTERVAL)
 
     # ---- reads and writes used by entities ------------------------------
@@ -538,6 +550,28 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
             obs and obs.fresh(dt_util.utcnow(), self.measurement_max_age(device_id))
         )
 
+    def health_fresh(self, device_id: str, *, power: bool = False) -> bool:
+        """Whether the structured state's health values are current.
+
+        Free heap, core temperature, voltage and maximum current have no
+        observation of their own; they are fresh while the reading of the
+        structured state they came from is. With ``power`` (voltage, which
+        comes from the power section first), a power-section clock must be
+        fresh too: that section can stay unchanged for a day.
+        """
+        clocks = self.data.health_clocks.get(device_id) if self.data else None
+        if clocks is None:
+            return False
+        reading, power_time = clocks
+        now, max_age = dt_util.utcnow(), self.measurement_max_age(device_id)
+
+        def fresh(clock: datetime | None) -> bool:
+            return observe(None, "S", clock.timestamp() if clock else None, now).fresh(
+                now, max_age
+            )
+
+        return fresh(reading) and (not power or power_time is None or fresh(power_time))
+
     def record(self, device_id: str) -> DeviceRecord | None:
         """Settings record of one thermostat."""
         return self.data.records.get(device_id) if self.data else None
@@ -551,6 +585,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         state = await self.client.get_state(device_id)
         if self.data is not None:
             self._record_observation_issues(device_id, [state], dt_util.utcnow())
+            self.data.health_clocks[device_id] = _health_clock(state)
             state = reconcile(
                 device_id,
                 [state],
@@ -792,10 +827,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         except HomeAssistantError as err:
             if command.status != "superseded":
                 command.status = (
-                    "ambiguous"
-                    if isinstance(err.__cause__, MysaConnectionError)
-                    and not isinstance(err.__cause__, MysaRateLimitError)
-                    else "failed"
+                    "ambiguous" if is_outcome_unknown(err.__cause__) else "failed"
                 )
             self._command_event(
                 device_id,
@@ -831,12 +863,28 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
         await self._tracked_write(device_id, call, command)
 
     async def async_set_temperature(
-        self, device_id: str, mode: Mode | None, temperature: Setpoint
+        self,
+        device_id: str,
+        mode: Mode | None,
+        temperature: Setpoint,
+        *,
+        family: ModelFamily | None = None,
     ) -> None:
-        """Set a temperature target using the cloud protocol's mode mapping."""
-        await self.async_execute(
-            device_id, state_command(temperature_changes(mode, temperature))
-        )
+        """Set a temperature target using the cloud protocol's mode mapping.
+
+        ``family`` (default: ``device_family``) decides what a single target
+        in heat/cool means: a Mini-Split AC writes ``targetAuto.setpoint``;
+        any other model refuses it, as a translated validation error.
+        """
+        try:
+            changes = temperature_changes(
+                mode,
+                temperature,
+                family=family if family is not None else self.device_family(device_id),
+            )
+        except SetpointError as err:
+            raise setpoint_error(err, "C") from err
+        await self.async_execute(device_id, state_command(changes))
 
     async def async_set_mode(self, device_id: str, mode: Mode) -> None:
         """Set operating mode through the cloud."""
@@ -943,10 +991,7 @@ class MysaCloudCoordinator(DataUpdateCoordinator[CloudData]):
                     "command",
                     operation=operation,
                     transport="cloud",
-                    status="ambiguous"
-                    if isinstance(cause, MysaConnectionError)
-                    and not isinstance(cause, MysaRateLimitError)
-                    else "failed",
+                    status="ambiguous" if is_outcome_unknown(cause) else "failed",
                     error=error_category(cause),
                 )
                 raise
