@@ -166,8 +166,13 @@ update it together with this list:
   app-to-HA setpoint readback matched the Mysa app; HA-initiated writes were not
   tested ([#30](https://github.com/SokolskyNikita/mysa-homeassistant/issues/30)).
 - In-Floor (`INF-V1-0`, firmware 3.17.6.5): mode changes worked locally, and °F
-  setpoints worked once rounded to the step; a Baseboard V2 owner reported the
-  same rejection before rounding ([#32](https://github.com/SokolskyNikita/mysa-homeassistant/issues/32)).
+  setpoints worked once rounded to the step ([#32](https://github.com/SokolskyNikita/mysa-homeassistant/issues/32)).
+- Baseboard V2: two owners reported the same °F rejection before rounding, and
+  one confirmed on 2026-11-15 that setpoints work after updating
+  ([#32](https://github.com/SokolskyNikita/mysa-homeassistant/issues/32)).
+  Another owner, model not stated, confirmed that 0.9.0 fixed the same
+  rejection on a local-only setup
+  ([#33](https://github.com/SokolskyNikita/mysa-homeassistant/issues/33)).
 
 AC, In-floor and other baseboard variants still need full hardware checks. V3,
 Central HVAC and Climate Sensor support is experimental, with app-derived

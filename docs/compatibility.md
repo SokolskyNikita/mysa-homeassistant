@@ -18,7 +18,7 @@ reading Mysa's app, so check the status before relying on a control.
 | Model | Model IDs | Control path | Status | Firmware seen |
 |---|---|---|---|---|
 | [Baseboard Lite](#baseboard-lite) | `BB-V2-0-L` | Local HomeKit; optional cloud and MQTT | Hardware-tested: local and cloud control work | 3.17.5.13 |
-| [Baseboard V2](#baseboard-v2) | `BB-V2-*` | Local HomeKit; optional cloud | One owner report: °F setpoints were rejected before 0.9.0; the fix is unconfirmed | Not reported |
+| [Baseboard V2](#baseboard-v2) | `BB-V2-*` | Local HomeKit; optional cloud | Owner reports: °F setpoints work locally since 0.9.0 | Not reported |
 | [Baseboard V1](#baseboard-v1) | `BB-V1-*` | Local HomeKit; optional cloud | Owner reports: discovered since 0.9.0, but some units reboot during pairing | 3.17.5.11 |
 | [In-Floor](#in-floor) | `INF-V1-0`, `INF-V1` | Local HomeKit; optional cloud | One owner report: modes and setpoints work locally | 3.17.6.5 |
 | [Mini-Split AC](#mini-split-ac) | `AC-V1-0`, `AC-V1` | Local HomeKit; optional cloud | Untested | None |
@@ -51,8 +51,9 @@ Two units on firmware 3.17.5.13, observed 10–12 October 2026 and again for the
 
 ## Baseboard V2
 
-Supported with the same code as the Lite. One owner confirmed that °F setpoints
-were rejected before 0.9.0 rounded them to the thermostat's step
+Supported with the same code as the Lite. Two owners reported that °F setpoints
+were rejected before 0.9.0 rounded them to the thermostat's step, and one
+confirmed that they work after updating
 ([#32](https://github.com/SokolskyNikita/mysa-homeassistant/issues/32)). No
 other controls have been reported.
 
