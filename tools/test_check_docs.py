@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import runpy
+import subprocess
 from tempfile import TemporaryDirectory
 import unittest
 
@@ -107,6 +108,17 @@ class DocumentationChecks(unittest.TestCase):
         )
         assert len(self.scope["ERRORS"]) == 2
         assert all("orphan.md" in error for error in self.scope["ERRORS"])
+
+    def test_git_ignored_pages_are_skipped(self):
+        """A local, git-ignored Markdown file is not a maintained page."""
+        local = self.page("CLAUDE.local.md", "# Local notes\n")
+        kept = self.page("README.md", "# Start\n")
+        assert self.scope["git_ignored"]([local, kept]) == set()  # Not a repository.
+        git = ["git", "-C", str(self.root)]
+        subprocess.run([*git, "init", "-q"], check=True)
+        self.page(".gitignore", "CLAUDE.local.md\n")
+        assert self.scope["git_ignored"]([local, kept]) == {local}
+        assert self.scope["git_ignored"]([]) == set()
 
     def test_preserved_anchor_and_page(self):
         """A compatibility ID cannot vanish even with no remaining inbound links."""
