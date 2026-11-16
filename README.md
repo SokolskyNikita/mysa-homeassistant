@@ -21,7 +21,7 @@ The maintainer has tested only the Baseboard Lite. Other models rely on owners' 
 | Model | Model IDs | Status |
 |---|---|---|
 | Baseboard Lite | `BB-V2-0-L` | Hardware-tested |
-| Baseboard V2 | `BB-V2-*` | Reported working; [°F setpoint fix](docs/compatibility.md#baseboard-v2) unconfirmed |
+| Baseboard V2 | `BB-V2-*` | [Reported working](docs/compatibility.md#baseboard-v2) |
 | Baseboard V1 | `BB-V1-*` | [Pairing fails on some units](docs/compatibility.md#baseboard-v1) |
 | In-Floor | `INF-V1-0`, `INF-V1` | [Reported working](docs/compatibility.md#in-floor) |
 | Mini-Split AC | `AC-V1-0`, `AC-V1` | Untested |
