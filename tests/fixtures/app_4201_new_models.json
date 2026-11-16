@@ -2,8 +2,7 @@
   "provenance": {
     "kind": "synthetic-app-derived",
     "app_version": "4.20.1",
-    "bundle_sha256": "1cf8a5c0fd83fd1e2a355abd9d22fb70434ca023140d18bc56f5be4927538dde",
-    "note": "Field paths and enum encodings from decompiled app. Capability values and readings are test scenarios, not device captures."
+    "note": "Field paths and enum encodings from Mysa's Android app 4.20.1. Capability values and readings are test scenarios, not device captures."
   },
   "models": {
     "BB-V3-0": {
