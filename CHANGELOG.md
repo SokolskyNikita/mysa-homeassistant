@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- Requires mysa-client 0.4.0.
+- A Mini-Split AC asked for a temperature in heat/cool mode now writes its
+  single auto target, as Mysa's app does; 0.9.1 wrote the heating target. The
+  card offers that target only while the thermostat reports one. Derived from
+  the app and not tested on an AC here. Other models refuse a single
+  temperature in heat/cool with a clear error.
+- Add four diagnostic sensors, disabled by default: Core temperature, Free
+  memory, Line voltage and Highest recorded load current. They appear when the
+  thermostat reports the value through Mysa's cloud.
+- Diagnostics classify more errors: MQTT, HomeKit pairing and read errors, and
+  setpoint, mode and schedule errors used to be recorded as "unexpected".
+- Today's usage starts at the right moment on a day when the clocks skip or
+  repeat midnight.
+- Mysa Local now uses mysa-client's own health check, error classification,
+  mode maps and daily-usage window, and its copies are removed.
+
 ## 0.9.1 (2026-11-15)
 
 - Restore °C for Fahrenheit owners where 0.9.0 changed the meaning of existing

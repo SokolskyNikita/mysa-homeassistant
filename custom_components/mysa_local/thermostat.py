@@ -60,8 +60,13 @@ from mysa_client.cloud.setpoints import (
     to_celsius,
 )
 from mysa_client.homekit import Field, LocalMode
+from mysa_client.runtime.errors import error_category
 from mysa_client.runtime.routing import RouteRequest
-from mysa_client.runtime.state import DeviceView
+from mysa_client.runtime.state import (
+    LOCAL_MODE_TO_MODE,
+    MODE_TO_LOCAL_MODE,
+    DeviceView,
+)
 
 from .account import cloud_account_status
 from .cloud_coordinator import MysaCloudCoordinator, translated_error
@@ -76,7 +81,7 @@ from .const import (
     CONNECTION_LOCAL,
     CONNECTION_OFFLINE,
 )
-from .event_history import EventHistory, error_category
+from .event_history import EventHistory
 from .local_adapter import (
     AMBIENT_LIGHT,
     DISPLAY_UNITS,
@@ -91,15 +96,6 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
 
     from .mqtt_coordinator import MysaMqttCoordinator
-
-# Translate the local protocol's semantic modes into Mysa's device modes.
-LOCAL_MODE_TO_MODE = {
-    LocalMode.OFF: Mode.OFF,
-    LocalMode.HEAT: Mode.HEAT,
-    LocalMode.COOL: Mode.COOL,
-    LocalMode.AUTO: Mode.AUTO,
-}
-MODE_TO_LOCAL_MODE = {mode: local for local, mode in LOCAL_MODE_TO_MODE.items()}
 
 ACTION_OFF = "off"
 ACTION_IDLE = "idle"
@@ -687,6 +683,7 @@ class Thermostat:
             self.setpoint_min,
             self.setpoint_max,
             self.cloud_record,
+            self.family,
         )
 
     @property
@@ -694,19 +691,21 @@ class Thermostat:
         """The one rules object every written temperature goes through.
 
         Rebuilt only when an input changes: the cloud capabilities, the
-        HomeKit range, the owner's confirmed limits or the settings record
-        (which carries a Mini-Split AC's cool range).
+        HomeKit range, the owner's confirmed limits, the settings record
+        (which carries a Mini-Split AC's cool and auto ranges) or the model
+        family (which decides what a single heat/cool target means).
         """
         inputs = self._rules_inputs()
         cached = self._rules
         if cached is None or not _same_inputs(cached[0], inputs):
-            caps, local_range, setpoint_min, setpoint_max, record = inputs
+            caps, local_range, setpoint_min, setpoint_max, record, family = inputs
             rules = SetpointRules(
                 caps,
                 local_range,
                 setpoint_min=setpoint_min,
                 setpoint_max=setpoint_max,
                 record=record,
+                family=family,
             )
             self._rules = cached = (inputs, rules)
         return cached[1]
@@ -716,13 +715,35 @@ class Thermostat:
         """The setpoint ranges the climate entity's bounds have to cover.
 
         HA validates a target before applying a mode change in the same call,
-        so Central HVAC exposes the envelope of all its ranges; the rules
-        enforce each mode's own limits when writing. Other models show the
-        range of the mode they're in.
+        so Central HVAC exposes the envelope of its heat, cool and heat/cool
+        ranges; the rules enforce each mode's own limits when writing. (Its
+        heat/cool targets are a pair, so the single-target ``AUTO`` range is
+        not one of them.) A Mini-Split AC in heat/cool shows its auto range.
+        Other models show the range of the mode they're in.
         """
         if self.is_hvac and self.capabilities is not None:
-            return tuple(SetpointKind)
-        return (SetpointKind.COOL if self.mode == Mode.COOL else SetpointKind.HEAT,)
+            return tuple(kind for kind in SetpointKind if kind != SetpointKind.AUTO)
+        mode = self.mode
+        if mode == Mode.AUTO and self.family == ModelFamily.AC:
+            return (SetpointKind.AUTO,)
+        return (SetpointKind.COOL if mode == Mode.COOL else SetpointKind.HEAT,)
+
+    @property
+    def reports_auto_target(self) -> bool:
+        """Whether a Mini-Split AC in heat/cool reports its single target.
+
+        Mysa's app writes an AC's heat/cool target as ``targetAuto.setpoint``
+        and mysa-client reads it back as ``auto_setpoint``. Neither is
+        verified on a device here, so the card offers that target only while
+        the cloud actually reports one.
+        """
+        state = self.cloud_state
+        return (
+            self.family == ModelFamily.AC
+            and state is not None
+            and state.mode == Mode.AUTO
+            and state.auto_setpoint is not None
+        )
 
     @property
     def setpoint_range(self) -> tuple[float, float, float]:
@@ -1018,7 +1039,7 @@ class Thermostat:
                 # The Setpoint itself: HomeKit writes take only ruled values.
                 local_values={TARGET_TEMPERATURE: setpoint},
                 cloud_write=lambda cloud: cloud.async_set_temperature(
-                    self.device_id, mode or Mode.HEAT, setpoint
+                    self.device_id, mode or Mode.HEAT, setpoint, family=self.family
                 ),
                 cloud_applied=lambda state: state.setpoint_for(mode) == celsius,
             )
@@ -1038,7 +1059,8 @@ class Thermostat:
         if self.basic_cloud_only:
             await self.async_set_basic_temperature(mode=mode)
             return
-        local_mode = MODE_TO_LOCAL_MODE.get(mode)
+        local = MODE_TO_LOCAL_MODE.get(mode)
+        local_mode = LocalMode(local) if local is not None else None
 
         async def _cloud(cloud: MysaCloudCoordinator) -> None:
             await cloud.async_set_mode(self.device_id, mode)

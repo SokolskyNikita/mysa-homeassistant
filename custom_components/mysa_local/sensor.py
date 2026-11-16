@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -9,6 +10,7 @@ from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorExtraStoredData,
     SensorStateClass,
 )
@@ -17,7 +19,10 @@ from homeassistant.const import (
     PERCENTAGE,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
     UnitOfEnergy,
+    UnitOfInformation,
     UnitOfPower,
     UnitOfTemperature,
     UnitOfTime,
@@ -74,6 +79,12 @@ async def async_setup_entry(
             entities.append(WifiSignalSensor(thermostat))
         if thermostat.has_light_sensor:
             entities.append(IlluminanceSensor(thermostat))
+        if state is not None:
+            entities.extend(
+                HealthSensor(thermostat, description)
+                for description in HEALTH_SENSORS
+                if getattr(state, description.field) is not None
+            )
         return entities
 
     async_add_when_ready(entry, async_add_entities, _entities)
@@ -307,6 +318,93 @@ class WifiSignalSensor(MysaCloudEntity, SensorEntity):
         """RSSI in dBm."""
         state = self.cloud_state
         return state.rssi if state else None
+
+
+@dataclass(frozen=True, kw_only=True)
+class HealthSensorDescription(SensorEntityDescription):
+    """A device-health value from the structured cloud state."""
+
+    #: The DeviceState attribute that holds the value.
+    field: str
+    #: Whether the value comes from the power section first (its own clock).
+    power: bool = False
+
+
+# Only fields whose unit and meaning were confirmed on real hardware
+# (mysa-client 0.4.0's "Device health and electrical fields").
+HEALTH_SENSORS: tuple[HealthSensorDescription, ...] = (
+    HealthSensorDescription(
+        key="core_temperature",
+        field="core_temperature",
+        translation_key="core_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        suggested_display_precision=1,
+    ),
+    HealthSensorDescription(
+        key="free_memory",
+        field="free_heap",
+        translation_key="free_memory",
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        suggested_display_precision=0,
+    ),
+    HealthSensorDescription(
+        key="line_voltage",
+        field="voltage",
+        power=True,
+        translation_key="line_voltage",
+        device_class=SensorDeviceClass.VOLTAGE,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        suggested_display_precision=0,
+    ),
+    # The highest load current the thermostat has seen, not the present draw.
+    HealthSensorDescription(
+        key="max_load_current",
+        field="max_current",
+        translation_key="max_load_current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        suggested_display_precision=1,
+    ),
+)
+
+
+class HealthSensor(MysaCloudEntity, SensorEntity):
+    """A diagnostic value only the structured cloud state reports.
+
+    Created when the cloud state reports the value, disabled by default, and
+    available only while the reading it came from is fresh.
+    """
+
+    entity_description: HealthSensorDescription
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self, thermostat: Thermostat, description: HealthSensorDescription
+    ) -> None:
+        """Create the entity."""
+        super().__init__(thermostat, description.key, description)
+
+    @property
+    def available(self) -> bool:
+        """Only while the structured reading that carried the value is fresh."""
+        cloud = self.thermostat.cloud
+        return bool(
+            self.thermostat.cloud_connected
+            and cloud
+            and cloud.health_fresh(
+                self.thermostat.device_id, power=self.entity_description.power
+            )
+            and self.native_value is not None
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """The value as the cloud reports it."""
+        state = self.cloud_state
+        value = getattr(state, self.entity_description.field) if state else None
+        return float(value) if value is not None else None
 
 
 class RuntimeExtraData(ExtraStoredData):

@@ -92,7 +92,13 @@ reported on it.
 - **Temperature range:** the heating and cooling ranges and their step come
   from the remote (16–30 °C in whole degrees by default) when the capabilities
   give none. No target is offered in fan-only or dry mode.
-- **Not implemented:** toggle-only swing, and auto mode.
+- **Heat/cool (auto):** a single target set in Home Assistant's `heat_cool`
+  mode is written as Mysa's auto target (`targetAuto.setpoint`), in the
+  remote's auto range, as Mysa's app does. The card offers that target in
+  heat/cool only once the cloud reports one; until then it shows none, as
+  before. Derived from Mysa's app and a third-party project's report on two
+  ACs; not tested here.
+- **Not implemented:** toggle-only swing.
 
 ## Central HVAC
 

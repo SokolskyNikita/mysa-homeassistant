@@ -16,6 +16,7 @@ from mysa_client.cloud import (
 from mysa_client.cloud.const import LEGACY_API_BASE
 from mysa_client.cloud.observations import Observation
 from mysa_client.cloud.trace import route_template
+from mysa_client.runtime.errors import error_category
 import pytest
 
 from custom_components.mysa_local.event_history import (
@@ -24,7 +25,6 @@ from custom_components.mysa_local.event_history import (
     MAX_NOISY_EVENTS,
     RETENTION,
     EventHistory,
-    error_category,
 )
 
 from .common import DEVICE_ID, HOME_ID, PAIRING_DATA, REFRESH_TOKEN, hub_entry, setpoint
@@ -453,3 +453,16 @@ async def test_capture_failure_and_cancellation_do_not_change_commands(hass, clo
     assert events(history, event="command")[-1]["status"] == "ambiguous"
     assert events(history, event="command")[-1]["error"] == "cancelled"
     assert len(cloud.updates) == 1
+
+
+def test_every_error_category_survives_redaction() -> None:
+    """Each category mysa-client can return is kept in events and snapshots."""
+    from mysa_client.runtime.errors import ERROR_CATEGORIES
+
+    from custom_components.mysa_local.event_history import redact_snapshot
+
+    history = EventHistory()
+    for category in sorted(ERROR_CATEGORIES):
+        assert redact_snapshot(category) == category
+        history.record("command", operation="set_state", error=category)
+        assert events(history)[-1]["error"] == category

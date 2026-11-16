@@ -27,6 +27,15 @@ Entities depend on the thermostat's capabilities and reported data. The [newer-m
 
 Other status entities show HomeKit pairing, Mysa account membership, cloud connectivity and schedule hold. The Wi-Fi signal sensor is disabled by default; enable it from the device's entity list when needed.
 
+These diagnostic sensors are also disabled by default. Each is created only when the thermostat's cloud state reports its value (all four were confirmed on a Baseboard Lite, firmware 3.17.5.13), and is unavailable while the cloud reading it came from is older than the [freshness window](behavior.md#reading-freshness):
+
+| Sensor | Unit | Notes |
+|---|---|---|
+| Core temperature | °C | The thermostat's internal temperature, above room temperature |
+| Free memory | bytes | Free firmware memory |
+| Line voltage | V | From Mysa's power report when it has one, which can stay unchanged for a day; unavailable while that report is stale |
+| Highest recorded load current | A | The highest load current the thermostat has seen, not what it draws now |
+
 ### Fahrenheit
 
 Mysa stores setpoints in °C and accepts only its 0.5 °C steps. When Home Assistant's unit system uses Fahrenheit, the climate entity and the lowest and highest setpoint numbers work in whole °F, as in the Mysa app:

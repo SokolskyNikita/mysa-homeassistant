@@ -526,6 +526,18 @@
           "paired": "Paired",
           "not_paired": "Not paired"
         }
+      },
+      "core_temperature": {
+        "name": "Core temperature"
+      },
+      "free_memory": {
+        "name": "Free memory"
+      },
+      "line_voltage": {
+        "name": "Line voltage"
+      },
+      "max_load_current": {
+        "name": "Highest recorded load current"
       }
     },
     "switch": {

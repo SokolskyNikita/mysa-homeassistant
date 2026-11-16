@@ -8,13 +8,9 @@ from typing import Any
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
-from mysa_client.cloud import (
-    DeviceState,
-    MysaConnectionError,
-    MysaError,
-    MysaRateLimitError,
-)
+from mysa_client.cloud import DeviceState, MysaError
 from mysa_client.homekit import Field
+from mysa_client.runtime.errors import is_outcome_unknown
 from mysa_client.runtime.routing import (
     CommandRouter as RuntimeCommandRouter,
     RouteOutcome,
@@ -23,7 +19,7 @@ from mysa_client.runtime.routing import (
 
 from .cloud_coordinator import MysaCloudCoordinator, translated_error
 from .const import LOCAL_WRITE_TIMEOUT, LOGGER
-from .event_history import EventHistory, error_category
+from .event_history import EventHistory
 from .local_adapter import LOCAL_ERRORS, LocalThermostat, LocalWriteRejectedError
 
 
@@ -67,9 +63,11 @@ class CommandRouter:
             is_local_error=lambda error: isinstance(error, LOCAL_ERRORS),
             is_local_rejection=lambda error: isinstance(error, LocalWriteRejectedError),
             is_cloud_confirmation_error=lambda error: isinstance(error, MysaError),
-            is_ambiguous_cloud_error=self._is_ambiguous_cloud_error,
+            # The router sees HomeAssistantError wrappers; the library error
+            # that decides the outcome is the cause.
+            is_ambiguous_cloud_error=lambda error: is_outcome_unknown(error.__cause__),
             is_reconcile_error=lambda error: isinstance(error, HomeAssistantError),
-            error_category=error_category,
+            # error_category defaults to mysa_client.runtime.errors.error_category.
         )
 
     @property
@@ -156,11 +154,4 @@ class CommandRouter:
             "%s: couldn't reconcile a late write: %s",
             self.history.label(self.device_id),
             type(error).__name__,
-        )
-
-    @staticmethod
-    def _is_ambiguous_cloud_error(error: BaseException) -> bool:
-        cause = error.__cause__
-        return isinstance(cause, MysaConnectionError) and not isinstance(
-            cause, MysaRateLimitError
         )
