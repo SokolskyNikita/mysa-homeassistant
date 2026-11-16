@@ -4,9 +4,9 @@ Last reviewed: **2026-11-15**
 
 Documentation reconciled: **2026-10-14**
 
-Integration version: **Mysa Local 0.9.1**
+Integration version: **Mysa Local 0.9.2**
 
-Most statuses were assessed on **2026-10-12 / 0.6.0**. MGT-COMMAND-06 and MGT-COMMAND-09 were reviewed again for 0.9.0 and 0.9.1, and MGT-QUALITY-02 counts community hardware reports up to 2026-11-15. Other rows keep their 0.6.0 assessment; historical observations retain their own release dates.
+Most statuses were assessed on **2026-10-12 / 0.6.0**. MGT-COMMAND-06 and MGT-COMMAND-09 were reviewed again for 0.9.0, 0.9.1 and 0.9.2, and MGT-QUALITY-02 counts community hardware reports up to 2026-11-15. Other rows keep their 0.6.0 assessment; historical observations retain their own release dates.
 
 This tracker covers how the Home Assistant integration selects state, routes and
 confirms commands, manages setup and recovery, and verifies model behavior. The
@@ -218,3 +218,7 @@ The generator reads only this repository and does not contact a thermostat.
 - **2026-11-15, 0.9.1 review:** MGT-COMMAND-09 stays Implemented. The climate
   entity and the setpoint limits keep whole °F; hold and schedule temperatures
   and the temperature offset are °C again on every unit system (#48).
+- **2026-11-15, 0.9.2 review:** no status changes. The integration moved to
+  mysa-client 0.4.0; a Mini-Split AC's heat/cool target is written to the auto
+  section (app-derived, untested on hardware), and four diagnostic sensors were
+  added for values confirmed on a Baseboard Lite.

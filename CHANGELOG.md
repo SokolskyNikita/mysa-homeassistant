@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.2 (2026-11-15)
 
 - Requires mysa-client 0.4.0.
 - A Mini-Split AC asked for a temperature in heat/cool mode now writes its
