@@ -20,7 +20,6 @@ references are maintained in [`mysa-client`](https://github.com/SokolskyNikita/m
 | MQTT controls, session lifecycle, HA source preferences, fallback, and hardware evidence | [MQTT guide](mqtt.md) |
 | Current recorded HA status, acceptance criteria, and validation gaps | [Management inventory](implementation/progress.md) |
 | Product exclusions, scope decisions, and transport boundaries | [Feature scope](cloud-scope.md) |
-| Legacy C-* bookmarks | [Cloud ID lookup](implementation/cloud.md); link new references directly to their destinations |
 | Public client APIs, MQTT authorization and wire protocol, endpoint/payload details, firmware and provisioning research | [Client protocol index](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/README.md) |
 | Raw API method coverage | [Client API inventory](https://github.com/SokolskyNikita/mysa-client/blob/main/docs/api-coverage.md) |
 | Sanitized cloud/MQTT exchanges and protocol tools | [Client examples](https://github.com/SokolskyNikita/mysa-client/blob/main/examples/README.md) and [tools](https://github.com/SokolskyNikita/mysa-client/tree/main/tools) |
@@ -78,7 +77,7 @@ newly published pages. The inventory's integration version must match the
 manifest; review it on releases without relabeling old hardware evidence as new.
 Its status-assessment date remains separate from documentation maintenance.
 
-Checks also cover Markdown tables/fences, legacy tracker IDs, strict JSON
+Checks also cover Markdown tables/fences, strict JSON
 fixtures, and obvious secret patterns. Regression tests run offline with only
 the Python standard library; they do not import HA or contact any device.
 Semantic claims and the relevance of evidence still need human review.

@@ -221,19 +221,6 @@ def main() -> int:
             fail(path, "invalid fixture JSON")
         if SECRET.search(path.read_text()):
             fail(path, "possible credential material (value suppressed)")
-    tracker_id_count = 0
-    for name, prefix in (("cloud", "c"),):
-        tracker = ROOT / f"docs/implementation/{name}.md"
-        tracker_text = tracker.read_text()
-        item_ids = re.findall(rf'<a id="({prefix}-[iapod]\d+)"', tracker_text)
-        tracker_id_count += len(item_ids)
-        if len(item_ids) != len(set(item_ids)):
-            fail(tracker, "duplicate tracker item IDs")
-        for identifier in item_ids:
-            if identifier.startswith((f"{prefix}-a", f"{prefix}-p")) and (
-                identifier + "-criteria" not in anchors(tracker_text)
-            ):
-                fail(tracker, f"missing completion criteria: {identifier}")
     for error in ERRORS:
         print(error)
     if ERRORS:
@@ -241,8 +228,8 @@ def main() -> int:
         return 1
     print(
         f"OK: {len(markdown)} Markdown files, "
-        f"{len(list((ROOT / 'tests/fixtures').glob('*.json')))} strict fixtures, "
-        f"{tracker_id_count} cloud tracker IDs; all checks offline"
+        f"{len(list((ROOT / 'tests/fixtures').glob('*.json')))} strict fixtures; "
+        "all checks offline"
     )
     return 0
 
