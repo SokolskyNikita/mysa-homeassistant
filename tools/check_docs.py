@@ -8,6 +8,7 @@ from collections import Counter
 import json
 from pathlib import Path
 import re
+import subprocess
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -186,6 +187,26 @@ def check_markdown(path: Path) -> set[Path]:
     return targets
 
 
+def git_ignored(paths: list[Path]) -> set[Path]:
+    """Paths that git ignores, such as a local notes file; none outside a checkout."""
+    if not paths:
+        return set()
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(ROOT), "check-ignore", "--stdin", "-z"],
+            input="\0".join(str(path) for path in paths),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return set()
+    # 0: some are ignored; 1: none are. Anything else (not a repository) is no answer.
+    if result.returncode != 0:
+        return set()
+    return {Path(name) for name in result.stdout.split("\0") if name}
+
+
 def main() -> int:
     """Run all offline documentation checks."""
     global CLIENT_ROOT  # noqa: PLW0603
@@ -206,6 +227,9 @@ def main() -> int:
     )
     markdown += sorted((ROOT / "docs").rglob("*.md"))
     markdown += sorted((ROOT / "custom_components").rglob("*.md"))
+    # A file git ignores is local, not a maintained page.
+    ignored = git_ignored(markdown)
+    markdown = [path for path in markdown if path not in ignored]
     graph = {}
     for path in markdown:
         graph[path] = check_markdown(path)
